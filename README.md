@@ -12,12 +12,22 @@ Install these before starting:
 
 ## Setup
 
-### 1. Clone the repo
+There are two ways to clone the project:
+
+### Option A — Using Terminal
 ```bash
 git clone https://github.com/chefxx1/catalog-app.git
 cd catalog-app
 npm install
 ```
+
+### Option B — Using VS Code
+1. Open **VS Code**
+2. Press `Ctrl + Shift + P` and type **Git: Clone**
+3. Paste: `https://github.com/chefxx1/catalog-app.git`
+4. Pick a folder to save it and click **Open**
+5. Open the terminal in VS Code (`Ctrl + ~`)
+6. Run: `npm install`
 
 ### 2. Set up MySQL
 1. Open **XAMPP Control Panel**
