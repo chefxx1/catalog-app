@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, getCatalog, getStats } from "./api";
 
 // ============================================================
 // ICONS
@@ -597,25 +598,14 @@ const AuthPage = ({ onLogin, dark }) => {
     if (!siEmail.trim()) return setError("Please enter your email address.");
     if (!siPassword) return setError("Please enter your password.");
     setLoading(true);
-    await new Promise(r => setTimeout(r, 1200));
-
-    if (siEmail === "demo@catalogai.com" && siPassword === "demo1234") {
-      setLoading(false);
-      return onLogin({ email: "demo@catalogai.com", name: "Demo User", role: "Admin", store: "Demo Store" });
-    }
 
     try {
-      const res = await window.storage.get("catalogai:users");
-      const users = res ? JSON.parse(res.value) : {};
-      const key = siEmail.toLowerCase().trim();
-      const user = users[key];
-      if (!user) { setLoading(false); return setError("No account found with this email. Please sign up first."); }
-      if (user.passwordHash !== btoa(siPassword)) { setLoading(false); return setError("Incorrect password. Please try again."); }
+      const data = await apiSignIn(siEmail, siPassword);
       setLoading(false);
-      onLogin({ email: user.email, name: user.name, role: user.role, store: user.store });
-    } catch {
+      onLogin({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store: data.user.store_name });
+    } catch (err) {
       setLoading(false);
-      onLogin({ email: siEmail, name: siEmail.split("@")[0], role: "Admin", store: "My Store" });
+      setError(err.message);
     }
   };
 
@@ -630,24 +620,14 @@ const AuthPage = ({ onLogin, dark }) => {
     if (suPassword !== suConfirm) return setError("Passwords do not match.");
     if (!agreedTerms) return setError("Please agree to the Terms of Service.");
     setLoading(true);
-    await new Promise(r => setTimeout(r, 1400));
 
     try {
-      const res = await window.storage.get("catalogai:users");
-      const users = res ? JSON.parse(res.value) : {};
-      const key = suEmail.toLowerCase().trim();
-      if (users[key]) { setLoading(false); return setError("An account with this email already exists."); }
-      users[key] = {
-        email: suEmail.toLowerCase().trim(), name: suName.trim(),
-        passwordHash: btoa(suPassword), role: suRole,
-        store: suStore.trim() || "My Store", createdAt: new Date().toISOString(),
-      };
-      await window.storage.set("catalogai:users", JSON.stringify(users));
+      const data = await apiSignUp(suName, suEmail, suPassword, suRole, suStore || "My Store");
       setLoading(false);
-      onLogin({ email: users[key].email, name: users[key].name, role: users[key].role, store: users[key].store });
-    } catch {
+      onLogin({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store: data.user.store_name });
+    } catch (err) {
       setLoading(false);
-      onLogin({ email: suEmail, name: suName, role: suRole, store: suStore || "My Store" });
+      setError(err.message);
     }
   };
 
@@ -948,8 +928,19 @@ export default function App() {
   const [dark, setDark] = useState(true);
   const [view, setView] = useState("dashboard");
   const [step, setStep] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-  const handleLogout = () => setUser(null);
+  // Auto-login from stored token
+  useEffect(() => {
+    getMe().then(u => {
+      if (u) setUser({ id: u.id, email: u.email, name: u.name, role: u.role, store: u.store_name });
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  const handleLogout = () => { setToken(null); setUser(null); };
+
+  if (loading) return null;
 
   const navItems = [
     { id: "dashboard", icon: "grid", label: "Dashboard" },
