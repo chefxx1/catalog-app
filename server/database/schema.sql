@@ -1,5 +1,6 @@
 -- CatalogAI Database Schema
 
+CREATE DATABASE IF NOT EXISTS catalogai;
 USE catalogai;
 
 -- Users table
