@@ -39,6 +39,10 @@ const Icon = ({ name, size = 16, color = "currentColor" }) => {
     mail: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>,
     arrowLeft: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>,
     store: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/></svg>,
+    trash: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>,
+    key: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>,
+    bell: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
+    palette: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="12.5" r="2.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.5-.7 1.5-1.5 0-.4-.1-.7-.4-1-.3-.3-.4-.7-.4-1.1 0-.8.7-1.5 1.5-1.5H16c3.3 0 6-2.7 6-6 0-5.5-4.5-9.8-10-10z"/></svg>,
   };
   return icons[name] || <span>{name}</span>;
 };
@@ -84,6 +88,12 @@ const SAMPLE_CATALOG = [
   { id: 3, name: "Organic Green Tea 100g", upc: "748927401832", status: "Draft", category: "Food & Beverage", date: "2025-02-13", sources: 3, image: "https://picsum.photos/seed/product3/60/60" },
   { id: 4, name: "Nike Air Max 270 Sneakers", upc: "887791153846", status: "Exported", category: "Footwear", date: "2025-02-12", sources: 4, image: "https://picsum.photos/seed/product4/60/60" },
   { id: 5, name: "Instant Pot Duo 7-in-1", upc: "853236004885", status: "Published", category: "Home & Kitchen", date: "2025-02-11", sources: 5, image: "https://picsum.photos/seed/product5/60/60" },
+];
+
+const MOCK_BRAND_VOICES = [
+  { id: 1, name: "Main Store", tone: "Professional", color: "#3B82F6", audience: "B2B buyers and procurement teams", style: "Clear, concise, and data-driven. Focus on specifications and value propositions.", includeKeywords: ["premium", "reliable", "industry-leading", "certified"], excludeKeywords: ["cheap", "budget", "basic"], description: "Our flagship brand voice for professional communications", isDefault: true },
+  { id: 2, name: "Consumer Direct", tone: "Friendly", color: "#10B981", audience: "End consumers, 25-45 age range", style: "Warm, approachable, conversational. Use contractions and relatable language.", includeKeywords: ["love", "amazing", "easy", "enjoy"], excludeKeywords: ["enterprise", "procurement", "compliance"], description: "Casual tone for direct-to-consumer product listings", isDefault: false },
+  { id: 3, name: "Premium Line", tone: "Luxury", color: "#F59E0B", audience: "High-income consumers seeking premium products", style: "Elevated, aspirational, refined. Emphasize craftsmanship and exclusivity.", includeKeywords: ["exquisite", "handcrafted", "exclusive", "timeless"], excludeKeywords: ["affordable", "discount", "mass-produced"], description: "Sophisticated voice for our luxury product range", isDefault: false },
 ];
 
 // ============================================================
@@ -185,6 +195,13 @@ const GlobalStyles = ({ dark }) => (
 
     .split-panel { overflow-y:auto; max-height:calc(100vh - 280px); }
     .hero-bg { background: radial-gradient(ellipse at 20% 50%, rgba(37,99,235,0.08) 0%, transparent 60%), radial-gradient(ellipse at 80% 20%, rgba(16,185,129,0.06) 0%, transparent 50%), radial-gradient(ellipse at 60% 80%, rgba(139,92,246,0.04) 0%, transparent 50%); }
+
+    @keyframes gradientShift { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+    @keyframes floatOrb { 0%{transform:translate(0,0) scale(1)} 33%{transform:translate(30px,-50px) scale(1.1)} 66%{transform:translate(-20px,20px) scale(0.9)} 100%{transform:translate(0,0) scale(1)} }
+    @keyframes particleFloat { 0%{transform:translateY(100vh) rotate(0deg); opacity:0} 10%{opacity:1} 90%{opacity:1} 100%{transform:translateY(-10vh) rotate(720deg); opacity:0} }
+    @keyframes orbitSlow { 0%{transform:rotate(0deg) translateX(150px) rotate(0deg)} 100%{transform:rotate(360deg) translateX(150px) rotate(-360deg)} }
+    @keyframes dashboardFloat { 0%{transform:perspective(1000px) rotateX(2deg) rotateY(-2deg) translateY(0)} 50%{transform:perspective(1000px) rotateX(-1deg) rotateY(1deg) translateY(-10px)} 100%{transform:perspective(1000px) rotateX(2deg) rotateY(-2deg) translateY(0)} }
+
     .confetti-piece { position:fixed; width:8px; height:8px; border-radius:2px; animation:confetti 3s ease-in both; z-index:9999; }
     .dot-1 { animation:bounceDot 1.4s infinite ease-in-out; animation-delay:-0.32s; }
     .dot-2 { animation:bounceDot 1.4s infinite ease-in-out; animation-delay:-0.16s; }
@@ -562,6 +579,79 @@ const PasswordStrengthBar = ({ password }) => {
 };
 
 // ============================================================
+// HELPER COMPONENTS
+// ============================================================
+const ToggleSwitch = ({ enabled, onToggle }) => (
+  <div onClick={onToggle} style={{
+    position: "relative", width: 44, height: 24, borderRadius: 12, cursor: "pointer",
+    border: "1px solid var(--border)", background: enabled ? "rgba(16,185,129,0.3)" : "var(--surface)", transition: "all 0.3s"
+  }}>
+    <div style={{
+      position: "absolute", top: 2, left: enabled ? 22 : 2,
+      width: 18, height: 18, borderRadius: "50%",
+      background: enabled ? "#10B981" : "var(--text-dim)",
+      boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "all 0.3s cubic-bezier(0.68,-0.55,0.27,1.55)"
+    }} />
+  </div>
+);
+
+const TagInput = ({ tags, onTagsChange, placeholder }) => {
+  const [input, setInput] = useState("");
+  const handleKeyDown = (e) => {
+    if ((e.key === "Enter" || e.key === ",") && input.trim()) {
+      e.preventDefault();
+      if (!tags.includes(input.trim())) onTagsChange([...tags, input.trim()]);
+      setInput("");
+    }
+    if (e.key === "Backspace" && !input && tags.length > 0) {
+      onTagsChange(tags.slice(0, -1));
+    }
+  };
+  return (
+    <div className="input" style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "8px 12px", minHeight: 42, alignItems: "center", cursor: "text" }}
+      onClick={(e) => e.currentTarget.querySelector("input")?.focus()}>
+      {tags.map((tag, i) => (
+        <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 10px", background: "rgba(37,99,235,0.15)", border: "1px solid rgba(37,99,235,0.3)", borderRadius: 20, fontSize: 12, color: "#60A5FA" }}>
+          {tag}
+          <span style={{ cursor: "pointer", marginLeft: 2 }} onClick={() => onTagsChange(tags.filter((_, j) => j !== i))}><Icon name="x" size={10} color="#60A5FA" /></span>
+        </span>
+      ))}
+      <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={handleKeyDown}
+        placeholder={tags.length === 0 ? placeholder : ""} style={{ border: "none", outline: "none", background: "transparent", color: "var(--text)", fontFamily: "'Sora',sans-serif", fontSize: 13, flex: 1, minWidth: 80, padding: 0 }} />
+    </div>
+  );
+};
+
+const ConfirmDialog = ({ title, message, confirmLabel, confirmColor, onConfirm, onCancel }) => (
+  <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={onCancel}>
+    <div className="card animate-scaleIn" style={{ padding: 28, maxWidth: 420, width: "100%" }} onClick={e => e.stopPropagation()}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+        <Icon name="warning" size={20} color={confirmColor || "#EF4444"} />
+        <h3 style={{ fontWeight: 700, fontSize: 16 }}>{title}</h3>
+      </div>
+      <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6, marginBottom: 20 }}>{message}</p>
+      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+        <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+        <button className="btn" style={{ background: confirmColor || "#EF4444", color: "white" }} onClick={onConfirm}>{confirmLabel || "Confirm"}</button>
+      </div>
+    </div>
+  </div>
+);
+
+const InputField = ({ label, type = "text", placeholder, value, onChange, onKeyDown, icon, rightEl, hint }) => (
+  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+    <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", letterSpacing: "0.02em" }}>{label}</label>
+    <div style={{ position: "relative" }}>
+      {icon && <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-dim)" }}><Icon name={icon} size={15} /></div>}
+      <input className="input" type={type} placeholder={placeholder} value={value} onChange={onChange} onKeyDown={onKeyDown}
+        style={{ paddingLeft: icon ? 38 : 14, paddingRight: rightEl ? 44 : 14 }} />
+      {rightEl && <div style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", cursor: "pointer", color: "var(--text-dim)" }}>{rightEl}</div>}
+    </div>
+    {hint && <p style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 1 }}>{hint}</p>}
+  </div>
+);
+
+// ============================================================
 // AUTH PAGE (Sign In / Sign Up / Forgot Password)
 // ============================================================
 const AuthPage = ({ onLogin, dark }) => {
@@ -651,33 +741,31 @@ const AuthPage = ({ onLogin, dark }) => {
     </div>
   );
 
-  const InputField = ({ label, type = "text", placeholder, value, onChange, onKeyDown, icon, rightEl, hint }) => (
-    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-      <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", letterSpacing: "0.02em" }}>{label}</label>
-      <div style={{ position: "relative" }}>
-        {icon && <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-dim)" }}><Icon name={icon} size={15} /></div>}
-        <input
-          className="input"
-          type={type} placeholder={placeholder} value={value}
-          onChange={onChange} onKeyDown={onKeyDown}
-          style={{ paddingLeft: icon ? 38 : 14, paddingRight: rightEl ? 44 : 14 }}
-        />
-        {rightEl && <div style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", cursor: "pointer", color: "var(--text-dim)" }}>{rightEl}</div>}
-      </div>
-      {hint && <p style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 1 }}>{hint}</p>}
-    </div>
-  );
-
   const ErrorBanner = () => error ? (
     <div className="animate-fadeIn" style={{ padding: "10px 14px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: 8, fontSize: 13, color: "#FCA5A5", display: "flex", gap: 8, alignItems: "flex-start" }}>
       <Icon name="warning" size={14} color="#EF4444" />{error}
     </div>
   ) : null;
 
+  // Particle Nebula background
+  const ParticlesBg = () => (
+    <>
+      <div style={{ position: "fixed", inset: 0, zIndex: 0, background: "radial-gradient(ellipse at 30% 20%, rgba(37,99,235,0.15) 0%, transparent 50%), radial-gradient(ellipse at 70% 80%, rgba(16,185,129,0.12) 0%, transparent 50%), radial-gradient(ellipse at 50% 50%, rgba(139,92,246,0.08) 0%, transparent 60%)" }} />
+      {[...Array(20)].map((_, i) => (
+        <div key={i} style={{ position: "fixed", width: i % 3 === 0 ? 4 : 2, height: i % 3 === 0 ? 4 : 2, borderRadius: "50%",
+          background: ["#3B82F6", "#10B981", "#8B5CF6", "#F59E0B"][i % 4], opacity: 0.4 + (i % 3) * 0.2,
+          left: `${5 + (i * 4.7) % 90}%`, animation: `particleFloat ${8 + (i % 5) * 3}s linear infinite`, animationDelay: `${-(i * 1.3)}s`, zIndex: 0
+        }} />
+      ))}
+      {[{ w: 200, h: 200, t: "10%", l: "5%", c: "rgba(37,99,235,0.06)", d: "20s" }, { w: 300, h: 300, t: "60%", l: "70%", c: "rgba(16,185,129,0.05)", d: "25s" }, { w: 150, h: 150, t: "30%", l: "80%", c: "rgba(139,92,246,0.06)", d: "18s" }].map((orb, i) => (
+        <div key={`orb-${i}`} style={{ position: "fixed", width: orb.w, height: orb.h, borderRadius: "50%", background: orb.c, top: orb.t, left: orb.l, filter: "blur(60px)", animation: `floatOrb ${orb.d} ease-in-out infinite`, animationDelay: `${-i * 5}s`, zIndex: 0 }} />
+      ))}
+    </>
+  );
+
   return (
-    <div className="hero-bg" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 16px" }}>
-      {/* Dot grid background */}
-      <div style={{ position: "fixed", inset: 0, zIndex: 0, backgroundImage: "radial-gradient(rgba(37,99,235,0.06) 1px, transparent 1px)", backgroundSize: "32px 32px" }} />
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 16px", background: "var(--bg)", position: "relative", overflow: "hidden" }}>
+      <ParticlesBg />
 
       <div style={{ width: "100%", maxWidth: 460, position: "relative", zIndex: 1, display: "flex", flexDirection: "column", gap: 20 }}>
 
@@ -921,6 +1009,464 @@ const AuthPage = ({ onLogin, dark }) => {
 };
 
 // ============================================================
+// SETTINGS PAGE
+// ============================================================
+const Settings = ({ user }) => {
+  const isAdmin = user.role === "Admin";
+  const isEditorOrAdmin = user.role === "Admin" || user.role === "Editor";
+
+  // Profile
+  const [profileName, setProfileName] = useState(user.name || "");
+  const [profileEmail, setProfileEmail] = useState(user.email || "");
+  const [profileStore, setProfileStore] = useState(user.store || "");
+  const [profileSaved, setProfileSaved] = useState(false);
+
+  // Change Password
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordChanged, setPasswordChanged] = useState(false);
+  const [showCurrentPwd, setShowCurrentPwd] = useState(false);
+  const [showNewPwd, setShowNewPwd] = useState(false);
+  const [showConfirmPwd, setShowConfirmPwd] = useState(false);
+
+  // Store Settings
+  const [currency, setCurrency] = useState("USD");
+  const [exportFormat, setExportFormat] = useState("CSV");
+  const [platform, setPlatform] = useState("Shopify");
+
+  // API Keys
+  const [openaiKey, setOpenaiKey] = useState("");
+  const [amazonKey, setAmazonKey] = useState("");
+  const [googleKey, setGoogleKey] = useState("");
+  const [showOpenai, setShowOpenai] = useState(false);
+  const [showAmazon, setShowAmazon] = useState(false);
+  const [showGoogle, setShowGoogle] = useState(false);
+  const [apiSaved, setApiSaved] = useState(false);
+
+  // Notifications
+  const [notifExport, setNotifExport] = useState(true);
+  const [notifWeekly, setNotifWeekly] = useState(true);
+  const [notifNewSource, setNotifNewSource] = useState(false);
+  const [notifPriceConflict, setNotifPriceConflict] = useState(true);
+
+  // Danger Zone
+  const [showDeleteData, setShowDeleteData] = useState(false);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+
+  const handleProfileSave = () => { setProfileSaved(true); setTimeout(() => setProfileSaved(false), 2000); };
+  const handlePasswordChange = () => { setPasswordChanged(true); setCurrentPassword(""); setNewPassword(""); setConfirmPassword(""); setTimeout(() => setPasswordChanged(false), 2000); };
+  const handleApiSave = () => { setApiSaved(true); setTimeout(() => setApiSaved(false), 2000); };
+
+  return (
+    <div className="animate-fadeIn" style={{ maxWidth: 720, margin: "0 auto", display: "flex", flexDirection: "column", gap: 24 }}>
+
+      {/* ── PROFILE ── */}
+      <div className="card" style={{ padding: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+          <Icon name="user" size={20} color="#3B82F6" />
+          <div>
+            <h3 style={{ fontWeight: 700, fontSize: 16 }}>Profile</h3>
+            <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>Manage your personal information</p>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 20 }}>
+          <div style={{ width: 64, height: 64, borderRadius: "50%", background: "linear-gradient(135deg,#2563EB,#8B5CF6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 700, color: "white", flexShrink: 0 }}>
+            {(profileName || "U")[0].toUpperCase()}
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>{profileName || "User"}</div>
+            <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{profileEmail}</div>
+            <span className="badge badge-primary" style={{ marginTop: 4 }}>{user.role}</span>
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <InputField label="Full name" placeholder="Your name" icon="user" value={profileName} onChange={e => setProfileName(e.target.value)} />
+          <InputField label="Email address" type="email" placeholder="you@example.com" icon="mail" value={profileEmail} onChange={e => setProfileEmail(e.target.value)} />
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <InputField label="Store name" placeholder="My Store" icon="store" value={profileStore} onChange={e => setProfileStore(e.target.value)} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
+          <button className="btn btn-primary" onClick={handleProfileSave}><Icon name="check" size={14} /> Save Profile</button>
+          {profileSaved && <span style={{ fontSize: 12, color: "#10B981", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><Icon name="check" size={12} color="#10B981" /> Saved</span>}
+        </div>
+      </div>
+
+      {/* ── CHANGE PASSWORD ── */}
+      {isEditorOrAdmin && (
+        <div className="card" style={{ padding: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+            <Icon name="shield" size={20} color="#8B5CF6" />
+            <div>
+              <h3 style={{ fontWeight: 700, fontSize: 16 }}>Change Password</h3>
+              <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>Update your account password</p>
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <InputField label="Current password" type={showCurrentPwd ? "text" : "password"} placeholder="Enter current password"
+              value={currentPassword} onChange={e => setCurrentPassword(e.target.value)}
+              rightEl={<span onClick={() => setShowCurrentPwd(p => !p)}><Icon name={showCurrentPwd ? "eyeOff" : "eye"} size={16} /></span>} />
+            <InputField label="New password" type={showNewPwd ? "text" : "password"} placeholder="Min. 8 characters"
+              value={newPassword} onChange={e => setNewPassword(e.target.value)}
+              rightEl={<span onClick={() => setShowNewPwd(p => !p)}><Icon name={showNewPwd ? "eyeOff" : "eye"} size={16} /></span>} />
+            <PasswordStrengthBar password={newPassword} />
+            <InputField label="Confirm new password" type={showConfirmPwd ? "text" : "password"} placeholder="Re-enter new password"
+              value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+              rightEl={<span onClick={() => setShowConfirmPwd(p => !p)}><Icon name={showConfirmPwd ? "eyeOff" : "eye"} size={16} /></span>} />
+            {confirmPassword && newPassword !== confirmPassword && <p style={{ fontSize: 11, color: "#EF4444" }}>Passwords don't match</p>}
+            {confirmPassword && newPassword === confirmPassword && confirmPassword && <p style={{ fontSize: 11, color: "#10B981", display: "flex", alignItems: "center", gap: 4 }}><Icon name="check" size={11} color="#10B981" /> Passwords match</p>}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
+            <button className="btn btn-primary" onClick={handlePasswordChange} disabled={!currentPassword || !newPassword || newPassword !== confirmPassword}><Icon name="check" size={14} /> Change Password</button>
+            {passwordChanged && <span style={{ fontSize: 12, color: "#10B981", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><Icon name="check" size={12} color="#10B981" /> Password updated</span>}
+          </div>
+        </div>
+      )}
+
+      {/* ── STORE SETTINGS ── */}
+      {isAdmin && (
+        <div className="card" style={{ padding: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+            <Icon name="store" size={20} color="#10B981" />
+            <div>
+              <h3 style={{ fontWeight: 700, fontSize: 16 }}>Store Settings</h3>
+              <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>Configure default preferences for your store</p>
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>Default Currency</label>
+              <select className="input" value={currency} onChange={e => setCurrency(e.target.value)}>
+                {["USD", "EUR", "GBP", "CAD", "AUD"].map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>Default Export Format</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                {["CSV", "JSON", "XML"].map(f => (
+                  <div key={f} onClick={() => setExportFormat(f)} style={{
+                    flex: 1, padding: "10px 8px", borderRadius: 8, cursor: "pointer", textAlign: "center",
+                    border: `2px solid ${exportFormat === f ? "#3B82F6" : "var(--border)"}`,
+                    background: exportFormat === f ? "rgba(37,99,235,0.12)" : "transparent", transition: "all 0.2s"
+                  }}>
+                    <div className="mono" style={{ fontSize: 13, fontWeight: 700, color: exportFormat === f ? "#3B82F6" : "var(--text-dim)" }}>{f}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>Default Platform</label>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
+                {[{ n: "Shopify", c: "#96BF48" }, { n: "WooCommerce", c: "#9B5C8F" }, { n: "Magento", c: "#F46F25" }, { n: "BigCommerce", c: "#121118" }].map(p => (
+                  <div key={p.n} onClick={() => setPlatform(p.n)} style={{
+                    padding: "10px 8px", borderRadius: 8, cursor: "pointer", textAlign: "center",
+                    border: `2px solid ${platform === p.n ? p.c : "var(--border)"}`,
+                    background: platform === p.n ? p.c + "18" : "transparent", transition: "all 0.2s"
+                  }}>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: p.c, margin: "0 auto 6px" }} />
+                    <div style={{ fontSize: 11, fontWeight: 700, color: platform === p.n ? p.c : "var(--text-dim)" }}>{p.n}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── API CONFIGURATION ── */}
+      {isAdmin && (
+        <div className="card" style={{ padding: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+            <Icon name="key" size={20} color="#F59E0B" />
+            <div>
+              <h3 style={{ fontWeight: 700, fontSize: 16 }}>API Configuration</h3>
+              <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>Enter your API keys for data sources and AI services</p>
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <InputField label="OpenAI API Key" type={showOpenai ? "text" : "password"} placeholder="sk-..." icon="key"
+              value={openaiKey} onChange={e => setOpenaiKey(e.target.value)} hint="Get your key at platform.openai.com/api-keys"
+              rightEl={<span onClick={() => setShowOpenai(p => !p)}><Icon name={showOpenai ? "eyeOff" : "eye"} size={16} /></span>} />
+            <InputField label="Amazon Product API Key" type={showAmazon ? "text" : "password"} placeholder="Enter API key" icon="key"
+              value={amazonKey} onChange={e => setAmazonKey(e.target.value)} hint="From the Amazon Product Advertising API console"
+              rightEl={<span onClick={() => setShowAmazon(p => !p)}><Icon name={showAmazon ? "eyeOff" : "eye"} size={16} /></span>} />
+            <InputField label="Google Custom Search API Key" type={showGoogle ? "text" : "password"} placeholder="Enter API key" icon="key"
+              value={googleKey} onChange={e => setGoogleKey(e.target.value)} hint="From console.cloud.google.com/apis"
+              rightEl={<span onClick={() => setShowGoogle(p => !p)}><Icon name={showGoogle ? "eyeOff" : "eye"} size={16} /></span>} />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
+            <button className="btn btn-primary" onClick={handleApiSave}><Icon name="check" size={14} /> Save API Keys</button>
+            {apiSaved && <span style={{ fontSize: 12, color: "#10B981", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><Icon name="check" size={12} color="#10B981" /> Saved</span>}
+          </div>
+        </div>
+      )}
+
+      {/* ── NOTIFICATION PREFERENCES ── */}
+      {isAdmin && (
+        <div className="card" style={{ padding: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+            <Icon name="bell" size={20} color="#6366F1" />
+            <div>
+              <h3 style={{ fontWeight: 700, fontSize: 16 }}>Notification Preferences</h3>
+              <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>Choose which notifications you'd like to receive</p>
+            </div>
+          </div>
+          {[
+            { label: "Export completion emails", desc: "Get notified when a product export finishes", value: notifExport, toggle: () => setNotifExport(v => !v) },
+            { label: "Weekly analytics report", desc: "Receive a summary of your catalog activity", value: notifWeekly, toggle: () => setNotifWeekly(v => !v) },
+            { label: "New data source alerts", desc: "Be notified when new data sources become available", value: notifNewSource, toggle: () => setNotifNewSource(v => !v) },
+            { label: "Price conflict alerts", desc: "Get alerted when price conflicts are detected", value: notifPriceConflict, toggle: () => setNotifPriceConflict(v => !v) },
+          ].map((item, i, arr) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0", borderBottom: i < arr.length - 1 ? "1px solid var(--border-light)" : "none" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{item.label}</div>
+                <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>{item.desc}</div>
+              </div>
+              <ToggleSwitch enabled={item.value} onToggle={item.toggle} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── DANGER ZONE ── */}
+      {isAdmin && (
+        <div className="card" style={{ padding: 24, border: "1px solid rgba(239,68,68,0.3)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+            <Icon name="warning" size={20} color="#EF4444" />
+            <div>
+              <h3 style={{ fontWeight: 700, fontSize: 16, color: "#EF4444" }}>Danger Zone</h3>
+              <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>Irreversible actions — proceed with caution</p>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 12 }}>
+            <button className="btn" style={{ background: "transparent", border: "1px solid rgba(239,68,68,0.5)", color: "#EF4444" }}
+              onClick={() => setShowDeleteData(true)}>
+              <Icon name="trash" size={14} /> Delete All Catalog Data
+            </button>
+            <button className="btn" style={{ background: "#EF4444", color: "white" }}
+              onClick={() => setShowDeleteAccount(true)}>
+              <Icon name="trash" size={14} /> Delete Account
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showDeleteData && <ConfirmDialog title="Delete All Catalog Data" message="This will permanently delete all your products, catalog entries, export history, and analytics data. This action cannot be undone."
+        confirmLabel="Delete All Data" confirmColor="#EF4444" onCancel={() => setShowDeleteData(false)} onConfirm={() => setShowDeleteData(false)} />}
+      {showDeleteAccount && <ConfirmDialog title="Delete Account" message="This will permanently delete your account and all associated data. You will be logged out immediately. This action cannot be undone."
+        confirmLabel="Delete My Account" confirmColor="#EF4444" onCancel={() => setShowDeleteAccount(false)} onConfirm={() => setShowDeleteAccount(false)} />}
+    </div>
+  );
+};
+
+// ============================================================
+// BRAND VOICES PAGE
+// ============================================================
+const getExamplePreview = (tone) => {
+  const previews = {
+    Professional: "The Sony WH-1000XM5 redefines premium audio with industry-leading noise cancellation technology. Featuring dual processors and eight-microphone array, these headphones deliver exceptional acoustic performance for the discerning audiophile. With up to 30 hours of battery life and multi-point connectivity, they seamlessly integrate into any professional workflow.",
+    Friendly: "Say goodbye to distractions with Sony's amazing WH-1000XM5! These headphones are like having your own personal sound bubble — crazy good noise cancellation keeps the world out while crystal-clear audio pulls you in. Plus, they're super comfy for all-day wear!",
+    Luxury: "Transcend the ordinary with the Sony WH-1000XM5 — an opus of acoustic engineering that sets the benchmark for wireless audio excellence. Meticulously crafted for those who demand nothing less than perfection, these headphones envelop you in an intimate soundstage.",
+    Custom: "High-performance wireless headphones with advanced noise cancellation. Features 30-hour battery life, multi-point connectivity, and premium build quality. Available in multiple colors."
+  };
+  return previews[tone] || previews.Custom;
+};
+
+const BrandVoices = ({ user }) => {
+  const canEdit = user.role === "Admin" || user.role === "Editor";
+  const [voices, setVoices] = useState(MOCK_BRAND_VOICES);
+  const [editingVoice, setEditingVoice] = useState(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(null);
+
+  // Editor state
+  const [editorName, setEditorName] = useState("");
+  const [editorTone, setEditorTone] = useState("Professional");
+  const [editorAudience, setEditorAudience] = useState("");
+  const [editorStyle, setEditorStyle] = useState("");
+  const [editorInclude, setEditorInclude] = useState([]);
+  const [editorExclude, setEditorExclude] = useState([]);
+  const [editorColor, setEditorColor] = useState("#3B82F6");
+
+  const openEditor = (voice) => {
+    setEditorName(voice.name); setEditorTone(voice.tone); setEditorAudience(voice.audience);
+    setEditorStyle(voice.style); setEditorInclude([...voice.includeKeywords]); setEditorExclude([...voice.excludeKeywords]);
+    setEditorColor(voice.color); setEditingVoice(voice); setIsCreating(false);
+  };
+
+  const openCreateNew = () => {
+    setEditorName(""); setEditorTone("Professional"); setEditorAudience(""); setEditorStyle("");
+    setEditorInclude([]); setEditorExclude([]); setEditorColor("#3B82F6"); setEditingVoice(null); setIsCreating(true);
+  };
+
+  const saveVoice = () => {
+    const v = { id: isCreating ? Date.now() : editingVoice.id, name: editorName, tone: editorTone, color: editorColor, audience: editorAudience, style: editorStyle, includeKeywords: editorInclude, excludeKeywords: editorExclude, description: editorStyle.slice(0, 80) + (editorStyle.length > 80 ? "..." : ""), isDefault: isCreating ? false : editingVoice.isDefault };
+    if (isCreating) setVoices(prev => [...prev, v]);
+    else setVoices(prev => prev.map(x => x.id === editingVoice.id ? v : x));
+    setEditingVoice(null); setIsCreating(false);
+  };
+
+  const deleteVoice = (id) => { setVoices(prev => prev.filter(v => v.id !== id)); setShowDeleteDialog(null); };
+  const setDefault = (id) => { setVoices(prev => prev.map(v => ({ ...v, isDefault: v.id === id }))); };
+
+  // ── EDITOR VIEW ──
+  if (editingVoice || isCreating) return (
+    <div className="animate-fadeIn" style={{ maxWidth: 900, margin: "0 auto", display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <button className="btn btn-ghost" onClick={() => { setEditingVoice(null); setIsCreating(false); }}><Icon name="arrowLeft" size={14} /> Back</button>
+        <h3 style={{ fontSize: 18, fontWeight: 700 }}>{isCreating ? "Create Brand Voice" : `Edit: ${editingVoice.name}`}</h3>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+        {/* Left: Form */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className="card" style={{ padding: 20 }}>
+            <InputField label="Voice Name" placeholder="e.g. Main Store" icon="tag" value={editorName} onChange={e => setEditorName(e.target.value)} />
+          </div>
+
+          <div className="card" style={{ padding: 20 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, display: "block" }}>Tone</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              {["Professional", "Friendly", "Luxury", "Custom"].map(t => (
+                <div key={t} onClick={() => setEditorTone(t)} style={{
+                  flex: 1, padding: "10px 8px", borderRadius: 8, cursor: "pointer", textAlign: "center",
+                  border: `2px solid ${editorTone === t ? "#3B82F6" : "var(--border)"}`,
+                  background: editorTone === t ? "rgba(37,99,235,0.12)" : "transparent", transition: "all 0.2s"
+                }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: editorTone === t ? "#3B82F6" : "var(--text-dim)" }}>{t}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="card" style={{ padding: 20 }}>
+            <InputField label="Target Audience" placeholder="e.g. B2B buyers, 25-45 age range" icon="user" value={editorAudience} onChange={e => setEditorAudience(e.target.value)} />
+          </div>
+
+          <div className="card" style={{ padding: 20 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 5, display: "block" }}>Writing Style</label>
+            <textarea className="input" placeholder="Describe the writing style, vocabulary, and tone..." value={editorStyle} onChange={e => setEditorStyle(e.target.value)} rows={4} style={{ resize: "vertical", minHeight: 80 }} />
+          </div>
+
+          <div className="card" style={{ padding: 20 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 5, display: "block" }}>Keywords to Include</label>
+            <TagInput tags={editorInclude} onTagsChange={setEditorInclude} placeholder="Type and press Enter..." />
+          </div>
+
+          <div className="card" style={{ padding: 20 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 5, display: "block" }}>Keywords to Avoid</label>
+            <TagInput tags={editorExclude} onTagsChange={setEditorExclude} placeholder="Type and press Enter..." />
+          </div>
+
+          <div className="card" style={{ padding: 20 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, display: "block" }}>Voice Color</label>
+            <div style={{ display: "flex", gap: 10 }}>
+              {["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899", "#6366F1", "#14B8A6"].map(c => (
+                <div key={c} onClick={() => setEditorColor(c)} style={{
+                  width: 28, height: 28, borderRadius: "50%", background: c, cursor: "pointer",
+                  border: editorColor === c ? "3px solid var(--text)" : "3px solid transparent", transition: "all 0.2s"
+                }} />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Preview */}
+        <div>
+          <div className="card" style={{ padding: 24, position: "sticky", top: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+              <Icon name="sparkle" size={16} color="#10B981" />
+              <span style={{ fontWeight: 700, fontSize: 14 }}>Live Preview</span>
+              <span className="badge badge-ai">AI</span>
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", letterSpacing: "0.08em", marginBottom: 8 }}>SAMPLE PRODUCT DESCRIPTION</div>
+            <div style={{ padding: 16, background: "var(--hover-bg)", borderRadius: 8, border: "1px solid var(--border)" }}>
+              <p style={{ fontSize: 13, lineHeight: 1.7, color: "var(--text-sec)" }}>{getExamplePreview(editorTone)}</p>
+            </div>
+            <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: editorColor }} />
+              <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{editorName || "Untitled"} / {editorTone}</span>
+            </div>
+
+            {editorInclude.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", letterSpacing: "0.08em", marginBottom: 6 }}>INCLUDE KEYWORDS</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                  {editorInclude.map((k, i) => <span key={i} style={{ padding: "2px 8px", background: "rgba(16,185,129,0.15)", borderRadius: 12, fontSize: 11, color: "#34D399" }}>{k}</span>)}
+                </div>
+              </div>
+            )}
+            {editorExclude.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", letterSpacing: "0.08em", marginBottom: 6 }}>AVOID KEYWORDS</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                  {editorExclude.map((k, i) => <span key={i} style={{ padding: "2px 8px", background: "rgba(239,68,68,0.15)", borderRadius: 12, fontSize: 11, color: "#FCA5A5" }}>{k}</span>)}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+        <button className="btn btn-ghost" onClick={() => { setEditingVoice(null); setIsCreating(false); }}>Cancel</button>
+        <button className="btn btn-success" onClick={saveVoice} disabled={!editorName.trim()}><Icon name="check" size={14} /> {isCreating ? "Create Voice" : "Save Changes"}</button>
+      </div>
+    </div>
+  );
+
+  // ── LIST VIEW ──
+  return (
+    <div className="animate-fadeIn" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <h3 style={{ fontSize: 18, fontWeight: 700 }}>Brand Voice Profiles</h3>
+          <p style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 4 }}>Manage tone and vocabulary presets for AI-generated descriptions</p>
+        </div>
+        {canEdit && <button className="btn btn-primary" onClick={openCreateNew}><Icon name="plus" size={14} /> New Voice</button>}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
+        {voices.map((voice, i) => (
+          <div key={voice.id} className="card animate-slideUp" style={{ cursor: canEdit ? "pointer" : "default", animationDelay: `${i * 0.06}s`, position: "relative", overflow: "hidden" }}
+            onClick={() => canEdit && openEditor(voice)}>
+            <div style={{ position: "absolute", top: -12, right: -12, width: 60, height: 60, borderRadius: "50%", background: voice.color + "15" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <div style={{ width: 10, height: 10, borderRadius: "50%", background: voice.color, flexShrink: 0 }} />
+              <span style={{ fontWeight: 700, fontSize: 15 }}>{voice.name}</span>
+              {voice.isDefault && <span className="badge badge-success" style={{ fontSize: 10 }}>Default</span>}
+            </div>
+            <span className="badge badge-primary" style={{ marginBottom: 8 }}>{voice.tone}</span>
+            <p style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 12 }}>{voice.description}</p>
+            {canEdit && (
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {!voice.isDefault && <button className="btn btn-ghost" style={{ fontSize: 11, padding: "4px 10px" }} onClick={e => { e.stopPropagation(); setDefault(voice.id); }}>Set Default</button>}
+                <button className="btn btn-ghost" style={{ fontSize: 11, padding: "4px 8px", marginLeft: "auto" }} onClick={e => { e.stopPropagation(); setShowDeleteDialog(voice.id); }}>
+                  <Icon name="trash" size={12} color="#EF4444" />
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {voices.length === 0 && (
+        <div className="card" style={{ textAlign: "center", padding: 40 }}>
+          <Icon name="tag" size={40} color="var(--text-dim)" />
+          <h3 style={{ marginTop: 16, fontWeight: 700 }}>No Brand Voices</h3>
+          <p style={{ color: "var(--text-dim)", marginTop: 8, fontSize: 14 }}>Create your first voice profile to get started</p>
+          {canEdit && <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={openCreateNew}><Icon name="plus" size={14} /> Create Voice</button>}
+        </div>
+      )}
+
+      {showDeleteDialog && <ConfirmDialog title="Delete Brand Voice" message="This will permanently delete this brand voice profile. Any products using this voice will need a new voice assigned."
+        confirmLabel="Delete Voice" confirmColor="#EF4444" onCancel={() => setShowDeleteDialog(null)} onConfirm={() => deleteVoice(showDeleteDialog)} />}
+    </div>
+  );
+};
+
+// ============================================================
 // MAIN APP
 // ============================================================
 export default function App() {
@@ -929,7 +1475,6 @@ export default function App() {
   const [view, setView] = useState("dashboard");
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(true);
-
   // Auto-login from stored token
   useEffect(() => {
     getMe().then(u => {
@@ -1042,15 +1587,8 @@ export default function App() {
               </div>
             )}
             {view === "analytics" && <Analytics />}
-            {(view === "voices" || view === "settings") && (
-              <div className="animate-fadeIn card" style={{ maxWidth: 500 }}>
-                <div style={{ textAlign: "center", padding: 40 }}>
-                  <Icon name={view === "voices" ? "tag" : "settings"} size={40} color="var(--text-dim)" />
-                  <h3 style={{ marginTop: 16, fontWeight: 700 }}>{view === "voices" ? "Brand Voice Manager" : "Settings"}</h3>
-                  <p style={{ color: "var(--text-dim)", marginTop: 8, fontSize: 14 }}>This section is fully functional in the production build.</p>
-                </div>
-              </div>
-            )}
+            {view === "voices" && <BrandVoices user={user} />}
+            {view === "settings" && <Settings user={user} />}
           </div>
         </div>
       </div>
