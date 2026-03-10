@@ -93,4 +93,82 @@ router.get('/me', auth, async (req, res) => {
   }
 });
 
+// Change password
+router.post('/change-password', auth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Both current and new password are required' });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'New password must be at least 8 characters' });
+    }
+
+    const [users] = await db.query('SELECT password_hash FROM users WHERE id = ?', [req.user.id]);
+    if (users.length === 0) return res.status(404).json({ error: 'User not found' });
+
+    const valid = await bcrypt.compare(currentPassword, users[0].password_hash);
+    if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+
+    const hash = await bcrypt.hash(newPassword, 12);
+    await db.query('UPDATE users SET password_hash = ? WHERE id = ?', [hash, req.user.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Update profile
+router.put('/profile', auth, async (req, res) => {
+  try {
+    const { name, email, store_name } = req.body;
+    if (email) {
+      const [existing] = await db.query('SELECT id FROM users WHERE email = ? AND id != ?', [email.toLowerCase().trim(), req.user.id]);
+      if (existing.length > 0) return res.status(409).json({ error: 'Email already in use' });
+    }
+    await db.query(
+      'UPDATE users SET name = COALESCE(?, name), email = COALESCE(?, email), store_name = COALESCE(?, store_name) WHERE id = ?',
+      [name?.trim() || null, email?.toLowerCase().trim() || null, store_name?.trim() || null, req.user.id]
+    );
+    const [updated] = await db.query('SELECT id, name, email, role, store_name FROM users WHERE id = ?', [req.user.id]);
+    res.json({ user: updated[0] });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get settings
+router.get('/settings', auth, async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT * FROM user_settings WHERE user_id = ?', [req.user.id]);
+    if (rows.length === 0) {
+      return res.json({
+        currency: 'USD', export_format: 'CSV', default_platform: 'Shopify',
+        notif_export: true, notif_weekly: true, notif_new_source: false, notif_price_conflict: true
+      });
+    }
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Update settings (upsert)
+router.put('/settings', auth, async (req, res) => {
+  try {
+    const { currency, export_format, default_platform, notif_export, notif_weekly, notif_new_source, notif_price_conflict } = req.body;
+    await db.query(
+      `INSERT INTO user_settings (user_id, currency, export_format, default_platform, notif_export, notif_weekly, notif_new_source, notif_price_conflict)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE currency=VALUES(currency), export_format=VALUES(export_format), default_platform=VALUES(default_platform),
+       notif_export=VALUES(notif_export), notif_weekly=VALUES(notif_weekly), notif_new_source=VALUES(notif_new_source), notif_price_conflict=VALUES(notif_price_conflict)`,
+      [req.user.id, currency || 'USD', export_format || 'CSV', default_platform || 'Shopify',
+       notif_export ?? true, notif_weekly ?? true, notif_new_source ?? false, notif_price_conflict ?? true]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

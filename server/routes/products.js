@@ -7,6 +7,66 @@ const router = express.Router();
 // Cache duration in days
 const CACHE_DAYS = 30;
 
+// Fetch product data from Open Food Facts API
+async function fetchFromOpenFoodFacts(barcode) {
+  try {
+    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.status !== 1 || !data.product) return null;
+
+    const p = data.product;
+    const images = [];
+
+    // Prefer full-size images, fall back to display size
+    const frontFull = p.selected_images?.front?.display?.en || p.image_front_url;
+    const ingredientsFull = p.selected_images?.ingredients?.display?.en || p.image_ingredients_url;
+    const nutritionFull = p.selected_images?.nutrition?.display?.en || p.image_nutrition_url;
+
+    if (frontFull) images.push({ source_name: 'Open Food Facts', image_url: frontFull, quality_score: 90 });
+    if (ingredientsFull) images.push({ source_name: 'Open Food Facts', image_url: ingredientsFull, quality_score: 70 });
+    if (nutritionFull) images.push({ source_name: 'Open Food Facts', image_url: nutritionFull, quality_score: 70 });
+
+    // Build real specs from API data
+    const specs = {};
+    if (p.quantity) specs['Quantity'] = p.quantity;
+    if (p.packaging) specs['Packaging'] = p.packaging;
+    if (p.labels) specs['Labels'] = p.labels;
+    if (p.origins) specs['Origin'] = p.origins;
+    if (p.ingredients_text || p.ingredients_text_en) specs['Ingredients'] = p.ingredients_text || p.ingredients_text_en;
+    if (p.nutriscore_grade) specs['Nutri-Score'] = p.nutriscore_grade.toUpperCase();
+    if (p.nova_group) specs['NOVA Group'] = String(p.nova_group);
+    if (p.ecoscore_grade && p.ecoscore_grade !== 'not-applicable') specs['Eco-Score'] = p.ecoscore_grade.toUpperCase();
+    // Key nutriments
+    const n = p.nutriments || {};
+    if (n.energy_100g != null) specs['Energy (100g)'] = `${n.energy_100g} ${n.energy_unit || 'kJ'}`;
+    if (n.fat_100g != null) specs['Fat (100g)'] = `${n.fat_100g}g`;
+    if (n.sugars_100g != null) specs['Sugars (100g)'] = `${n.sugars_100g}g`;
+    if (n.proteins_100g != null) specs['Proteins (100g)'] = `${n.proteins_100g}g`;
+    if (n.salt_100g != null) specs['Salt (100g)'] = `${n.salt_100g}g`;
+
+    return {
+      name: p.product_name || p.product_name_en || null,
+      brand: p.brands || null,
+      description: p.generic_name || p.generic_name_en || null,
+      category: p.categories || null,
+      quantity: p.quantity || null,
+      source: {
+        source_name: 'Open Food Facts',
+        source_url: `https://world.openfoodfacts.org/product/${barcode}`,
+        weight: p.quantity || null,
+        description: p.generic_name || p.generic_name_en || null,
+        trust_score: 75,
+        specs: Object.keys(specs).length > 0 ? specs : null,
+      },
+      images,
+    };
+  } catch (err) {
+    console.error('Open Food Facts fetch error:', err.message);
+    return null;
+  }
+}
+
 // Search by barcode (with caching)
 router.get('/search/:barcode', auth, async (req, res) => {
   try {
@@ -43,15 +103,74 @@ router.get('/search/:barcode', auth, async (req, res) => {
       });
     }
 
-    // Cache miss — return null so frontend knows to fetch from APIs
+    // Cache miss — try Open Food Facts API
+    const offData = await fetchFromOpenFoodFacts(barcode);
+
+    if (!offData || !offData.name) {
+      // Not found anywhere — log and return null
+      await db.query(
+        'INSERT INTO search_history (user_id, barcode, search_type, cache_hit, response_time_ms) VALUES (?, ?, ?, ?, ?)',
+        [req.user.id, barcode, 'barcode', false, Date.now() - startTime]
+      );
+      return res.json({ product: null, cache_hit: false });
+    }
+
+    // Save product to DB cache (update if exists, insert if new)
+    const cacheExpiry = new Date();
+    cacheExpiry.setDate(cacheExpiry.getDate() + CACHE_DAYS);
+
+    const [existing] = await db.query('SELECT id FROM products WHERE barcode = ?', [barcode]);
+    let productId;
+
+    if (existing.length > 0) {
+      productId = existing[0].id;
+      await db.query(
+        `UPDATE products SET name = ?, brand = ?, description = ?, search_count = search_count + 1, cached_at = NOW(), cache_expires_at = ? WHERE id = ?`,
+        [offData.name, offData.brand, offData.description, cacheExpiry, productId]
+      );
+      // Clear old sources/images for refresh
+      await db.query('DELETE FROM product_sources WHERE product_id = ?', [productId]);
+      await db.query('DELETE FROM product_images WHERE product_id = ?', [productId]);
+    } else {
+      const [insertResult] = await db.query(
+        `INSERT INTO products (barcode, name, brand, description, cache_expires_at) VALUES (?, ?, ?, ?, ?)`,
+        [barcode, offData.name, offData.brand, offData.description, cacheExpiry]
+      );
+      productId = insertResult.insertId;
+    }
+
+    // Save source (with specs JSON)
+    await db.query(
+      `INSERT INTO product_sources (product_id, source_name, source_url, weight, description, trust_score, specs)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [productId, offData.source.source_name, offData.source.source_url,
+       offData.source.weight, offData.source.description, offData.source.trust_score,
+       offData.source.specs ? JSON.stringify(offData.source.specs) : null]
+    );
+
+    // Save images
+    for (let i = 0; i < offData.images.length; i++) {
+      await db.query(
+        'INSERT INTO product_images (product_id, source_name, image_url, quality_score, sort_order) VALUES (?, ?, ?, ?, ?)',
+        [productId, offData.images[i].source_name, offData.images[i].image_url, offData.images[i].quality_score, i]
+      );
+    }
+
+    // Fetch back full data
+    const [product] = await db.query('SELECT * FROM products WHERE id = ?', [productId]);
+    const [sources] = await db.query('SELECT * FROM product_sources WHERE product_id = ?', [productId]);
+    const [images] = await db.query('SELECT * FROM product_images WHERE product_id = ? ORDER BY sort_order', [productId]);
+    const [conflicts] = await db.query('SELECT * FROM conflicts WHERE product_id = ?', [productId]);
+
     // Log search
     await db.query(
       'INSERT INTO search_history (user_id, barcode, search_type, cache_hit, response_time_ms) VALUES (?, ?, ?, ?, ?)',
       [req.user.id, barcode, 'barcode', false, Date.now() - startTime]
     );
 
-    res.json({ product: null, cache_hit: false });
+    res.json({ product: product[0], sources, images, conflicts, cache_hit: false });
   } catch (err) {
+    console.error('Product search error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

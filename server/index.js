@@ -5,6 +5,7 @@ require('dotenv').config({ path: __dirname + '/.env' });
 const authRoutes = require('./routes/auth');
 const productRoutes = require('./routes/products');
 const analyticsRoutes = require('./routes/analytics');
+const brandVoiceRoutes = require('./routes/brandVoices');
 const db = require('./db');
 
 const app = express();
@@ -18,6 +19,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/brand-voices', brandVoiceRoutes);
 
 // Health check
 app.get('/api/health', async (req, res) => {
