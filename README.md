@@ -37,7 +37,7 @@ npm install
 5. Create a database called `catalogai`
 6. Click on `catalogai`, then click the **Import** tab
 7. Browse and select `server/database/schema.sql` from the project
-8. Click **Go** — this creates all 10 tables
+8. Click **Go** — this creates all 11 tables
 
 ### 3. Create the environment file
 Create a file called `.env` inside the `server/` folder:
@@ -96,11 +96,12 @@ catalog-app/
 │   ├── middleware/
 │   │   └── auth.js         # JWT authentication middleware
 │   ├── routes/
-│   │   ├── auth.js         # Sign in, sign up, get user
+│   │   ├── auth.js         # Sign in, sign up, profile, settings
 │   │   ├── products.js     # Search, cache, conflicts, catalog
-│   │   └── analytics.js    # Stats, source performance, history
+│   │   ├── analytics.js    # Stats, source performance, history
+│   │   └── brandVoices.js  # Brand voice CRUD with ownership
 │   └── database/
-│       └── schema.sql      # MySQL table definitions
+│       └── schema.sql      # MySQL table definitions (11 tables)
 │
 └── docs/
     └── PROJECT_SCOPE.md    # Full project scope document
