@@ -127,6 +127,87 @@ export const getSearchHistory = async () => {
   return res.json();
 };
 
+// ── AUTH SETTINGS ──
+export const changePassword = async (currentPassword, newPassword) => {
+  const res = await fetch(`${API_URL}/auth/change-password`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+};
+
+export const updateProfile = async (profileData) => {
+  const res = await fetch(`${API_URL}/auth/profile`, {
+    method: 'PUT',
+    headers: headers(),
+    body: JSON.stringify(profileData),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+};
+
+export const getSettings = async () => {
+  const res = await fetch(`${API_URL}/auth/settings`, { headers: headers() });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+};
+
+export const updateSettings = async (settings) => {
+  const res = await fetch(`${API_URL}/auth/settings`, {
+    method: 'PUT',
+    headers: headers(),
+    body: JSON.stringify(settings),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+};
+
+// ── BRAND VOICES ──
+export const getBrandVoices = async () => {
+  const res = await fetch(`${API_URL}/brand-voices`, { headers: headers() });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data.voices;
+};
+
+export const createBrandVoice = async (voice) => {
+  const res = await fetch(`${API_URL}/brand-voices`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify(voice),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data.voice;
+};
+
+export const updateBrandVoice = async (id, voice) => {
+  const res = await fetch(`${API_URL}/brand-voices/${id}`, {
+    method: 'PUT',
+    headers: headers(),
+    body: JSON.stringify(voice),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data.voice;
+};
+
+export const deleteBrandVoice = async (id) => {
+  const res = await fetch(`${API_URL}/brand-voices/${id}`, {
+    method: 'DELETE',
+    headers: headers(),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+};
+
 // ── HEALTH ──
 export const healthCheck = async () => {
   const res = await fetch(`${API_URL}/health`);

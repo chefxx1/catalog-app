@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, getCatalog, getStats } from "./api";
+import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, getCatalog, getStats, searchProduct, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice } from "./api";
+import { Html5Qrcode } from "html5-qrcode";
 
 // ============================================================
 // ICONS
@@ -251,8 +252,11 @@ const StepIndicator = ({ currentStep }) => {
 // ============================================================
 const SearchStep = ({ onSearch }) => {
   const [upc,setUpc]=useState(""); const [loading,setLoading]=useState(false); const [loadingStep,setLoadingStep]=useState(0); const [dragOver,setDragOver]=useState(false); const fileRef=useRef(null);
+  const [error,setError]=useState(null); const [notFound,setNotFound]=useState(false);
   const msgs=["Querying Amazon Product API...","Checking Open Food Facts...","Scanning UPC Database...","Searching Alibaba...","Searching Google..."];
-  const handleSearch=()=>{if(!upc.trim()&&!loading)return;setLoading(true);setLoadingStep(0);let s=0;const iv=setInterval(()=>{s++;if(s>=msgs.length){clearInterval(iv);setTimeout(()=>{setLoading(false);onSearch();},600);}else setLoadingStep(s);},800);};
+  const sourceNames=[{name:"Amazon",icon:"package",trustScore:92,color:"#FF9900"},{name:"Open Food Facts",icon:"database",trustScore:75,color:"#10B981"},{name:"UPC Database",icon:"barcode",trustScore:88,color:"#6366F1"},{name:"Alibaba",icon:"package",trustScore:71,color:"#FF6A00"},{name:"Google Search",icon:"search",trustScore:65,color:"#4285F4"}];
+  const handleSearch=(code)=>{const barcode=code||upc.trim();if(!barcode||loading)return;setError(null);setNotFound(false);setLoading(true);setLoadingStep(0);let s=0;const apiPromise=searchProduct(barcode);const iv=setInterval(()=>{s++;if(s>=msgs.length){clearInterval(iv);}else setLoadingStep(s);},800);apiPromise.then(data=>{clearInterval(iv);setLoadingStep(msgs.length-1);setTimeout(()=>{setLoading(false);if(!data.product){setNotFound(true);}else{onSearch(data);}},600);}).catch(err=>{clearInterval(iv);setLoading(false);setError(err.message||"Search failed");});};
+  const scanBarcodeFromFile=(file)=>{setError(null);const html5Qr=new Html5Qrcode("barcode-scanner-temp");html5Qr.scanFile(file,true).then(code=>{setUpc(code);handleSearch(code);}).catch(()=>{setError("Could not detect a barcode in this image. Try a clearer photo.");}).finally(()=>{html5Qr.clear();});};
 
   if(loading) return (
     <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:30,padding:"60px 20px",minHeight:400}}>
@@ -264,7 +268,7 @@ const SearchStep = ({ onSearch }) => {
         <h2 style={{fontSize:22,fontWeight:700,marginBottom:8}}>Aggregating Data</h2>
         <p style={{color:"var(--text-muted)",marginBottom:20}}>{msgs[loadingStep]}</p>
         <div style={{display:"flex",flexDirection:"column",gap:8,width:320}}>
-          {MOCK_PRODUCT.sources.map((s,i)=>(
+          {sourceNames.map((s,i)=>(
             <div key={i} style={{display:"flex",alignItems:"center",gap:10,opacity:i<=loadingStep?1:0.3,transition:"opacity 0.3s"}}>
               <div style={{width:8,height:8,borderRadius:"50%",background:i<loadingStep?"#10B981":i===loadingStep?"#2563EB":"var(--text-dim)",flexShrink:0}}/>
               <span style={{fontSize:13,color:i<=loadingStep?"var(--text)":"var(--text-dim)"}}>{s.name}</span>
@@ -286,6 +290,8 @@ const SearchStep = ({ onSearch }) => {
         <h1 style={{fontSize:36,fontWeight:800,marginBottom:10,lineHeight:1.15,letterSpacing:"-0.02em"}}>Scan once, catalog{" "}<span style={{background:"linear-gradient(135deg,#3B82F6,#10B981)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>everywhere</span></h1>
         <p style={{color:"var(--text-muted)",fontSize:15,lineHeight:1.6}}>Enter a barcode or upload a product image. We'll instantly query 5 data sources and generate AI-optimized catalog content.</p>
       </div>
+      {notFound&&<div className="card" style={{maxWidth:560,width:"100%",textAlign:"center",padding:24,border:"1px solid rgba(245,158,11,0.3)"}}><Icon name="search" size={28} color="#F59E0B"/><h3 style={{marginTop:10,fontWeight:700}}>Product Not Found</h3><p style={{color:"var(--text-muted)",marginTop:6,fontSize:13}}>No product data found for barcode <span className="mono" style={{color:"var(--text)"}}>{upc}</span>. Try a different barcode.</p></div>}
+      {error&&<div className="card" style={{maxWidth:560,width:"100%",textAlign:"center",padding:24,border:"1px solid rgba(239,68,68,0.3)"}}><Icon name="warning" size={28} color="#EF4444"/><h3 style={{marginTop:10,fontWeight:700,color:"#EF4444"}}>Search Error</h3><p style={{color:"var(--text-muted)",marginTop:6,fontSize:13}}>{error}</p></div>}
       <div style={{width:"100%",maxWidth:560,display:"flex",flexDirection:"column",gap:14}}>
         <div style={{position:"relative"}}>
           <div style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:"var(--text-dim)"}}><Icon name="barcode" size={18}/></div>
@@ -296,8 +302,8 @@ const SearchStep = ({ onSearch }) => {
           <button className="btn btn-ghost" onClick={()=>fileRef.current?.click()}><Icon name="camera" size={16}/> Scan</button>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:12,color:"var(--text-dim)"}}><div style={{flex:1,height:1,background:"var(--border)"}}/><span style={{fontSize:12,fontWeight:600}}>OR UPLOAD IMAGE</span><div style={{flex:1,height:1,background:"var(--border)"}}/></div>
-        <div className={`drop-zone ${dragOver?"dragging":""}`} onClick={()=>fileRef.current?.click()} onDragOver={e=>{e.preventDefault();setDragOver(true);}} onDragLeave={()=>setDragOver(false)} onDrop={e=>{e.preventDefault();setDragOver(false);setUpc("uploaded_image");handleSearch();}}>
-          <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={()=>{setUpc("uploaded_image");handleSearch();}}/>
+        <div className={`drop-zone ${dragOver?"dragging":""}`} onClick={()=>fileRef.current?.click()} onDragOver={e=>{e.preventDefault();setDragOver(true);}} onDragLeave={()=>setDragOver(false)} onDrop={e=>{e.preventDefault();setDragOver(false);const f=e.dataTransfer.files[0];if(f)scanBarcodeFromFile(f);}}>
+          <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(f)scanBarcodeFromFile(f);e.target.value="";}}/>
           <div style={{color:"var(--text-dim)",marginBottom:8}}><Icon name="upload" size={28} color={dragOver?"#3B82F6":"var(--text-dim)"}/></div>
           <p style={{fontWeight:600,color:dragOver?"#3B82F6":"var(--text-muted)",fontSize:14}}>Drop product image here</p>
           <p style={{fontSize:12,color:"var(--text-dim)",marginTop:4}}>JPG, PNG up to 10MB</p>
@@ -305,8 +311,9 @@ const SearchStep = ({ onSearch }) => {
       </div>
       <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",justifyContent:"center"}}>
         <span style={{fontSize:12,color:"var(--text-dim)"}}>Try demo:</span>
-        {["012345678901","194253378693","748927401832"].map(c=><button key={c} className="btn btn-ghost mono" style={{fontSize:11,padding:"4px 12px"}} onClick={()=>{setUpc(c);setTimeout(handleSearch,50);}}>{c}</button>)}
+        {["3017620422003","5449000000996","8076809513753"].map(c=><button key={c} className="btn btn-ghost mono" style={{fontSize:11,padding:"4px 12px"}} onClick={()=>{setUpc(c);setTimeout(()=>handleSearch(c),50);}}>{c}</button>)}
       </div>
+      <div id="barcode-scanner-temp" style={{display:"none"}}/>
     </div>
   );
 };
@@ -314,13 +321,61 @@ const SearchStep = ({ onSearch }) => {
 // ============================================================
 // STEP 2: REVIEW
 // ============================================================
-const ReviewStep = ({ onExport }) => {
-  const [selectedDesc,setSelectedDesc]=useState(0); const [editedDesc,setEditedDesc]=useState(MOCK_PRODUCT.aiDescriptions[0].text);
-  const [expandedSource,setExpandedSource]=useState("Amazon"); const [resolvedConflicts,setResolvedConflicts]=useState({});
-  const [images,setImages]=useState(MOCK_PRODUCT.images); const [activeTab,setActiveTab]=useState("overview"); const [regenerating,setRegenerating]=useState(false);
+const ReviewStep = ({ onExport, productData }) => {
+  const pd = productData || {};
+  const product = pd.product || {};
+  const dbSources = pd.sources || [];
+  const dbImages = pd.images || [];
+  const dbConflicts = pd.conflicts || [];
+
+  // Map DB data to display format
+  const displaySources = dbSources.length > 0 ? dbSources.map(s => ({
+    name: s.source_name, icon: s.source_name === "Open Food Facts" ? "database" : "package",
+    trustScore: s.trust_score || 70, color: s.source_name === "Open Food Facts" ? "#10B981" : "#3B82F6",
+    data: { ...(s.price ? { price: `${s.currency || 'USD'} ${s.price}` } : {}), ...(s.weight ? { weight: s.weight } : {}), ...(s.description ? { description: s.description } : {}) }
+  })) : MOCK_PRODUCT.sources;
+
+  const displayImages = dbImages.length > 0 ? dbImages.map((img, i) => ({
+    id: img.id, url: img.image_url, qualityScore: (img.quality_score || 70) / 10, selected: i < 3, label: img.source_name || "Product image"
+  })) : MOCK_PRODUCT.images;
+
+  const displayConflicts = dbConflicts.length > 0 ? dbConflicts.map(c => ({
+    field: c.field_name, values: typeof c.source_values === 'string' ? JSON.parse(c.source_values) : c.source_values, severity: "medium"
+  })) : [];
+
+  // Parse real specs from source data
+  const realSpecs = (() => {
+    for (const s of dbSources) {
+      if (s.specs) {
+        try { return typeof s.specs === 'string' ? JSON.parse(s.specs) : s.specs; } catch { }
+      }
+    }
+    return null;
+  })();
+
+  const p = {
+    name: product.name || MOCK_PRODUCT.name,
+    brand: product.brand || MOCK_PRODUCT.brand,
+    upc: product.barcode || MOCK_PRODUCT.upc,
+    category: realSpecs?.['Labels'] || product.description || MOCK_PRODUCT.category,
+    weight: dbSources[0]?.weight || MOCK_PRODUCT.weight,
+    specs: realSpecs || MOCK_PRODUCT.specs,
+    seoTags: product.seo_tags ? (typeof product.seo_tags === 'string' ? JSON.parse(product.seo_tags) : product.seo_tags) : MOCK_PRODUCT.seoTags,
+    aiDescriptions: product.ai_description_professional ? [
+      { tone: "Professional", text: product.ai_description_professional },
+      { tone: "Friendly", text: product.ai_description_friendly || "AI description will be generated." },
+      { tone: "Luxury", text: product.ai_description_luxury || "AI description will be generated." },
+    ] : MOCK_PRODUCT.aiDescriptions,
+    sources: displaySources,
+    images: displayImages,
+    conflicts: displayConflicts,
+  };
+
+  const [selectedDesc,setSelectedDesc]=useState(0); const [editedDesc,setEditedDesc]=useState(p.aiDescriptions[0].text);
+  const [expandedSource,setExpandedSource]=useState(displaySources[0]?.name || "Amazon"); const [resolvedConflicts,setResolvedConflicts]=useState({});
+  const [images,setImages]=useState(p.images); const [activeTab,setActiveTab]=useState("overview"); const [regenerating,setRegenerating]=useState(false);
   const tabs=["overview","sources","images","seo"];
   const handleRegenerate=async()=>{setRegenerating(true);await new Promise(r=>setTimeout(r,1800));setRegenerating(false);};
-  const p=MOCK_PRODUCT;
 
   return (
     <div className="animate-fadeIn" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,height:"calc(100vh - 200px)",minHeight:500}}>
@@ -341,7 +396,7 @@ const ReviewStep = ({ onExport }) => {
             {Object.keys(resolvedConflicts).length>0&&<div style={{fontSize:12,color:"var(--success-light)",display:"flex",alignItems:"center",gap:4}}><Icon name="check" size={12} color="#10B981"/>{Object.keys(resolvedConflicts).length} conflict(s) resolved</div>}
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
               <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:2}}>PRODUCT DATA</div>
-              {[{l:"Name",v:p.name,c:94},{l:"Brand",v:p.brand,c:96},{l:"UPC",v:p.upc,c:100},{l:"Category",v:p.category,c:88},{l:"Weight",v:p.weight,c:78},{l:"Dimensions",v:p.dimensions,c:83}].map((f,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:"var(--hover-bg)",borderRadius:6}}>
+              {[{l:"Name",v:p.name,c:94},{l:"Brand",v:p.brand,c:96},{l:"UPC",v:p.upc,c:100},{l:"Category",v:p.category,c:88},{l:"Weight",v:p.weight,c:78}].map((f,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:"var(--hover-bg)",borderRadius:6}}>
                 <span style={{fontSize:12,color:"var(--text-dim)",width:80,flexShrink:0}}>{f.l}</span>
                 <span className={f.l==="UPC"?"mono":""} style={{fontSize:12,flex:1,color:"var(--text-sec)"}}>{f.v}</span>
                 <ConfidenceScore score={f.c}/>
@@ -1011,7 +1066,7 @@ const AuthPage = ({ onLogin, dark }) => {
 // ============================================================
 // SETTINGS PAGE
 // ============================================================
-const Settings = ({ user }) => {
+const Settings = ({ user, onUserUpdate }) => {
   const isAdmin = user.role === "Admin";
   const isEditorOrAdmin = user.role === "Admin" || user.role === "Editor";
 
@@ -1054,8 +1109,50 @@ const Settings = ({ user }) => {
   const [showDeleteData, setShowDeleteData] = useState(false);
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
 
-  const handleProfileSave = () => { setProfileSaved(true); setTimeout(() => setProfileSaved(false), 2000); };
-  const handlePasswordChange = () => { setPasswordChanged(true); setCurrentPassword(""); setNewPassword(""); setConfirmPassword(""); setTimeout(() => setPasswordChanged(false), 2000); };
+  const [profileError, setProfileError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
+
+  // Load settings on mount
+  useEffect(() => {
+    apiGetSettings().then(s => {
+      if (s.currency) setCurrency(s.currency);
+      if (s.export_format) setExportFormat(s.export_format);
+      if (s.default_platform) setPlatform(s.default_platform);
+      if (s.notif_export !== undefined) setNotifExport(!!s.notif_export);
+      if (s.notif_weekly !== undefined) setNotifWeekly(!!s.notif_weekly);
+      if (s.notif_new_source !== undefined) setNotifNewSource(!!s.notif_new_source);
+      if (s.notif_price_conflict !== undefined) setNotifPriceConflict(!!s.notif_price_conflict);
+      setSettingsLoaded(true);
+    }).catch(() => setSettingsLoaded(true));
+  }, []);
+
+  const handleProfileSave = async () => {
+    setProfileError("");
+    try {
+      const data = await apiUpdateProfile({ name: profileName, email: profileEmail, store_name: profileStore });
+      if (onUserUpdate && data.user) onUserUpdate({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store: data.user.store_name });
+      setProfileSaved(true); setTimeout(() => setProfileSaved(false), 2000);
+    } catch (err) { setProfileError(err.message); }
+  };
+
+  const handlePasswordChange = async () => {
+    setPasswordError("");
+    try {
+      await apiChangePassword(currentPassword, newPassword);
+      setPasswordChanged(true); setCurrentPassword(""); setNewPassword(""); setConfirmPassword("");
+      setTimeout(() => setPasswordChanged(false), 2000);
+    } catch (err) { setPasswordError(err.message); }
+  };
+
+  const handleSettingsSave = async () => {
+    try {
+      await apiUpdateSettings({ currency, export_format: exportFormat, default_platform: platform, notif_export: notifExport, notif_weekly: notifWeekly, notif_new_source: notifNewSource, notif_price_conflict: notifPriceConflict });
+      setSettingsSaved(true); setTimeout(() => setSettingsSaved(false), 2000);
+    } catch {}
+  };
+
   const handleApiSave = () => { setApiSaved(true); setTimeout(() => setApiSaved(false), 2000); };
 
   return (
@@ -1090,6 +1187,7 @@ const Settings = ({ user }) => {
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
           <button className="btn btn-primary" onClick={handleProfileSave}><Icon name="check" size={14} /> Save Profile</button>
           {profileSaved && <span style={{ fontSize: 12, color: "#10B981", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><Icon name="check" size={12} color="#10B981" /> Saved</span>}
+          {profileError && <span style={{ fontSize: 12, color: "#EF4444", fontWeight: 600 }}>{profileError}</span>}
         </div>
       </div>
 
@@ -1120,6 +1218,7 @@ const Settings = ({ user }) => {
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
             <button className="btn btn-primary" onClick={handlePasswordChange} disabled={!currentPassword || !newPassword || newPassword !== confirmPassword}><Icon name="check" size={14} /> Change Password</button>
             {passwordChanged && <span style={{ fontSize: 12, color: "#10B981", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><Icon name="check" size={12} color="#10B981" /> Password updated</span>}
+            {passwordError && <span style={{ fontSize: 12, color: "#EF4444", fontWeight: 600 }}>{passwordError}</span>}
           </div>
         </div>
       )}
@@ -1170,6 +1269,10 @@ const Settings = ({ user }) => {
                 ))}
               </div>
             </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
+            <button className="btn btn-primary" onClick={handleSettingsSave}><Icon name="check" size={14} /> Save Settings</button>
+            {settingsSaved && <span style={{ fontSize: 12, color: "#10B981", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><Icon name="check" size={12} color="#10B981" /> Saved</span>}
           </div>
         </div>
       )}
@@ -1275,10 +1378,22 @@ const getExamplePreview = (tone) => {
 
 const BrandVoices = ({ user }) => {
   const canEdit = user.role === "Admin" || user.role === "Editor";
-  const [voices, setVoices] = useState(MOCK_BRAND_VOICES);
+  const [voices, setVoices] = useState([]);
   const [editingVoice, setEditingVoice] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(null);
+  const [voicesLoading, setVoicesLoading] = useState(true);
+
+  // Load voices on mount
+  useEffect(() => {
+    apiGetBrandVoices().then(dbVoices => {
+      setVoices(dbVoices.map(v => {
+        const meta = v.metadata ? (typeof v.metadata === 'string' ? JSON.parse(v.metadata) : v.metadata) : {};
+        return { id: v.id, name: v.name, tone: v.tone || 'Professional', color: meta.color || '#3B82F6', audience: meta.audience || '', style: meta.style || '', includeKeywords: meta.includeKeywords || [], excludeKeywords: meta.excludeKeywords || [], description: v.description || '', isDefault: !!v.is_default };
+      }));
+      setVoicesLoading(false);
+    }).catch(() => setVoicesLoading(false));
+  }, []);
 
   // Editor state
   const [editorName, setEditorName] = useState("");
@@ -1300,15 +1415,30 @@ const BrandVoices = ({ user }) => {
     setEditorInclude([]); setEditorExclude([]); setEditorColor("#3B82F6"); setEditingVoice(null); setIsCreating(true);
   };
 
-  const saveVoice = () => {
-    const v = { id: isCreating ? Date.now() : editingVoice.id, name: editorName, tone: editorTone, color: editorColor, audience: editorAudience, style: editorStyle, includeKeywords: editorInclude, excludeKeywords: editorExclude, description: editorStyle.slice(0, 80) + (editorStyle.length > 80 ? "..." : ""), isDefault: isCreating ? false : editingVoice.isDefault };
-    if (isCreating) setVoices(prev => [...prev, v]);
-    else setVoices(prev => prev.map(x => x.id === editingVoice.id ? v : x));
+  const saveVoice = async () => {
+    const desc = editorStyle.slice(0, 80) + (editorStyle.length > 80 ? "..." : "");
+    const metadata = { audience: editorAudience, style: editorStyle, includeKeywords: editorInclude, excludeKeywords: editorExclude, color: editorColor };
+    try {
+      if (isCreating) {
+        const created = await apiCreateBrandVoice({ name: editorName, tone: editorTone, description: desc, is_default: false, metadata });
+        const meta = created.metadata ? (typeof created.metadata === 'string' ? JSON.parse(created.metadata) : created.metadata) : metadata;
+        setVoices(prev => [...prev, { id: created.id, name: created.name, tone: created.tone, color: meta.color || editorColor, audience: meta.audience || '', style: meta.style || '', includeKeywords: meta.includeKeywords || [], excludeKeywords: meta.excludeKeywords || [], description: created.description || desc, isDefault: !!created.is_default }]);
+      } else {
+        await apiUpdateBrandVoice(editingVoice.id, { name: editorName, tone: editorTone, description: desc, is_default: editingVoice.isDefault, metadata });
+        setVoices(prev => prev.map(x => x.id === editingVoice.id ? { ...x, name: editorName, tone: editorTone, color: editorColor, audience: editorAudience, style: editorStyle, includeKeywords: editorInclude, excludeKeywords: editorExclude, description: desc } : x));
+      }
+    } catch {}
     setEditingVoice(null); setIsCreating(false);
   };
 
-  const deleteVoice = (id) => { setVoices(prev => prev.filter(v => v.id !== id)); setShowDeleteDialog(null); };
-  const setDefault = (id) => { setVoices(prev => prev.map(v => ({ ...v, isDefault: v.id === id }))); };
+  const deleteVoice = async (id) => {
+    try { await apiDeleteBrandVoice(id); } catch {}
+    setVoices(prev => prev.filter(v => v.id !== id)); setShowDeleteDialog(null);
+  };
+  const setDefault = async (id) => {
+    try { await apiUpdateBrandVoice(id, { is_default: true }); } catch {}
+    setVoices(prev => prev.map(v => ({ ...v, isDefault: v.id === id })));
+  };
 
   // ── EDITOR VIEW ──
   if (editingVoice || isCreating) return (
@@ -1475,6 +1605,7 @@ export default function App() {
   const [view, setView] = useState("dashboard");
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [productData, setProductData] = useState(null);
   // Auto-login from stored token
   useEffect(() => {
     getMe().then(u => {
@@ -1577,18 +1708,18 @@ export default function App() {
           </div>
 
           <div style={{ flex: 1, overflow: "auto", padding: "20px 28px" }}>
-            {view === "dashboard" && <Dashboard onNew={() => { setStep(0); setView("catalog"); }} />}
+            {view === "dashboard" && <Dashboard onNew={() => { setStep(0); setProductData(null); setView("catalog"); }} />}
             {view === "catalog" && (
               <div>
                 <StepIndicator currentStep={step} />
-                {step === 0 && <SearchStep onSearch={() => setStep(1)} />}
-                {step === 1 && <ReviewStep onExport={() => setStep(2)} />}
+                {step === 0 && <SearchStep onSearch={(data) => { setProductData(data); setStep(1); }} />}
+                {step === 1 && <ReviewStep onExport={() => setStep(2)} productData={productData} />}
                 {step === 2 && <ExportStep onComplete={() => { setStep(0); setView("dashboard"); }} />}
               </div>
             )}
             {view === "analytics" && <Analytics />}
             {view === "voices" && <BrandVoices user={user} />}
-            {view === "settings" && <Settings user={user} />}
+            {view === "settings" && <Settings user={user} onUserUpdate={setUser} />}
           </div>
         </div>
       </div>

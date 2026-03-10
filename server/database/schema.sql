@@ -135,6 +135,22 @@ CREATE TABLE IF NOT EXISTS search_history (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- User settings (one row per user)
+CREATE TABLE IF NOT EXISTS user_settings (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL UNIQUE,
+  currency VARCHAR(10) DEFAULT 'USD',
+  export_format ENUM('CSV', 'JSON', 'XML') DEFAULT 'CSV',
+  default_platform ENUM('Shopify', 'WooCommerce', 'Magento', 'BigCommerce') DEFAULT 'Shopify',
+  notif_export BOOLEAN DEFAULT TRUE,
+  notif_weekly BOOLEAN DEFAULT TRUE,
+  notif_new_source BOOLEAN DEFAULT FALSE,
+  notif_price_conflict BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- Brand voice profiles
 CREATE TABLE IF NOT EXISTS brand_voices (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -144,6 +160,7 @@ CREATE TABLE IF NOT EXISTS brand_voices (
   description TEXT NULL,
   example_text TEXT NULL,
   is_default BOOLEAN DEFAULT FALSE,
+  metadata JSON NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
