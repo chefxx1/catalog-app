@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, getCatalog, getStats, searchProduct, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice } from "./api";
+import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, getCatalog, getStats, getSourcePerformance, getSearchHistory, searchProduct, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice } from "./api";
 import { Html5Qrcode } from "html5-qrcode";
 
 // ============================================================
@@ -298,7 +298,7 @@ const SearchStep = ({ onSearch }) => {
           <input className="input" style={{paddingLeft:44,fontSize:16,padding:"14px 18px 14px 44px"}} placeholder="UPC, EAN, GTIN, ISBN (e.g. 012345678901)" value={upc} onChange={e=>setUpc(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSearch()}/>
         </div>
         <div style={{display:"flex",gap:10}}>
-          <button className="btn btn-primary" style={{flex:1,justifyContent:"center",fontSize:15,padding:"12px 0"}} onClick={handleSearch}><Icon name="search" size={16}/> Search Product</button>
+          <button className="btn btn-primary" style={{flex:1,justifyContent:"center",fontSize:15,padding:"12px 0"}} onClick={()=>handleSearch()}><Icon name="search" size={16}/> Search Product</button>
           <button className="btn btn-ghost" onClick={()=>fileRef.current?.click()}><Icon name="camera" size={16}/> Scan</button>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:12,color:"var(--text-dim)"}}><div style={{flex:1,height:1,background:"var(--border)"}}/><span style={{fontSize:12,fontWeight:600}}>OR UPLOAD IMAGE</span><div style={{flex:1,height:1,background:"var(--border)"}}/></div>
@@ -524,51 +524,98 @@ const ExportStep = ({ onComplete }) => {
 // ============================================================
 // DASHBOARD
 // ============================================================
-const Dashboard = ({ onNew }) => {
-  const stats=[{label:"Products Processed",value:"847",icon:"package",color:"#3B82F6"},{label:"Hours Saved",value:"~127",icon:"clock",color:"#10B981"},{label:"Catalogs Exported",value:"34",icon:"download",color:"#8B5CF6"},{label:"Active Sources",value:"5",icon:"database",color:"#F59E0B"}];
+const Dashboard = ({ onNew, onViewVoices }) => {
+  const [stats, setStats] = useState(null);
+  const [catalog, setCatalog] = useState([]);
+  const [voices, setVoices] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchFilter, setSearchFilter] = useState("");
+
+  useEffect(() => {
+    Promise.all([
+      getStats().catch(() => ({})),
+      getCatalog().catch(() => []),
+      apiGetBrandVoices().catch(() => []),
+    ]).then(([s, c, v]) => {
+      setStats(s);
+      setCatalog(c);
+      setVoices(v.map(voice => {
+        const meta = voice.metadata ? (typeof voice.metadata === 'string' ? JSON.parse(voice.metadata) : voice.metadata) : {};
+        return { id: voice.id, name: voice.name, tone: voice.tone || 'Professional', color: meta.color || '#3B82F6' };
+      }));
+      setLoading(false);
+    });
+  }, []);
+
   const sc={Published:"badge-success",Review:"badge-warning",Draft:"badge-neutral",Exported:"badge-primary"};
+
+  const filteredCatalog = catalog.filter(item =>
+    !searchFilter || (item.name || "").toLowerCase().includes(searchFilter.toLowerCase()) || (item.barcode || "").includes(searchFilter)
+  );
+
+  const statCards = stats ? [
+    {label:"Total Products",value:String(stats.total_products||0),icon:"package",color:"#3B82F6"},
+    {label:"Published",value:String(stats.published||0),icon:"check",color:"#10B981"},
+    {label:"Total Searches",value:String(stats.total_searches||0),icon:"search",color:"#8B5CF6"},
+    {label:"Cache Hit Rate",value:`${stats.cache_hit_rate||0}%`,icon:"zap",color:"#F59E0B"},
+  ] : [{label:"Total Products",value:"—",icon:"package",color:"#3B82F6"},{label:"Published",value:"—",icon:"check",color:"#10B981"},{label:"Total Searches",value:"—",icon:"search",color:"#8B5CF6"},{label:"Cache Hit Rate",value:"—",icon:"zap",color:"#F59E0B"}];
+
   return (
     <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",gap:24}}>
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
-        {stats.map((s,i)=><div key={i} className="card animate-slideUp" style={{position:"relative",overflow:"hidden",animationDelay:`${i*0.06}s`}}>
+        {statCards.map((s,i)=><div key={i} className="card animate-slideUp" style={{position:"relative",overflow:"hidden",animationDelay:`${i*0.06}s`}}>
           <div style={{position:"absolute",top:-12,right:-12,width:60,height:60,borderRadius:"50%",background:s.color+"15"}}/>
           <div style={{marginBottom:8}}><Icon name={s.icon} size={20} color={s.color}/></div>
-          <div className="mono" style={{fontSize:26,fontWeight:800,color:s.color}}>{s.value}</div>
+          <div className="mono" style={{fontSize:26,fontWeight:800,color:s.color}}>{loading?"—":s.value}</div>
           <div style={{fontSize:12,color:"var(--text-dim)",marginTop:2}}>{s.label}</div>
         </div>)}
       </div>
       <div className="card" style={{padding:0,overflow:"hidden"}}>
         <div style={{padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid var(--border)"}}>
-          <div style={{display:"flex",alignItems:"center",gap:12}}><h3 style={{fontSize:16,fontWeight:700}}>Catalog Entries</h3><span className="badge badge-neutral">{SAMPLE_CATALOG.length}</span></div>
+          <div style={{display:"flex",alignItems:"center",gap:12}}><h3 style={{fontSize:16,fontWeight:700}}>Catalog Entries</h3><span className="badge badge-neutral">{catalog.length}</span></div>
           <div style={{display:"flex",gap:10}}>
-            <div style={{position:"relative"}}><div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)"}}><Icon name="search" size={13} color="var(--text-dim)"/></div><input className="input" placeholder="Search..." style={{paddingLeft:32,width:180,fontSize:13,padding:"7px 12px 7px 30px"}}/></div>
+            <div style={{position:"relative"}}><div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)"}}><Icon name="search" size={13} color="var(--text-dim)"/></div><input className="input" placeholder="Search..." value={searchFilter} onChange={e=>setSearchFilter(e.target.value)} style={{paddingLeft:32,width:180,fontSize:13,padding:"7px 12px 7px 30px"}}/></div>
             <button className="btn btn-primary" onClick={onNew}><Icon name="plus" size={14}/> New Product</button>
           </div>
         </div>
-        <table style={{width:"100%",borderCollapse:"collapse"}}>
-          <thead><tr style={{borderBottom:"1px solid var(--border)"}}>{["Product","UPC","Category","Sources","Status","Date","Actions"].map(h=><th key={h} style={{padding:"10px 16px",textAlign:"left",fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.06em"}}>{h.toUpperCase()}</th>)}</tr></thead>
-          <tbody>{SAMPLE_CATALOG.map((item,i)=><tr key={i} style={{borderBottom:"1px solid var(--border-light)",transition:"background 0.15s",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="var(--hover-bg)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-            <td style={{padding:"12px 16px"}}><div style={{display:"flex",alignItems:"center",gap:10}}><img src={item.image} alt="" style={{width:36,height:36,borderRadius:6,objectFit:"cover"}}/><span style={{fontSize:13,fontWeight:600}}>{item.name}</span></div></td>
-            <td style={{padding:"12px 16px"}}><span className="mono" style={{fontSize:12,color:"var(--text-muted)"}}>{item.upc}</span></td>
-            <td style={{padding:"12px 16px"}}><span style={{fontSize:12,color:"var(--text-muted)"}}>{item.category}</span></td>
-            <td style={{padding:"12px 16px"}}><div style={{display:"flex",gap:2}}>{Array.from({length:item.sources},(_,j)=><div key={j} style={{width:6,height:6,borderRadius:"50%",background:"#3B82F6"}}/>)}</div></td>
-            <td style={{padding:"12px 16px"}}><span className={`badge ${sc[item.status]}`}>{item.status}</span></td>
-            <td style={{padding:"12px 16px"}}><span style={{fontSize:12,color:"var(--text-dim)"}}>{item.date}</span></td>
-            <td style={{padding:"12px 16px"}}><div style={{display:"flex",gap:6}}>{["eye","edit","download"].map(ic=><button key={ic} className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}}><Icon name={ic} size={12}/></button>)}</div></td>
-          </tr>)}</tbody>
-        </table>
+        {loading ? (
+          <div style={{padding:40,textAlign:"center"}}><LoadingDots /><p style={{color:"var(--text-dim)",fontSize:13,marginTop:12}}>Loading catalog...</p></div>
+        ) : catalog.length === 0 ? (
+          <div style={{padding:40,textAlign:"center"}}>
+            <Icon name="package" size={36} color="var(--text-dim)"/>
+            <h3 style={{marginTop:12,fontWeight:700,fontSize:15}}>No catalog entries yet</h3>
+            <p style={{color:"var(--text-dim)",fontSize:13,marginTop:6}}>Search for a product and save it to your catalog to see it here.</p>
+            <button className="btn btn-primary" style={{marginTop:16}} onClick={onNew}><Icon name="plus" size={14}/> Add First Product</button>
+          </div>
+        ) : (
+          <table style={{width:"100%",borderCollapse:"collapse"}}>
+            <thead><tr style={{borderBottom:"1px solid var(--border)"}}>{["Product","Barcode","Status","Date","Actions"].map(h=><th key={h} style={{padding:"10px 16px",textAlign:"left",fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.06em"}}>{h.toUpperCase()}</th>)}</tr></thead>
+            <tbody>{filteredCatalog.map((item,i)=><tr key={item.id||i} style={{borderBottom:"1px solid var(--border-light)",transition:"background 0.15s",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="var(--hover-bg)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+              <td style={{padding:"12px 16px"}}><span style={{fontSize:13,fontWeight:600}}>{item.custom_name||item.name||"Untitled"}</span>{item.brand&&<span style={{fontSize:11,color:"var(--text-dim)",marginLeft:8}}>{item.brand}</span>}</td>
+              <td style={{padding:"12px 16px"}}><span className="mono" style={{fontSize:12,color:"var(--text-muted)"}}>{item.barcode||"—"}</span></td>
+              <td style={{padding:"12px 16px"}}><span className={`badge ${sc[item.status]||"badge-neutral"}`}>{item.status||"Draft"}</span></td>
+              <td style={{padding:"12px 16px"}}><span style={{fontSize:12,color:"var(--text-dim)"}}>{item.updated_at?new Date(item.updated_at).toLocaleDateString():""}</span></td>
+              <td style={{padding:"12px 16px"}}><div style={{display:"flex",gap:6}}>{["eye","edit","download"].map(ic=><button key={ic} className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}}><Icon name={ic} size={12}/></button>)}</div></td>
+            </tr>)}</tbody>
+          </table>
+        )}
       </div>
       <div className="card">
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
           <div><h3 style={{fontSize:15,fontWeight:700}}>Brand Voice Profiles</h3><p style={{fontSize:12,color:"var(--text-dim)",marginTop:2}}>Saved tone & vocabulary presets for AI generation</p></div>
-          <button className="btn btn-ghost" style={{fontSize:12}}><Icon name="plus" size={13}/> New Profile</button>
+          <button className="btn btn-ghost" style={{fontSize:12}} onClick={onViewVoices}><Icon name="plus" size={13}/> New Profile</button>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-          {[{name:"Main Store",tone:"Professional",vocab:"B2B",color:"#3B82F6"},{name:"Consumer",tone:"Friendly",vocab:"Casual",color:"#10B981"},{name:"Premium Line",tone:"Luxury",vocab:"High-end",color:"#F59E0B"}].map((pr,i)=><div key={i} style={{padding:14,background:"var(--hover-bg)",borderRadius:8,border:"1px solid var(--border)",transition:"all 0.35s"}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}><div style={{width:8,height:8,borderRadius:"50%",background:pr.color}}/><span style={{fontWeight:700,fontSize:13}}>{pr.name}</span></div>
-            <div style={{fontSize:11,color:"var(--text-dim)"}}> Tone: {pr.tone} • Style: {pr.vocab}</div>
-          </div>)}
-        </div>
+        {voices.length === 0 ? (
+          <div style={{padding:20,textAlign:"center"}}><p style={{fontSize:13,color:"var(--text-dim)"}}>No brand voices yet. <span style={{color:"#3B82F6",cursor:"pointer",fontWeight:600}} onClick={onViewVoices}>Create one</span></p></div>
+        ) : (
+          <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(voices.length,3)},1fr)`,gap:10}}>
+            {voices.slice(0,3).map((pr,i)=><div key={pr.id||i} style={{padding:14,background:"var(--hover-bg)",borderRadius:8,border:"1px solid var(--border)",transition:"all 0.35s",cursor:"pointer"}} onClick={onViewVoices}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}><div style={{width:8,height:8,borderRadius:"50%",background:pr.color}}/><span style={{fontWeight:700,fontSize:13}}>{pr.name}</span></div>
+              <div style={{fontSize:11,color:"var(--text-dim)"}}> Tone: {pr.tone}</div>
+            </div>)}
+            {voices.length>3&&<div style={{padding:14,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:12,color:"var(--text-dim)"}}>+{voices.length-3} more</span></div>}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -577,25 +624,77 @@ const Dashboard = ({ onNew }) => {
 // ============================================================
 // ANALYTICS
 // ============================================================
-const Analytics = () => (
-  <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",gap:20}}>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14}}>
-      {[{l:"Avg Time per Product",v:"3.2 min",t:"-40%",i:"clock"},{l:"Success Rate",v:"94.7%",t:"+2.1%",i:"check"},{l:"AI Descriptions Used",v:"89%",t:"+5%",i:"sparkle"}].map((s,idx)=><div key={idx} className="card" style={{display:"flex",flexDirection:"column",gap:8}}>
-        <div style={{display:"flex",justifyContent:"space-between"}}><Icon name={s.i} size={18} color="#3B82F6"/><span style={{fontSize:11,color:"#10B981",fontWeight:700}}>{s.t}</span></div>
-        <div className="mono" style={{fontSize:28,fontWeight:800}}>{s.v}</div>
-        <div style={{fontSize:12,color:"var(--text-dim)"}}>{s.l}</div>
-      </div>)}
+const Analytics = () => {
+  const [stats, setStats] = useState(null);
+  const [sources, setSources] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      getStats().catch(() => ({})),
+      getSourcePerformance().catch(() => ({ sources: [] })),
+      getSearchHistory().catch(() => ({ history: [] })),
+    ]).then(([s, src, h]) => {
+      setStats(s);
+      setSources(src.sources || []);
+      setHistory(h.history || []);
+      setLoading(false);
+    });
+  }, []);
+
+  const sourceColors = { "Amazon": "#FF9900", "Open Food Facts": "#10B981", "UPC Database": "#6366F1", "Alibaba": "#FF6A00", "Google": "#4285F4" };
+
+  return (
+    <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",gap:20}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
+        {[
+          {l:"Total Searches",v:loading?"—":String(stats?.total_searches||0),i:"search",color:"#3B82F6"},
+          {l:"Cache Hit Rate",v:loading?"—":`${stats?.cache_hit_rate||0}%`,i:"zap",color:"#10B981"},
+          {l:"Avg Response Time",v:loading?"—":`${stats?.avg_response_time||0}ms`,i:"clock",color:"#8B5CF6"},
+          {l:"Products in Catalog",v:loading?"—":String(stats?.total_products||0),i:"package",color:"#F59E0B"},
+        ].map((s,idx)=><div key={idx} className="card animate-slideUp" style={{position:"relative",overflow:"hidden",animationDelay:`${idx*0.06}s`}}>
+          <div style={{position:"absolute",top:-12,right:-12,width:60,height:60,borderRadius:"50%",background:s.color+"15"}}/>
+          <div style={{marginBottom:8}}><Icon name={s.i} size={18} color={s.color}/></div>
+          <div className="mono" style={{fontSize:26,fontWeight:800,color:s.color}}>{s.v}</div>
+          <div style={{fontSize:12,color:"var(--text-dim)",marginTop:2}}>{s.l}</div>
+        </div>)}
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        <div className="card" style={{padding:24}}>
+          <h3 style={{fontWeight:700,marginBottom:20}}>Data Source Performance</h3>
+          {loading ? <div style={{textAlign:"center",padding:20}}><LoadingDots/></div> :
+           sources.length === 0 ? <p style={{fontSize:13,color:"var(--text-dim)",textAlign:"center",padding:20}}>No source data yet. Search for products to see performance.</p> :
+           sources.map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
+            <div style={{width:120,fontSize:13,fontWeight:600}}>{s.source_name}</div>
+            <div style={{flex:1}}><div className="progress-bar" style={{height:8}}><div className="progress-fill" style={{width:`${Math.round(s.avg_trust||0)}%`,background:sourceColors[s.source_name]||"#3B82F6"}}/></div></div>
+            <span className="mono" style={{width:44,textAlign:"right",fontSize:13,color:sourceColors[s.source_name]||"#3B82F6"}}>{Math.round(s.avg_trust||0)}%</span>
+          </div>)}
+        </div>
+
+        <div className="card" style={{padding:24}}>
+          <h3 style={{fontWeight:700,marginBottom:20}}>Recent Searches</h3>
+          {loading ? <div style={{textAlign:"center",padding:20}}><LoadingDots/></div> :
+           history.length === 0 ? <p style={{fontSize:13,color:"var(--text-dim)",textAlign:"center",padding:20}}>No searches yet. Try scanning a barcode!</p> :
+          <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:300,overflowY:"auto"}}>
+            {history.slice(0,15).map((h,i)=><div key={h.id||i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:"var(--hover-bg)",borderRadius:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <Icon name="barcode" size={14} color="var(--text-dim)"/>
+                <span className="mono" style={{fontSize:13}}>{h.barcode}</span>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                {h.cache_hit ? <span className="badge badge-success" style={{fontSize:10}}>Cache</span> : <span className="badge badge-primary" style={{fontSize:10}}>API</span>}
+                <span className="mono" style={{fontSize:11,color:"var(--text-dim)"}}>{h.response_time_ms}ms</span>
+                <span style={{fontSize:11,color:"var(--text-dim)"}}>{new Date(h.created_at).toLocaleDateString()}</span>
+              </div>
+            </div>)}
+          </div>}
+        </div>
+      </div>
     </div>
-    <div className="card" style={{padding:24}}>
-      <h3 style={{fontWeight:700,marginBottom:20}}>Data Source Performance</h3>
-      {MOCK_PRODUCT.sources.map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
-        <div style={{width:100,fontSize:13,fontWeight:600}}>{s.name}</div>
-        <div style={{flex:1}}><div className="progress-bar" style={{height:8}}><div className="progress-fill" style={{width:`${s.trustScore}%`,background:s.color}}/></div></div>
-        <span className="mono" style={{width:44,textAlign:"right",fontSize:13,color:s.color}}>{s.trustScore}%</span>
-      </div>)}
-    </div>
-  </div>
-);
+  );
+};
 
 // ============================================================
 // PASSWORD STRENGTH
@@ -1708,7 +1807,7 @@ export default function App() {
           </div>
 
           <div style={{ flex: 1, overflow: "auto", padding: "20px 28px" }}>
-            {view === "dashboard" && <Dashboard onNew={() => { setStep(0); setProductData(null); setView("catalog"); }} />}
+            {view === "dashboard" && <Dashboard onNew={() => { setStep(0); setProductData(null); setView("catalog"); }} onViewVoices={() => setView("voices")} />}
             {view === "catalog" && (
               <div>
                 <StepIndicator currentStep={step} />
