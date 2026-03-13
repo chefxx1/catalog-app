@@ -208,6 +208,18 @@ export const deleteBrandVoice = async (id) => {
   return data;
 };
 
+// ── AI ──
+export const generateAIContent = async (productData) => {
+  const res = await fetch(`${API_URL}/ai/generate`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify(productData),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+};
+
 // ── HEALTH ──
 export const healthCheck = async () => {
   const res = await fetch(`${API_URL}/health`);
