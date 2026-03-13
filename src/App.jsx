@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, getCatalog, getStats, getSourcePerformance, getSearchHistory, searchProduct, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice } from "./api";
+import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, getCatalog, getStats, getSourcePerformance, getSearchHistory, searchProduct, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice, generateAIContent } from "./api";
 import { Html5Qrcode } from "html5-qrcode";
 
 // ============================================================
@@ -371,11 +371,66 @@ const ReviewStep = ({ onExport, productData }) => {
     conflicts: displayConflicts,
   };
 
+  const [aiDescs, setAiDescs] = useState(p.aiDescriptions);
+  const [seoTags, setSeoTags] = useState(p.seoTags);
+  const [metaTitle, setMetaTitle] = useState(null);
+  const [metaDescription, setMetaDescription] = useState(null);
+  const [aiCategory, setAiCategory] = useState(null);
+  const [brandVoices, setBrandVoices] = useState([]);
+  const [selectedVoice, setSelectedVoice] = useState(null);
+  const [customPrompt, setCustomPrompt] = useState("");
+  const [useCustom, setUseCustom] = useState(false);
   const [selectedDesc,setSelectedDesc]=useState(0); const [editedDesc,setEditedDesc]=useState(p.aiDescriptions[0].text);
   const [expandedSource,setExpandedSource]=useState(displaySources[0]?.name || "Amazon"); const [resolvedConflicts,setResolvedConflicts]=useState({});
   const [images,setImages]=useState(p.images); const [activeTab,setActiveTab]=useState("overview"); const [regenerating,setRegenerating]=useState(false);
+  const [aiError, setAiError] = useState(null);
+  const hasRealAI = !!product.ai_description_professional;
   const tabs=["overview","sources","images","seo"];
-  const handleRegenerate=async()=>{setRegenerating(true);await new Promise(r=>setTimeout(r,1800));setRegenerating(false);};
+
+  // Load brand voices and find default
+  useEffect(() => {
+    apiGetBrandVoices().then(voices => {
+      setBrandVoices(voices);
+      const def = voices.find(v => v.is_default) || voices[0] || null;
+      setSelectedVoice(def);
+    }).catch(() => {});
+  }, []);
+
+  const handleRegenerate=async(voice)=>{
+    const bv = voice || selectedVoice;
+    setRegenerating(true); setAiError(null);
+    try {
+      const result = await generateAIContent({
+        name: product.name || p.name,
+        brand: product.brand || p.brand,
+        category: product.description || p.category,
+        description: product.description || '',
+        specs: p.specs !== MOCK_PRODUCT.specs ? p.specs : null,
+        barcode: product.barcode || p.upc,
+        ...(useCustom && customPrompt.trim() ? { customInstructions: customPrompt.trim() } : bv?.metadata ? { brandVoice: { tone: bv.metadata.tone, audience: bv.metadata.audience, style: bv.metadata.style, includeKeywords: bv.metadata.keywords || [], excludeKeywords: bv.metadata.excludeKeywords || [] } } : {}),
+      });
+      const newDescs = [
+        { tone: "Professional", text: result.descriptions.professional },
+        { tone: "Friendly", text: result.descriptions.friendly },
+        { tone: "Luxury", text: result.descriptions.luxury },
+      ];
+      setAiDescs(newDescs);
+      setSelectedDesc(0);
+      setEditedDesc(newDescs[0].text);
+      if (result.seoTags?.length) setSeoTags(result.seoTags);
+      if (result.metaTitle) setMetaTitle(result.metaTitle);
+      if (result.metaDescription) setMetaDescription(result.metaDescription);
+      if (result.category) setAiCategory(result.category);
+    } catch (err) {
+      setAiError(err.message);
+    }
+    setRegenerating(false);
+  };
+
+  // Auto-generate AI content on mount if no existing AI data
+  useEffect(() => {
+    if (!hasRealAI) { handleRegenerate(); }
+  }, []);
 
   return (
     <div className="animate-fadeIn" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,height:"calc(100vh - 200px)",minHeight:500}}>
@@ -396,8 +451,8 @@ const ReviewStep = ({ onExport, productData }) => {
             {Object.keys(resolvedConflicts).length>0&&<div style={{fontSize:12,color:"var(--success-light)",display:"flex",alignItems:"center",gap:4}}><Icon name="check" size={12} color="#10B981"/>{Object.keys(resolvedConflicts).length} conflict(s) resolved</div>}
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
               <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:2}}>PRODUCT DATA</div>
-              {[{l:"Name",v:p.name,c:94},{l:"Brand",v:p.brand,c:96},{l:"UPC",v:p.upc,c:100},{l:"Category",v:p.category,c:88},{l:"Weight",v:p.weight,c:78}].map((f,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:"var(--hover-bg)",borderRadius:6}}>
-                <span style={{fontSize:12,color:"var(--text-dim)",width:80,flexShrink:0}}>{f.l}</span>
+              {[{l:"Name",v:p.name,c:94},{l:"Brand",v:p.brand,c:96},{l:"UPC",v:p.upc,c:100},{l:"Category",v:p.category,c:88},{l:"Weight",v:p.weight,c:78},...(aiCategory?[{l:"AI Category",v:aiCategory,c:90,ai:true}]:[])].map((f,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:f.ai?"rgba(37,99,235,0.06)":"var(--hover-bg)",borderRadius:6,border:f.ai?"1px solid rgba(37,99,235,0.15)":"none"}}>
+                <span style={{fontSize:12,color:f.ai?"#3B82F6":"var(--text-dim)",width:80,flexShrink:0}}>{f.l}{f.ai&&<span className="badge badge-ai" style={{marginLeft:4,fontSize:9}}>AI</span>}</span>
                 <span className={f.l==="UPC"?"mono":""} style={{fontSize:12,flex:1,color:"var(--text-sec)"}}>{f.v}</span>
                 <ConfidenceScore score={f.c}/>
               </div>)}
@@ -435,9 +490,9 @@ const ReviewStep = ({ onExport, productData }) => {
             </div>)}
           </div>}
           {activeTab==="seo"&&<div style={{display:"flex",flexDirection:"column",gap:12}}>
-            <div><div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:8}}>AI-GENERATED SEO TAGS</div><div style={{display:"flex",flexWrap:"wrap",gap:6}}>{p.seoTags.map((t,i)=><span key={i} style={{padding:"4px 12px",background:"rgba(37,99,235,0.15)",border:"1px solid rgba(37,99,235,0.3)",borderRadius:20,fontSize:12,color:"#60A5FA"}}>#{t}</span>)}</div></div>
-            <div><div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:8}}>META TITLE</div><div style={{padding:10,background:"var(--hover-bg)",borderRadius:6,fontSize:13,color:"var(--text-sec)"}}>Sony WH-1000XM5 Wireless Noise Canceling Headphones | Premium Audio</div></div>
-            <div><div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:8}}>META DESCRIPTION</div><div style={{padding:10,background:"var(--hover-bg)",borderRadius:6,fontSize:13,color:"var(--text-sec)",lineHeight:1.5}}>Shop the Sony WH-1000XM5 with industry-leading noise cancellation, 30hr battery, and premium audio quality. Free shipping available.</div></div>
+            <div><div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:8}}>AI-GENERATED SEO TAGS</div><div style={{display:"flex",flexWrap:"wrap",gap:6}}>{seoTags.map((t,i)=><span key={i} style={{padding:"4px 12px",background:"rgba(37,99,235,0.15)",border:"1px solid rgba(37,99,235,0.3)",borderRadius:20,fontSize:12,color:"#60A5FA"}}>#{t}</span>)}</div></div>
+            <div><div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:8}}>META TITLE</div><div style={{padding:10,background:"var(--hover-bg)",borderRadius:6,fontSize:13,color:"var(--text-sec)"}}>{metaTitle || `${p.name} | ${p.brand}`}</div></div>
+            <div><div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:8}}>META DESCRIPTION</div><div style={{padding:10,background:"var(--hover-bg)",borderRadius:6,fontSize:13,color:"var(--text-sec)",lineHeight:1.5}}>{metaDescription || `Shop ${p.name} from ${p.brand}. Find the best deals and product information.`}</div></div>
           </div>}
         </div>
       </div>
@@ -446,15 +501,26 @@ const ReviewStep = ({ onExport, productData }) => {
       <div style={{display:"flex",flexDirection:"column",overflow:"hidden",background:"var(--hover-bg)",borderRadius:12,border:"1px solid var(--border)"}}>
         <div style={{padding:"14px 16px",borderBottom:"1px solid var(--border)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}><Icon name="sparkle" size={16} color="#10B981"/><span style={{fontWeight:700,fontSize:14}}>AI-Generated Content</span><span className="badge badge-ai">AI</span></div>
-          <button className="btn btn-ghost" style={{fontSize:11,padding:"4px 12px"}} onClick={handleRegenerate}><Icon name="refresh" size={12}/> {regenerating?"Regenerating...":"Regenerate"}</button>
+          <button className="btn btn-ghost" style={{fontSize:11,padding:"4px 12px"}} onClick={()=>handleRegenerate()} disabled={regenerating}><Icon name="refresh" size={12}/> {regenerating?"Generating...":"Regenerate"}</button>
         </div>
         <div className="split-panel" style={{padding:16,display:"flex",flexDirection:"column",gap:14}}>
+          {aiError&&<div style={{padding:"8px 12px",background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:8,fontSize:12,color:"#F87171",display:"flex",alignItems:"center",gap:6}}><Icon name="warning" size={14} color="#EF4444"/>{aiError}</div>}
+          <div><div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:8}}>BRAND VOICE</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {brandVoices.map(v=><button key={v.id} onClick={()=>{setUseCustom(false);setSelectedVoice(v);if(!regenerating)handleRegenerate(v);}} className={`btn ${!useCustom&&selectedVoice?.id===v.id?"btn-primary":"btn-ghost"}`} style={{fontSize:11,padding:"5px 14px",borderRadius:20}}><Icon name="tag" size={10}/> {v.name}</button>)}
+              <button onClick={()=>setUseCustom(!useCustom)} className={`btn ${useCustom?"btn-primary":"btn-ghost"}`} style={{fontSize:11,padding:"5px 14px",borderRadius:20}}><Icon name="edit" size={10}/> Custom</button>
+            </div>
+            {useCustom&&<div style={{marginTop:8,display:"flex",gap:6}}>
+              <input className="input" value={customPrompt} onChange={e=>setCustomPrompt(e.target.value)} placeholder="e.g. Make it funny, target Gen Z, focus on health..." style={{flex:1,fontSize:12,padding:"8px 12px"}} onKeyDown={e=>e.key==="Enter"&&customPrompt.trim()&&!regenerating&&handleRegenerate()}/>
+              <button className="btn btn-primary" style={{fontSize:11,padding:"6px 14px",flexShrink:0}} disabled={!customPrompt.trim()||regenerating} onClick={()=>handleRegenerate()}><Icon name="sparkle" size={12}/> Go</button>
+            </div>}
+          </div>
           <div><div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:8}}>BRAND TONE</div>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{["Professional","Friendly","Luxury","Technical","Casual"].map((t,i)=><button key={t} onClick={()=>{setSelectedDesc(Math.min(i,p.aiDescriptions.length-1));setEditedDesc(p.aiDescriptions[Math.min(i,p.aiDescriptions.length-1)].text);}} className={`btn ${i===selectedDesc?"btn-primary":"btn-ghost"}`} style={{fontSize:11,padding:"5px 14px",borderRadius:20}}>{t}</button>)}</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{["Professional","Friendly","Luxury"].map((t,i)=><button key={t} onClick={()=>{setSelectedDesc(i);setEditedDesc(aiDescs[i].text);}} className={`btn ${i===selectedDesc?"btn-primary":"btn-ghost"}`} style={{fontSize:11,padding:"5px 14px",borderRadius:20}}>{t}</button>)}</div>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em"}}>DESCRIPTION VARIANTS</div>
-            {p.aiDescriptions.map((d,i)=><div key={i} className={`description-card ${selectedDesc===i?"selected":""}`} onClick={()=>{setSelectedDesc(i);setEditedDesc(d.text);}}>
+            {regenerating?<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12,padding:"30px 0"}}><div className="loading-spinner" style={{width:28,height:28,border:"3px solid var(--border)",borderTopColor:"#3B82F6",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/><span style={{fontSize:12,color:"var(--text-dim)"}}>AI is writing descriptions...</span></div>:aiDescs.map((d,i)=><div key={i} className={`description-card ${selectedDesc===i?"selected":""}`} onClick={()=>{setSelectedDesc(i);setEditedDesc(d.text);}}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}><span className="badge badge-neutral">{d.tone}</span>{selectedDesc===i&&<Icon name="check" size={12} color="#10B981"/>}</div>
                 <ConfidenceScore score={92-i*7}/>
@@ -467,7 +533,7 @@ const ReviewStep = ({ onExport, productData }) => {
           </div>
           <div style={{padding:12,background:"var(--hover-bg)",borderRadius:8,border:"1px solid var(--border)"}}>
             <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.06em",marginBottom:8}}>PRE-PUBLISH CHECKLIST</div>
-            {[{t:"AI description reviewed for accuracy",ok:true},{t:"Pricing verified across sources",ok:Object.keys(resolvedConflicts).length>0},{t:"Product images selected",ok:images.filter(i=>i.selected).length>0},{t:"SEO tags generated",ok:true}].map((item,i)=><div key={i} style={{display:"flex",gap:8,alignItems:"center",fontSize:12,marginBottom:4,color:item.ok?"var(--text-muted)":"#F87171"}}><Icon name={item.ok?"check":"x"} size={12} color={item.ok?"#10B981":"#EF4444"}/> {item.t}</div>)}
+            {[{t:"AI description generated",ok:hasRealAI||aiDescs!==p.aiDescriptions},{t:"Pricing verified across sources",ok:Object.keys(resolvedConflicts).length>0},{t:"Product images selected",ok:images.filter(i=>i.selected).length>0},{t:"SEO tags generated",ok:hasRealAI||seoTags!==p.seoTags}].map((item,i)=><div key={i} style={{display:"flex",gap:8,alignItems:"center",fontSize:12,marginBottom:4,color:item.ok?"var(--text-muted)":"#F87171"}}><Icon name={item.ok?"check":"x"} size={12} color={item.ok?"#10B981":"#EF4444"}/> {item.t}</div>)}
           </div>
         </div>
         <div style={{padding:"12px 16px",borderTop:"1px solid var(--border)",display:"flex",gap:10}}>
