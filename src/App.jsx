@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, getCatalog, getStats, getSourcePerformance, getSearchHistory, searchProduct, getProductById, saveForLater, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice, generateAIContent, identifyProduct, searchProductImages, exportProduct, getExportHistory, downloadExport, googleSignIn } from "./api";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, setOnUnauthorized, getCatalog, getStats, getSourcePerformance, getSearchHistory, searchProduct, getProductById, saveForLater, resolveConflict, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice, generateAIContent, identifyProduct, searchProductImages, exportProduct, getExportHistory, downloadExport, googleSignIn } from "./api";
 import { Html5Qrcode } from "html5-qrcode";
 
 // ============================================================
@@ -394,7 +394,7 @@ const SearchStep = ({ onSearch }) => {
           <input className="input" style={{paddingLeft:44,fontSize:16,padding:"14px 18px 14px 44px"}} placeholder="UPC, EAN, GTIN, ISBN (e.g. 012345678901)" value={upc} onChange={e=>setUpc(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSearch()}/>
         </div>
         <div style={{display:"flex",gap:10}}>
-          <button className="btn btn-primary" style={{flex:1,justifyContent:"center",fontSize:15,padding:"12px 0"}} onClick={()=>handleSearch()}><Icon name="search" size={16}/> Search Product</button>
+          <button className="btn btn-primary" style={{flex:1,justifyContent:"center",fontSize:15,padding:"12px 0"}} onClick={()=>handleSearch()} disabled={loading||identifying}><Icon name="search" size={16}/> {loading?"Searching...":"Search Product"}</button>
           <button className="btn btn-ghost" onClick={()=>fileRef.current?.click()}><Icon name="camera" size={16}/> Scan</button>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:12,color:"var(--text-dim)"}}><div style={{flex:1,height:1,background:"var(--border)"}}/><span style={{fontSize:12,fontWeight:600}}>OR UPLOAD IMAGE</span><div style={{flex:1,height:1,background:"var(--border)"}}/></div>
@@ -437,7 +437,7 @@ const ReviewStep = ({ onExport, onSave, productData }) => {
   })) : [];
 
   const displayConflicts = dbConflicts.length > 0 ? dbConflicts.map(c => ({
-    field: c.field_name, values: typeof c.source_values === 'string' ? JSON.parse(c.source_values) : c.source_values, severity: "medium"
+    id: c.id, field: c.field_name, values: typeof c.source_values === 'string' ? JSON.parse(c.source_values) : c.source_values, severity: "medium"
   })) : [];
 
   // Parse real specs from source data or AI-identified attributes
@@ -550,6 +550,7 @@ const ReviewStep = ({ onExport, onSave, productData }) => {
       if (result.category) setAiCategory(result.category);
     } catch (err) {
       setAiError(err.message);
+      toast.error("AI generation failed: " + (err.message || "Unknown error"));
     }
     setRegenerating(false);
   };
@@ -572,7 +573,7 @@ const ReviewStep = ({ onExport, onSave, productData }) => {
               <div style={{display:"flex",alignItems:"center",gap:6,color:"var(--warning-light)",fontSize:12,fontWeight:700,letterSpacing:"0.06em"}}><Icon name="warning" size={14} color="#F59E0B"/> CONFLICTS DETECTED</div>
               {p.conflicts.filter(c=>!resolvedConflicts[c.field]).map((c,i)=><div key={i} className="highlight-warning" style={{borderRadius:8,padding:12}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><span style={{fontSize:12,fontWeight:700,color:"var(--warning-light)"}}>{c.field}</span><span className="badge badge-warning">{c.severity}</span></div>
-                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{Object.entries(c.values).map(([s,v])=><button key={s} className="btn btn-ghost" style={{fontSize:11,padding:"4px 10px"}} onClick={()=>setResolvedConflicts(prev=>({...prev,[c.field]:v}))}>{s}: {v}</button>)}</div>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{Object.entries(c.values).map(([s,v])=><button key={s} className="btn btn-ghost" style={{fontSize:11,padding:"4px 10px"}} onClick={async()=>{setResolvedConflicts(prev=>({...prev,[c.field]:v}));if(c.id)try{await resolveConflict(c.id,typeof v==='object'?v.join(', '):v);toast.success(`${c.field} resolved`);}catch{}}}>{s}: {typeof v==='object'?v.join(', '):v}</button>)}</div>
               </div>)}
             </div>}
             {Object.keys(resolvedConflicts).length>0&&<div style={{fontSize:12,color:"var(--success-light)",display:"flex",alignItems:"center",gap:4}}><Icon name="check" size={12} color="#10B981"/>{Object.keys(resolvedConflicts).length} conflict(s) resolved</div>}
@@ -705,8 +706,9 @@ const ReviewStep = ({ onExport, onSave, productData }) => {
                 enriched: { price: editPrice },
               });
               setSaved(true);
+              toast.success("Product saved to catalog");
               if (onSave) setTimeout(() => onSave(), 1200);
-            } catch { setSaving(false); }
+            } catch (err) { setSaving(false); toast.error(err.message || "Failed to save product"); }
           }}>{saved?<><Icon name="check" size={15}/> Saved!</>:saving?<><Icon name="refresh" size={15}/> Saving...</>:<><Icon name="bookmark" size={15}/> Save for Later</>}</button>
           <button className="btn btn-success" style={{flex:1,justifyContent:"center"}} onClick={() => {
             const enriched = {
@@ -788,11 +790,12 @@ const ExportStep = ({ onComplete, productData }) => {
       clearInterval(progressInterval);
       setProgress(100);
       setExportedFile(result);
-      setTimeout(() => { setExporting(false); setDone(true); setShowConfetti(true); setTimeout(()=>setShowConfetti(false),4000); }, 400);
+      setTimeout(() => { setExporting(false); setDone(true); setShowConfetti(true); toast.success("Export complete!"); setTimeout(()=>setShowConfetti(false),4000); }, 400);
     } catch (err) {
       clearInterval(progressInterval);
       setExporting(false);
       setExportError(err.message);
+      toast.error("Export failed: " + err.message);
     }
   };
 
@@ -901,7 +904,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
 
   useEffect(() => {
     Promise.all([
-      getStats().catch(() => ({})),
+      getStats().catch(err => { toast.error("Failed to load stats"); return {}; }),
       getCatalog().catch(() => []),
       apiGetBrandVoices().catch(() => []),
     ]).then(([s, c, v]) => {
@@ -1012,7 +1015,7 @@ const Analytics = () => {
       setSources(src.sources || []);
       setHistory(h.history || []);
       setLoading(false);
-    });
+    }).catch(() => { setLoading(false); toast.error("Failed to load analytics"); });
   }, []);
 
   const sourceColors = { "Amazon": "#FF9900", "Open Food Facts": "#10B981", "UPC Database": "#6366F1", "Alibaba": "#FF6A00", "Google": "#4285F4" };
@@ -1619,8 +1622,8 @@ const Settings = ({ user, onUserUpdate }) => {
     try {
       const data = await apiUpdateProfile({ name: profileName, email: profileEmail, store_name: profileStore });
       if (onUserUpdate && data.user) onUserUpdate({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store: data.user.store_name });
-      setProfileSaved(true); setTimeout(() => setProfileSaved(false), 2000);
-    } catch (err) { setProfileError(err.message); }
+      setProfileSaved(true); toast.success("Profile updated"); setTimeout(() => setProfileSaved(false), 2000);
+    } catch (err) { setProfileError(err.message); toast.error(err.message); }
   };
 
   const handlePasswordChange = async () => {
@@ -1628,8 +1631,9 @@ const Settings = ({ user, onUserUpdate }) => {
     try {
       await apiChangePassword(currentPassword, newPassword);
       setPasswordChanged(true); setCurrentPassword(""); setNewPassword(""); setConfirmPassword("");
+      toast.success("Password changed successfully");
       setTimeout(() => setPasswordChanged(false), 2000);
-    } catch (err) { setPasswordError(err.message); }
+    } catch (err) { setPasswordError(err.message); toast.error(err.message); }
   };
 
   const handleSettingsSave = async () => {
@@ -2085,6 +2089,41 @@ const BrandVoices = ({ user }) => {
 // ============================================================
 // MAIN APP
 // ============================================================
+// ============================================================
+// TOAST NOTIFICATION SYSTEM
+// ============================================================
+// Global toast system
+let _showToast = () => {};
+const toast = {
+  success: (msg) => _showToast(msg, "success"),
+  error: (msg) => _showToast(msg, "error"),
+  warning: (msg) => _showToast(msg, "warning"),
+  info: (msg) => _showToast(msg, "info"),
+};
+
+const ToastContainer = () => {
+  const [toasts, setToasts] = useState([]);
+  _showToast = useCallback((message, type = "info") => {
+    const id = Date.now() + Math.random();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+  }, []);
+  const colors = { success: "#10B981", error: "#EF4444", warning: "#F59E0B", info: "#3B82F6" };
+  const icons = { success: "check", error: "warning", warning: "warning", info: "sparkle" };
+  if (toasts.length === 0) return null;
+  return (
+    <div style={{position:"fixed",top:20,right:20,zIndex:99999,display:"flex",flexDirection:"column",gap:8,maxWidth:380}}>
+      {toasts.map(t=>(
+        <div key={t.id} className="animate-slideUp" style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",background:"var(--bg-sidebar)",border:`1px solid ${colors[t.type]}40`,borderLeft:`3px solid ${colors[t.type]}`,borderRadius:10,boxShadow:"0 4px 20px rgba(0,0,0,0.3)",fontSize:13,color:"var(--text-sec)"}}>
+          <Icon name={icons[t.type]} size={16} color={colors[t.type]}/>
+          <span style={{flex:1}}>{t.message}</span>
+          <span style={{cursor:"pointer",opacity:0.5,fontSize:16,lineHeight:1}} onClick={()=>setToasts(prev=>prev.filter(x=>x.id!==t.id))}>&times;</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [dark, setDark] = useState(true);
@@ -2092,6 +2131,15 @@ export default function App() {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(true);
   const [productData, setProductData] = useState(null);
+
+  // Register 401 handler for auto-logout
+  useEffect(() => {
+    setOnUnauthorized(() => {
+      setUser(null);
+      toast.error("Session expired. Please sign in again.");
+    });
+  }, []);
+
   // Auto-login from stored token
   useEffect(() => {
     getMe().then(u => {
@@ -2116,6 +2164,7 @@ export default function App() {
   if (!user) return (
     <>
       <GlobalStyles dark={dark} />
+      <ToastContainer />
       <AuthPage onLogin={setUser} dark={dark} />
     </>
   );
@@ -2124,6 +2173,7 @@ export default function App() {
   return (
     <>
       <GlobalStyles dark={dark} />
+      <ToastContainer />
       <div className="animate-theme" key={dark ? "dark" : "light"} style={{ display: "flex", minHeight: "100vh", background: "var(--bg)", transition: "background 0.35s" }}>
         {/* Sidebar */}
         <div style={{ width: 200, background: "var(--bg-sidebar)", borderRight: "1px solid var(--border-light)", padding: "20px 12px", display: "flex", flexDirection: "column", flexShrink: 0, transition: "background 0.35s, border-color 0.35s" }}>
@@ -2201,7 +2251,7 @@ export default function App() {
                   setProductData(data);
                   setStep(step || 1);
                   setView("catalog");
-                } catch {}
+                } catch (err) { toast.error(err.message || "Failed to load product"); }
               }}
               onExportProduct={async (productId) => {
                 try {
@@ -2209,7 +2259,7 @@ export default function App() {
                   setProductData(data);
                   setStep(2);
                   setView("catalog");
-                } catch {}
+                } catch (err) { toast.error(err.message || "Failed to load product"); }
               }}
             />}
             {view === "catalog" && (
