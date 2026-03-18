@@ -11,10 +11,25 @@ export const setToken = (t) => {
 
 export const getToken = () => token;
 
+// 401 handler — auto-logout on expired JWT
+let onUnauthorized = null;
+export const setOnUnauthorized = (handler) => { onUnauthorized = handler; };
+
 const headers = () => ({
   'Content-Type': 'application/json',
   ...(token ? { Authorization: `Bearer ${token}` } : {}),
 });
+
+const handleResponse = async (res) => {
+  if (res.status === 401 && onUnauthorized) {
+    setToken(null);
+    onUnauthorized();
+    throw new Error('Session expired. Please sign in again.');
+  }
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+};
 
 // ── AUTH ──
 export const signUp = async (name, email, password, role, store_name) => {
