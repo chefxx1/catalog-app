@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, getCatalog, getStats, getSourcePerformance, getSearchHistory, searchProduct, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice, generateAIContent } from "./api";
+import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, getCatalog, getStats, getSourcePerformance, getSearchHistory, searchProduct, getProductById, saveForLater, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice, generateAIContent, identifyProduct, searchProductImages, exportProduct, getExportHistory, downloadExport, googleSignIn } from "./api";
 import { Html5Qrcode } from "html5-qrcode";
 
 // ============================================================
@@ -44,6 +44,7 @@ const Icon = ({ name, size = 16, color = "currentColor" }) => {
     key: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>,
     bell: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
     palette: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="12.5" r="2.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.5-.7 1.5-1.5 0-.4-.1-.7-.4-1-.3-.3-.4-.7-.4-1.1 0-.8.7-1.5 1.5-1.5H16c3.3 0 6-2.7 6-6 0-5.5-4.5-9.8-10-10z"/></svg>,
+    bookmark: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>,
   };
   return icons[name] || <span>{name}</span>;
 };
@@ -256,7 +257,70 @@ const SearchStep = ({ onSearch }) => {
   const msgs=["Querying Amazon Product API...","Checking Open Food Facts...","Scanning UPC Database...","Searching Alibaba...","Searching Google..."];
   const sourceNames=[{name:"Amazon",icon:"package",trustScore:92,color:"#FF9900"},{name:"Open Food Facts",icon:"database",trustScore:75,color:"#10B981"},{name:"UPC Database",icon:"barcode",trustScore:88,color:"#6366F1"},{name:"Alibaba",icon:"package",trustScore:71,color:"#FF6A00"},{name:"Google Search",icon:"search",trustScore:65,color:"#4285F4"}];
   const handleSearch=(code)=>{const barcode=code||upc.trim();if(!barcode||loading)return;setError(null);setNotFound(false);setLoading(true);setLoadingStep(0);let s=0;const apiPromise=searchProduct(barcode);const iv=setInterval(()=>{s++;if(s>=msgs.length){clearInterval(iv);}else setLoadingStep(s);},800);apiPromise.then(data=>{clearInterval(iv);setLoadingStep(msgs.length-1);setTimeout(()=>{setLoading(false);if(!data.product){setNotFound(true);}else{onSearch(data);}},600);}).catch(err=>{clearInterval(iv);setLoading(false);setError(err.message||"Search failed");});};
-  const scanBarcodeFromFile=(file)=>{setError(null);const html5Qr=new Html5Qrcode("barcode-scanner-temp");html5Qr.scanFile(file,true).then(code=>{setUpc(code);handleSearch(code);}).catch(()=>{setError("Could not detect a barcode in this image. Try a clearer photo.");}).finally(()=>{html5Qr.clear();});};
+  const [identifying, setIdentifying] = useState(false);
+  const [identified, setIdentified] = useState(null);
+  const compressImage = (file, maxSize = 800) => new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let w = img.width, h = img.height;
+        if (w > maxSize || h > maxSize) {
+          if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
+          else { w = Math.round(w * maxSize / h); h = maxSize; }
+        }
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+  const [productImages, setProductImages] = useState([]);
+  const [selectedImages, setSelectedImages] = useState(new Set());
+  const [searchingImages, setSearchingImages] = useState(false);
+  const handleImageIdentify = async (file) => {
+    setError(null); setIdentifying(true); setIdentified(null); setProductImages([]); setSelectedImages(new Set());
+    try {
+      const base64 = await compressImage(file);
+      setUploadedImage(base64);
+      const result = await identifyProduct(base64);
+      setIdentified(result);
+      // Search for product images in background
+      if (result.name) {
+        setSearchingImages(true);
+        searchProductImages(`${result.name} ${result.brand || ''}`).then(imgs => {
+          setProductImages(imgs);
+          setSelectedImages(new Set([0])); // auto-select first
+        }).catch(() => {}).finally(() => setSearchingImages(false));
+      }
+    } catch (err) {
+      setError(err.message || "Image identification failed");
+    }
+    setIdentifying(false);
+  };
+  const [uploadedImage, setUploadedImage] = useState(null);
+  const handleIdentifiedSearch = () => {
+    if (!identified) return;
+    // Map AI sources to display format
+    const aiSources = (identified.sources || []).map(s => ({
+      source_name: s.name, trust_score: s.trustScore || 75, price: s.price?.replace(/[^0-9.]/g, '') || null,
+      currency: 'USD', description: s.url || null,
+    }));
+    // Build images: uploaded photo + selected product images
+    const aiImages = [];
+    if (uploadedImage) aiImages.push({ id: 1, image_url: uploadedImage, quality_score: 85, source_name: "Uploaded photo" });
+    productImages.forEach((img, i) => {
+      if (selectedImages.has(i)) aiImages.push({ id: i + 2, image_url: img.url, quality_score: 80, source_name: img.source || "Web" });
+    });
+    onSearch({
+      product: { name: identified.name, brand: identified.brand, description: identified.description, barcode: identified.barcode || null, ai_category_suggestion: identified.category, attributes: identified.specs },
+      sources: aiSources, images: aiImages, conflicts: [],
+    });
+  };
+  const scanBarcodeFromFile=(file)=>{setError(null);const html5Qr=new Html5Qrcode("barcode-scanner-temp");html5Qr.scanFile(file,true).then(code=>{setUpc(code);handleSearch(code);}).catch(()=>{handleImageIdentify(file);}).finally(()=>{html5Qr.clear();});};
 
   if(loading) return (
     <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:30,padding:"60px 20px",minHeight:400}}>
@@ -292,6 +356,38 @@ const SearchStep = ({ onSearch }) => {
       </div>
       {notFound&&<div className="card" style={{maxWidth:560,width:"100%",textAlign:"center",padding:24,border:"1px solid rgba(245,158,11,0.3)"}}><Icon name="search" size={28} color="#F59E0B"/><h3 style={{marginTop:10,fontWeight:700}}>Product Not Found</h3><p style={{color:"var(--text-muted)",marginTop:6,fontSize:13}}>No product data found for barcode <span className="mono" style={{color:"var(--text)"}}>{upc}</span>. Try a different barcode.</p></div>}
       {error&&<div className="card" style={{maxWidth:560,width:"100%",textAlign:"center",padding:24,border:"1px solid rgba(239,68,68,0.3)"}}><Icon name="warning" size={28} color="#EF4444"/><h3 style={{marginTop:10,fontWeight:700,color:"#EF4444"}}>Search Error</h3><p style={{color:"var(--text-muted)",marginTop:6,fontSize:13}}>{error}</p></div>}
+      {identifying&&<div className="card" style={{maxWidth:560,width:"100%",textAlign:"center",padding:32,border:"1px solid rgba(37,99,235,0.3)"}}><div style={{width:48,height:48,margin:"0 auto 12px",borderRadius:"50%",border:"3px solid var(--border)",borderTopColor:"#3B82F6",animation:"spin 0.8s linear infinite"}}/><h3 style={{fontWeight:700,marginBottom:4}}>AI Identifying Product...</h3><p style={{color:"var(--text-muted)",fontSize:13}}>Analyzing image with Gemini AI</p></div>}
+      {identified&&<div className="card animate-fadeIn" style={{maxWidth:560,width:"100%",padding:24,border:"1px solid rgba(16,185,129,0.3)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}><Icon name="sparkle" size={18} color="#10B981"/><h3 style={{fontWeight:700}}>Product Identified</h3><span className="badge badge-ai">AI</span><span style={{marginLeft:"auto",fontSize:12,color:"#10B981",fontWeight:600}}>{identified.confidence}% confidence</span></div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {[["Name",identified.name],["Brand",identified.brand],["Category",identified.category]].filter(([,v])=>v).map(([k,v])=><div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"6px 10px",background:"var(--hover-bg)",borderRadius:6}}><span style={{color:"var(--text-dim)"}}>{k}</span><span style={{fontWeight:600}}>{v}</span></div>)}
+          {identified.description&&<p style={{fontSize:13,color:"var(--text-muted)",lineHeight:1.5,padding:"6px 10px"}}>{identified.description}</p>}
+          {identified.specs&&Object.keys(identified.specs).length>0&&<>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginTop:4}}>SPECIFICATIONS</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>{Object.entries(identified.specs).filter(([,v])=>v&&v!=="null").map(([k,v])=><div key={k} style={{padding:"5px 10px",background:"var(--hover-bg)",borderRadius:6}}><div style={{fontSize:10,color:"var(--text-dim)"}}>{k}</div><div className="mono" style={{fontSize:12,color:"var(--text-sec)"}}>{v}</div></div>)}</div>
+          </>}
+          {identified.sources?.length>0&&<>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginTop:4}}>AVAILABLE AT</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>{identified.sources.map((s,i)=><span key={i} style={{padding:"4px 10px",background:"rgba(37,99,235,0.08)",border:"1px solid rgba(37,99,235,0.2)",borderRadius:6,fontSize:12,color:"#60A5FA"}}>{s.name}{s.price?` · ${s.price}`:""}</span>)}</div>
+          </>}
+          {/* Product Images */}
+          {(searchingImages||productImages.length>0)&&<>
+            <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginTop:4}}>PRODUCT IMAGES <span style={{fontWeight:400,color:"var(--text-dim)"}}> — select the ones you want</span></div>
+            {searchingImages&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0"}}><div style={{width:16,height:16,borderRadius:"50%",border:"2px solid var(--border)",borderTopColor:"#3B82F6",animation:"spin 0.8s linear infinite"}}/><span style={{fontSize:12,color:"var(--text-dim)"}}>Finding product images...</span></div>}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4, 1fr)",gap:6}}>
+              {productImages.map((img,i)=><div key={i} onClick={()=>setSelectedImages(prev=>{const s=new Set(prev);s.has(i)?s.delete(i):s.add(i);return s;})} style={{position:"relative",borderRadius:6,overflow:"hidden",cursor:"pointer",border:`2px solid ${selectedImages.has(i)?"#10B981":"transparent"}`,opacity:selectedImages.has(i)?1:0.5,transition:"all 0.2s",aspectRatio:"1"}}>
+                <img src={img.thumbnail||img.url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>{e.target.style.display="none";}}/>
+                {selectedImages.has(i)&&<div style={{position:"absolute",top:3,right:3,width:16,height:16,borderRadius:"50%",background:"#10B981",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon name="check" size={10} color="white"/></div>}
+              </div>)}
+            </div>
+            {productImages.length>0&&<div style={{fontSize:11,color:"var(--text-dim)"}}>{selectedImages.size} image{selectedImages.size!==1?"s":""} selected</div>}
+          </>}
+        </div>
+        <div style={{display:"flex",gap:10,marginTop:16}}>
+          <button className="btn btn-primary" style={{flex:1,justifyContent:"center"}} onClick={handleIdentifiedSearch}><Icon name="check" size={14}/> Use This Product</button>
+          <button className="btn btn-ghost" onClick={()=>setIdentified(null)}><Icon name="x" size={14}/> Dismiss</button>
+        </div>
+      </div>}
       <div style={{width:"100%",maxWidth:560,display:"flex",flexDirection:"column",gap:14}}>
         <div style={{position:"relative"}}>
           <div style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:"var(--text-dim)"}}><Icon name="barcode" size={18}/></div>
@@ -321,7 +417,7 @@ const SearchStep = ({ onSearch }) => {
 // ============================================================
 // STEP 2: REVIEW
 // ============================================================
-const ReviewStep = ({ onExport, productData }) => {
+const ReviewStep = ({ onExport, onSave, productData }) => {
   const pd = productData || {};
   const product = pd.product || {};
   const dbSources = pd.sources || [];
@@ -329,21 +425,22 @@ const ReviewStep = ({ onExport, productData }) => {
   const dbConflicts = pd.conflicts || [];
 
   // Map DB data to display format
+  const sourceColors = {"Amazon":"#FF9900","Open Food Facts":"#10B981","Walmart":"#0071CE","IKEA":"#0058A3","Target":"#CC0000","Best Buy":"#0046BE","Wayfair":"#7B189F","eBay":"#E53238","Etsy":"#F1641E","Home Depot":"#F96302"};
   const displaySources = dbSources.length > 0 ? dbSources.map(s => ({
-    name: s.source_name, icon: s.source_name === "Open Food Facts" ? "database" : "package",
-    trustScore: s.trust_score || 70, color: s.source_name === "Open Food Facts" ? "#10B981" : "#3B82F6",
-    data: { ...(s.price ? { price: `${s.currency || 'USD'} ${s.price}` } : {}), ...(s.weight ? { weight: s.weight } : {}), ...(s.description ? { description: s.description } : {}) }
-  })) : MOCK_PRODUCT.sources;
+    name: s.source_name, icon: s.source_name === "Open Food Facts" ? "database" : "store",
+    trustScore: s.trust_score || 70, color: sourceColors[s.source_name] || "#3B82F6",
+    data: { ...(s.price ? { price: `$${s.price}` } : {}), ...(s.weight ? { weight: s.weight } : {}), ...(s.description ? { url: s.description } : {}) }
+  })) : [];
 
   const displayImages = dbImages.length > 0 ? dbImages.map((img, i) => ({
     id: img.id, url: img.image_url, qualityScore: (img.quality_score || 70) / 10, selected: i < 3, label: img.source_name || "Product image"
-  })) : MOCK_PRODUCT.images;
+  })) : [];
 
   const displayConflicts = dbConflicts.length > 0 ? dbConflicts.map(c => ({
     field: c.field_name, values: typeof c.source_values === 'string' ? JSON.parse(c.source_values) : c.source_values, severity: "medium"
   })) : [];
 
-  // Parse real specs from source data
+  // Parse real specs from source data or AI-identified attributes
   const realSpecs = (() => {
     for (const s of dbSources) {
       if (s.specs) {
@@ -353,19 +450,29 @@ const ReviewStep = ({ onExport, productData }) => {
     return null;
   })();
 
+  // Use AI-identified attributes if available
+  const aiAttrs = product.attributes || null;
+  const specs = realSpecs || (aiAttrs ? Object.fromEntries(Object.entries(aiAttrs).filter(([,v]) => v && v !== "null")) : null);
+
+  const defaultDescs = [
+    { tone: "Professional", text: "AI description will be generated." },
+    { tone: "Friendly", text: "AI description will be generated." },
+    { tone: "Luxury", text: "AI description will be generated." },
+  ];
+
   const p = {
-    name: product.name || MOCK_PRODUCT.name,
-    brand: product.brand || MOCK_PRODUCT.brand,
-    upc: product.barcode || MOCK_PRODUCT.upc,
-    category: realSpecs?.['Labels'] || product.description || MOCK_PRODUCT.category,
-    weight: dbSources[0]?.weight || MOCK_PRODUCT.weight,
-    specs: realSpecs || MOCK_PRODUCT.specs,
-    seoTags: product.seo_tags ? (typeof product.seo_tags === 'string' ? JSON.parse(product.seo_tags) : product.seo_tags) : MOCK_PRODUCT.seoTags,
+    name: product.name || "Unknown Product",
+    brand: product.brand || "Unknown",
+    upc: product.barcode || "N/A",
+    category: product.ai_category_suggestion || realSpecs?.['Labels'] || product.description || "Uncategorized",
+    weight: dbSources[0]?.weight || "",
+    specs: specs,
+    seoTags: product.seo_tags ? (typeof product.seo_tags === 'string' ? JSON.parse(product.seo_tags) : product.seo_tags) : [],
     aiDescriptions: product.ai_description_professional ? [
       { tone: "Professional", text: product.ai_description_professional },
       { tone: "Friendly", text: product.ai_description_friendly || "AI description will be generated." },
       { tone: "Luxury", text: product.ai_description_luxury || "AI description will be generated." },
-    ] : MOCK_PRODUCT.aiDescriptions,
+    ] : defaultDescs,
     sources: displaySources,
     images: displayImages,
     conflicts: displayConflicts,
@@ -384,6 +491,26 @@ const ReviewStep = ({ onExport, productData }) => {
   const [expandedSource,setExpandedSource]=useState(displaySources[0]?.name || "Amazon"); const [resolvedConflicts,setResolvedConflicts]=useState({});
   const [images,setImages]=useState(p.images); const [activeTab,setActiveTab]=useState("overview"); const [regenerating,setRegenerating]=useState(false);
   const [aiError, setAiError] = useState(null);
+  const [editPrice, setEditPrice] = useState(dbSources.find(s => s.price)?.price || '');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [lightbox, setLightbox] = useState(null);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomPos, setZoomPos] = useState({x:50,y:50});
+
+  // Lightbox keyboard controls
+  useEffect(() => {
+    if (lightbox === null) return;
+    const handleKey = (e) => {
+      if (e.key === "Escape") { setLightbox(null); setZoomLevel(1); }
+      if (e.key === "ArrowLeft") { setLightbox(l => l <= 0 ? images.length - 1 : l - 1); setZoomLevel(1); }
+      if (e.key === "ArrowRight") { setLightbox(l => l >= images.length - 1 ? 0 : l + 1); setZoomLevel(1); }
+      if (e.key === "+" || e.key === "=") setZoomLevel(z => Math.min(4, z + 0.5));
+      if (e.key === "-") setZoomLevel(z => Math.max(1, z - 0.5));
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [lightbox, images.length]);
   const hasRealAI = !!product.ai_description_professional;
   const tabs=["overview","sources","images","seo"];
 
@@ -405,7 +532,7 @@ const ReviewStep = ({ onExport, productData }) => {
         brand: product.brand || p.brand,
         category: product.description || p.category,
         description: product.description || '',
-        specs: p.specs !== MOCK_PRODUCT.specs ? p.specs : null,
+        specs: p.specs || null,
         barcode: product.barcode || p.upc,
         ...(useCustom && customPrompt.trim() ? { customInstructions: customPrompt.trim() } : bv?.metadata ? { brandVoice: { tone: bv.metadata.tone, audience: bv.metadata.audience, style: bv.metadata.style, includeKeywords: bv.metadata.keywords || [], excludeKeywords: bv.metadata.excludeKeywords || [] } } : {}),
       });
@@ -451,13 +578,17 @@ const ReviewStep = ({ onExport, productData }) => {
             {Object.keys(resolvedConflicts).length>0&&<div style={{fontSize:12,color:"var(--success-light)",display:"flex",alignItems:"center",gap:4}}><Icon name="check" size={12} color="#10B981"/>{Object.keys(resolvedConflicts).length} conflict(s) resolved</div>}
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
               <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:2}}>PRODUCT DATA</div>
-              {[{l:"Name",v:p.name,c:94},{l:"Brand",v:p.brand,c:96},{l:"UPC",v:p.upc,c:100},{l:"Category",v:p.category,c:88},{l:"Weight",v:p.weight,c:78},...(aiCategory?[{l:"AI Category",v:aiCategory,c:90,ai:true}]:[])].map((f,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:f.ai?"rgba(37,99,235,0.06)":"var(--hover-bg)",borderRadius:6,border:f.ai?"1px solid rgba(37,99,235,0.15)":"none"}}>
+              {[{l:"Name",v:p.name,c:94},{l:"Brand",v:p.brand,c:96},{l:"UPC",v:p.upc,c:100},{l:"Category",v:p.category,c:88},...(aiCategory?[{l:"AI Category",v:aiCategory,c:90,ai:true}]:[])].map((f,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:f.ai?"rgba(37,99,235,0.06)":"var(--hover-bg)",borderRadius:6,border:f.ai?"1px solid rgba(37,99,235,0.15)":"none"}}>
                 <span style={{fontSize:12,color:f.ai?"#3B82F6":"var(--text-dim)",width:80,flexShrink:0}}>{f.l}{f.ai&&<span className="badge badge-ai" style={{marginLeft:4,fontSize:9}}>AI</span>}</span>
                 <span className={f.l==="UPC"?"mono":""} style={{fontSize:12,flex:1,color:"var(--text-sec)"}}>{f.v}</span>
                 <ConfidenceScore score={f.c}/>
               </div>)}
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:"var(--hover-bg)",borderRadius:6}}>
+                <span style={{fontSize:12,color:"var(--text-dim)",width:80,flexShrink:0}}>Price</span>
+                <input className="input" value={editPrice} onChange={e=>setEditPrice(e.target.value)} placeholder="e.g. 29.99" style={{fontSize:12,flex:1,padding:"4px 8px",background:"transparent",border:"1px solid var(--border)",borderRadius:4}}/>
+              </div>
             </div>
-            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            {p.specs&&Object.keys(p.specs).length>0&&<div style={{display:"flex",flexDirection:"column",gap:4}}>
               <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em"}}>SPECIFICATIONS</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>
                 {Object.entries(p.specs).map(([k,v])=><div key={k} style={{padding:"6px 10px",background:"var(--hover-bg)",borderRadius:6}}>
@@ -465,9 +596,10 @@ const ReviewStep = ({ onExport, productData }) => {
                   <div className="mono" style={{fontSize:12,color:"var(--text-sec)"}}>{v}</div>
                 </div>)}
               </div>
-            </div>
+            </div>}
           </>}
           {activeTab==="sources"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {p.sources.length===0&&<div style={{textAlign:"center",padding:"30px 20px",color:"var(--text-dim)"}}><Icon name="database" size={28} color="var(--text-dim)"/><p style={{marginTop:8,fontSize:13}}>No source data available</p><p style={{fontSize:11,color:"var(--text-dim)"}}>Product was identified by AI — no external sources queried</p></div>}
             {p.sources.map((s,i)=><div key={i} style={{background:"var(--hover-bg)",borderRadius:8,border:"1px solid var(--border)",overflow:"hidden",transition:"all 0.3s"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",cursor:"pointer"}} onClick={()=>setExpandedSource(expandedSource===s.name?null:s.name)}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -481,13 +613,31 @@ const ReviewStep = ({ onExport, productData }) => {
               </div>}
             </div>)}
           </div>}
-          {activeTab==="images"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            {images.map(img=><div key={img.id} onClick={()=>setImages(prev=>prev.map(im=>im.id===img.id?{...im,selected:!im.selected}:im))} style={{position:"relative",borderRadius:8,overflow:"hidden",cursor:"pointer",border:`2px solid ${img.selected?"#10B981":"transparent"}`,transition:"all 0.2s",opacity:img.selected?1:0.5}}>
-              <img src={img.url} alt="" style={{width:"100%",aspectRatio:"1",objectFit:"cover"}}/>
-              <div className="mono" style={{position:"absolute",top:6,right:6,background:img.qualityScore>=8.5?"#10B981":img.qualityScore>=7?"#F59E0B":"#EF4444",borderRadius:4,padding:"2px 6px",fontSize:11,fontWeight:700,color:"white"}}>{img.qualityScore}</div>
-              {img.selected&&<div style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(16,185,129,0.8)",padding:"4px 6px",textAlign:"center",fontSize:10,fontWeight:600,color:"white"}}>✓ SELECTED</div>}
-              <div style={{padding:"4px 6px",background:"var(--hover-bg)",fontSize:10,color:"var(--text-muted)"}}>{img.label}</div>
-            </div>)}
+          {activeTab==="images"&&<div style={{display:"flex",flexDirection:"column",gap:12}}>
+            {images.length===0&&<div style={{textAlign:"center",padding:"30px 20px",color:"var(--text-dim)"}}><Icon name="camera" size={28} color="var(--text-dim)"/><p style={{marginTop:8,fontSize:13}}>No product images available</p></div>}
+            {images.length>0&&<>
+              {/* Main carousel image */}
+              <div style={{position:"relative",borderRadius:10,overflow:"hidden",background:"#000",cursor:"zoom-in"}} onClick={()=>{setLightbox(images.findIndex(im=>im.selected)||0);setZoomLevel(1);}}>
+                <img src={(images.find(im=>im.selected)||images[0]).url} alt="" style={{width:"100%",aspectRatio:"4/3",objectFit:"contain",background:"rgba(255,255,255,0.03)"}}/>
+                <div style={{position:"absolute",bottom:10,left:"50%",transform:"translateX(-50%)",display:"flex",gap:6}}>
+                  {images.map((img,i)=><div key={img.id} onClick={e=>{e.stopPropagation();setImages(prev=>prev.map((im,j)=>({...im,selected:j===i})));}} style={{width:images.length>6?6:8,height:images.length>6?6:8,borderRadius:"50%",background:img.selected?"#3B82F6":"rgba(255,255,255,0.4)",cursor:"pointer",transition:"all 0.2s",border:img.selected?"2px solid white":"2px solid transparent"}}/>)}
+                </div>
+                <div style={{position:"absolute",top:8,right:8,display:"flex",gap:6}}>
+                  <div style={{background:"rgba(0,0,0,0.6)",borderRadius:6,padding:"4px 8px",fontSize:11,color:"white",display:"flex",alignItems:"center",gap:4}}><Icon name="search" size={10} color="white"/>Click to zoom</div>
+                </div>
+                {images.length>1&&<>
+                  <div onClick={e=>{e.stopPropagation();const cur=images.findIndex(im=>im.selected);const prev=cur<=0?images.length-1:cur-1;setImages(imgs=>imgs.map((im,j)=>({...im,selected:j===prev})));}} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",width:28,height:28,borderRadius:"50%",background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}><Icon name="arrowLeft" size={14} color="white"/></div>
+                  <div onClick={e=>{e.stopPropagation();const cur=images.findIndex(im=>im.selected);const next=cur>=images.length-1?0:cur+1;setImages(imgs=>imgs.map((im,j)=>({...im,selected:j===next})));}} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",width:28,height:28,borderRadius:"50%",background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}><Icon name="chevronRight" size={14} color="white"/></div>
+                </>}
+              </div>
+              {/* Thumbnail strip */}
+              <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:4}}>
+                {images.map((img,i)=><div key={img.id} onClick={()=>setImages(prev=>prev.map((im,j)=>({...im,selected:j===i})))} style={{width:56,height:56,borderRadius:6,overflow:"hidden",cursor:"pointer",border:`2px solid ${img.selected?"#3B82F6":"transparent"}`,opacity:img.selected?1:0.5,transition:"all 0.2s",flexShrink:0}}>
+                  <img src={img.url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                </div>)}
+              </div>
+              <div style={{fontSize:11,color:"var(--text-dim)",textAlign:"center"}}>{images.length} image{images.length!==1?"s":""} · Click thumbnails to browse · Click main image to zoom</div>
+            </>}
           </div>}
           {activeTab==="seo"&&<div style={{display:"flex",flexDirection:"column",gap:12}}>
             <div><div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:8}}>AI-GENERATED SEO TAGS</div><div style={{display:"flex",flexWrap:"wrap",gap:6}}>{seoTags.map((t,i)=><span key={i} style={{padding:"4px 12px",background:"rgba(37,99,235,0.15)",border:"1px solid rgba(37,99,235,0.3)",borderRadius:20,fontSize:12,color:"#60A5FA"}}>#{t}</span>)}</div></div>
@@ -537,9 +687,78 @@ const ReviewStep = ({ onExport, productData }) => {
           </div>
         </div>
         <div style={{padding:"12px 16px",borderTop:"1px solid var(--border)",display:"flex",gap:10}}>
-          <button className="btn btn-success" style={{flex:1,justifyContent:"center"}} onClick={onExport}><Icon name="download" size={15}/> Proceed to Export</button>
+          <button className="btn btn-ghost" style={{justifyContent:"center"}} disabled={saving||saved} onClick={async () => {
+            setSaving(true);
+            try {
+              await saveForLater({
+                product: {
+                  ...product,
+                  ai_description_professional: aiDescs.find(d=>d.tone==="Professional")?.text || editedDesc,
+                  ai_description_friendly: aiDescs.find(d=>d.tone==="Friendly")?.text || '',
+                  ai_description_luxury: aiDescs.find(d=>d.tone==="Luxury")?.text || '',
+                  ai_category_suggestion: aiCategory || product.ai_category_suggestion || p.category,
+                  seo_tags: seoTags,
+                  edited_description: editedDesc,
+                },
+                sources: dbSources,
+                images: dbImages,
+                enriched: { price: editPrice },
+              });
+              setSaved(true);
+              if (onSave) setTimeout(() => onSave(), 1200);
+            } catch { setSaving(false); }
+          }}>{saved?<><Icon name="check" size={15}/> Saved!</>:saving?<><Icon name="refresh" size={15}/> Saving...</>:<><Icon name="bookmark" size={15}/> Save for Later</>}</button>
+          <button className="btn btn-success" style={{flex:1,justifyContent:"center"}} onClick={() => {
+            const enriched = {
+              ...productData,
+              product: {
+                ...product,
+                ai_description_professional: aiDescs.find(d=>d.tone==="Professional")?.text || editedDesc,
+                ai_description_friendly: aiDescs.find(d=>d.tone==="Friendly")?.text || '',
+                ai_description_luxury: aiDescs.find(d=>d.tone==="Luxury")?.text || '',
+                ai_category_suggestion: aiCategory || product.ai_category_suggestion || p.category,
+                seo_tags: seoTags,
+                meta_title: metaTitle || `${p.name} | ${p.brand}`,
+                meta_description: metaDescription || `Shop ${p.name} from ${p.brand}.`,
+                edited_description: editedDesc,
+                selected_tone: aiDescs[selectedDesc]?.tone || 'Professional',
+              },
+              enriched: {
+                price: editPrice,
+                selectedImages: images.filter(i => i.selected).map(i => i.url),
+              }
+            };
+            onExport(enriched);
+          }}><Icon name="download" size={15}/> Proceed to Export</button>
         </div>
       </div>
+      {/* Lightbox overlay */}
+      {lightbox!==null&&images.length>0&&<div style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,0.92)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}} onClick={()=>{setLightbox(null);setZoomLevel(1);}}>
+        {/* Close button */}
+        <button onClick={()=>{setLightbox(null);setZoomLevel(1);}} style={{position:"absolute",top:16,right:16,background:"rgba(255,255,255,0.1)",border:"none",borderRadius:"50%",width:40,height:40,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",zIndex:10}}><Icon name="x" size={20} color="white"/></button>
+        {/* Zoom controls */}
+        <div style={{position:"absolute",top:16,left:"50%",transform:"translateX(-50%)",display:"flex",gap:8,zIndex:10}}>
+          <button onClick={e=>{e.stopPropagation();setZoomLevel(z=>Math.max(1,z-0.5));}} style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:8,padding:"6px 14px",color:"white",cursor:"pointer",fontSize:14,fontFamily:"'Sora',sans-serif"}}>-</button>
+          <span style={{color:"white",fontSize:13,padding:"6px 10px",background:"rgba(255,255,255,0.1)",borderRadius:8}}>{Math.round(zoomLevel*100)}%</span>
+          <button onClick={e=>{e.stopPropagation();setZoomLevel(z=>Math.min(4,z+0.5));}} style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:8,padding:"6px 14px",color:"white",cursor:"pointer",fontSize:14,fontFamily:"'Sora',sans-serif"}}>+</button>
+        </div>
+        {/* Main image */}
+        <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",width:"100%",overflow:"hidden",cursor:zoomLevel>1?"grab":"zoom-in"}} onClick={e=>{e.stopPropagation();if(zoomLevel===1)setZoomLevel(2);else{setZoomLevel(1);setZoomPos({x:50,y:50});}}} onMouseMove={e=>{if(zoomLevel>1){const rect=e.currentTarget.getBoundingClientRect();setZoomPos({x:(e.clientX-rect.left)/rect.width*100,y:(e.clientY-rect.top)/rect.height*100});}}}>
+          <img src={images[lightbox]?.url} alt="" style={{maxWidth:"90vw",maxHeight:"75vh",objectFit:"contain",transform:`scale(${zoomLevel})`,transformOrigin:`${zoomPos.x}% ${zoomPos.y}%`,transition:zoomLevel===1?"transform 0.3s":"none",borderRadius:4}}/>
+        </div>
+        {/* Navigation arrows */}
+        {images.length>1&&<>
+          <div onClick={e=>{e.stopPropagation();setLightbox(l=>l<=0?images.length-1:l-1);setZoomLevel(1);}} style={{position:"absolute",left:20,top:"50%",transform:"translateY(-50%)",width:44,height:44,borderRadius:"50%",background:"rgba(255,255,255,0.1)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}><Icon name="arrowLeft" size={20} color="white"/></div>
+          <div onClick={e=>{e.stopPropagation();setLightbox(l=>l>=images.length-1?0:l+1);setZoomLevel(1);}} style={{position:"absolute",right:20,top:"50%",transform:"translateY(-50%)",width:44,height:44,borderRadius:"50%",background:"rgba(255,255,255,0.1)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}><Icon name="chevronRight" size={20} color="white"/></div>
+        </>}
+        {/* Thumbnail strip */}
+        <div style={{display:"flex",gap:8,padding:"16px 0",justifyContent:"center"}} onClick={e=>e.stopPropagation()}>
+          {images.map((img,i)=><div key={img.id} onClick={()=>{setLightbox(i);setZoomLevel(1);}} style={{width:52,height:52,borderRadius:6,overflow:"hidden",cursor:"pointer",border:`2px solid ${i===lightbox?"#3B82F6":"rgba(255,255,255,0.2)"}`,opacity:i===lightbox?1:0.5,transition:"all 0.2s"}}>
+            <img src={img.url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+          </div>)}
+        </div>
+        <div style={{color:"rgba(255,255,255,0.5)",fontSize:12,paddingBottom:12}}>{lightbox+1} / {images.length} · Click image to zoom · Scroll through with arrows</div>
+      </div>}
     </div>
   );
 };
@@ -547,31 +766,88 @@ const ReviewStep = ({ onExport, productData }) => {
 // ============================================================
 // STEP 3: EXPORT
 // ============================================================
-const ExportStep = ({ onComplete }) => {
+const ExportStep = ({ onComplete, productData }) => {
   const [fmt,setFmt]=useState("CSV"); const [plat,setPlat]=useState("Shopify"); const [exporting,setExporting]=useState(false); const [progress,setProgress]=useState(0); const [done,setDone]=useState(false); const [showConfetti,setShowConfetti]=useState(false);
+  const [exportError, setExportError] = useState(null);
+  const [exportedFile, setExportedFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
   const platforms=[{name:"Shopify",color:"#96BF48"},{name:"WooCommerce",color:"#7F54B3"},{name:"Magento",color:"#EE672F"},{name:"BigCommerce",color:"#34313F"}];
-  const handleExport=async()=>{setExporting(true);for(let i=0;i<=100;i+=3){await new Promise(r=>setTimeout(r,50));setProgress(i);}setProgress(100);setExporting(false);setDone(true);setShowConfetti(true);setTimeout(()=>setShowConfetti(false),4000);};
+  const product = productData?.product || {};
+  const productName = product.name || "Product";
+
+  useEffect(() => { getExportHistory().then(setHistory).catch(() => {}); }, [done]);
+
+  const handleExport=async()=>{
+    setExporting(true); setExportError(null); setProgress(0); setShowPreview(false);
+    const progressInterval = setInterval(() => setProgress(p => Math.min(p + 8, 90)), 100);
+    try {
+      const result = await exportProduct(fmt, plat, product.barcode, productData);
+      clearInterval(progressInterval);
+      setProgress(100);
+      setExportedFile(result);
+      setTimeout(() => { setExporting(false); setDone(true); setShowConfetti(true); setTimeout(()=>setShowConfetti(false),4000); }, 400);
+    } catch (err) {
+      clearInterval(progressInterval);
+      setExporting(false);
+      setExportError(err.message);
+    }
+  };
+
+  const handleDownload = () => {
+    if (!exportedFile) return;
+    const blob = new Blob([exportedFile.content], { type: exportedFile.contentType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = exportedFile.filename; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handlePreview = async () => {
+    setExportError(null);
+    try {
+      const result = await exportProduct(fmt, plat, product.barcode, productData);
+      setPreview(result.content);
+      setShowPreview(true);
+    } catch (err) {
+      setExportError(err.message);
+    }
+  };
+
+  const handleRedownload = async (exp) => {
+    try {
+      const data = await downloadExport(exp.id);
+      const blob = new Blob([data.content], { type: data.contentType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = data.filename; a.click();
+      URL.revokeObjectURL(url);
+    } catch {}
+  };
 
   if(done) return (
     <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",alignItems:"center",gap:24,padding:"60px 20px",textAlign:"center"}}>
       <Confetti active={showConfetti}/>
       <div className="animate-scaleIn" style={{width:80,height:80,borderRadius:"50%",background:"rgba(16,185,129,0.15)",border:"2px solid #10B981",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon name="check" size={36} color="#10B981"/></div>
-      <div><h2 style={{fontSize:28,fontWeight:800,marginBottom:8}}>Export Complete! 🎉</h2><p style={{color:"var(--text-muted)",maxWidth:400}}>Your product catalog has been exported to {plat} as {fmt}. Ready to import!</p></div>
+      <div><h2 style={{fontSize:28,fontWeight:800,marginBottom:8}}>Export Complete!</h2><p style={{color:"var(--text-muted)",maxWidth:400}}>Your product has been exported to {plat} as {fmt}. Ready to import!</p></div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,maxWidth:480}}>
-        {[{l:"Products Exported",v:"1"},{l:"Time Saved",v:"~2 hrs"},{l:"Format",v:fmt}].map((s,i)=><div key={i} className="card" style={{textAlign:"center"}}><div className="mono" style={{fontSize:24,fontWeight:800,color:"#10B981"}}>{s.v}</div><div style={{fontSize:11,color:"var(--text-dim)",marginTop:2}}>{s.l}</div></div>)}
+        {[{l:"Products Exported",v:"1"},{l:"Platform",v:plat},{l:"Format",v:fmt}].map((s,i)=><div key={i} className="card" style={{textAlign:"center"}}><div className="mono" style={{fontSize:24,fontWeight:800,color:"#10B981"}}>{s.v}</div><div style={{fontSize:11,color:"var(--text-dim)",marginTop:2}}>{s.l}</div></div>)}
       </div>
-      <div style={{display:"flex",gap:12}}><button className="btn btn-success"><Icon name="download" size={15}/> Download File</button><button className="btn btn-ghost" onClick={onComplete}><Icon name="plus" size={15}/> New Product</button></div>
+      <div style={{display:"flex",gap:12}}><button className="btn btn-success" onClick={handleDownload}><Icon name="download" size={15}/> Download {exportedFile?.filename || "File"}</button><button className="btn btn-ghost" onClick={onComplete}><Icon name="plus" size={15}/> New Product</button></div>
     </div>
   );
 
   return (
     <div className="animate-fadeIn" style={{maxWidth:600,margin:"0 auto",padding:"24px 20px",display:"flex",flexDirection:"column",gap:24}}>
       <div><h2 style={{fontSize:22,fontWeight:700,marginBottom:4}}>Export Catalog</h2><p style={{color:"var(--text-muted)",fontSize:14}}>Choose your export format and destination platform</p></div>
+      {exportError&&<div style={{padding:"10px 14px",background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,fontSize:13,color:"#FCA5A5",display:"flex",gap:8,alignItems:"center"}}><Icon name="warning" size={14} color="#EF4444"/>{exportError}</div>}
       <div><div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:10}}>EXPORT FORMAT</div>
-        <div style={{display:"flex",gap:10}}>{["CSV","JSON","XML"].map(f=><button key={f} onClick={()=>setFmt(f)} className="mono" style={{flex:1,padding:14,borderRadius:10,border:`2px solid ${fmt===f?"#3B82F6":"var(--border)"}`,background:fmt===f?"rgba(37,99,235,0.1)":"var(--hover-bg)",color:fmt===f?"#60A5FA":"var(--text-muted)",fontSize:16,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}>{f}</button>)}</div>
+        <div style={{display:"flex",gap:10}}>{["CSV","JSON","XML"].map(f=><button key={f} onClick={()=>{setFmt(f);setShowPreview(false);}} className="mono" style={{flex:1,padding:14,borderRadius:10,border:`2px solid ${fmt===f?"#3B82F6":"var(--border)"}`,background:fmt===f?"rgba(37,99,235,0.1)":"var(--hover-bg)",color:fmt===f?"#60A5FA":"var(--text-muted)",fontSize:16,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}>{f}</button>)}</div>
       </div>
       <div><div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:10}}>PLATFORM TEMPLATE</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{platforms.map(pl=><div key={pl.name} className={`export-card ${plat===pl.name?"selected":""}`} onClick={()=>setPlat(pl.name)}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{platforms.map(pl=><div key={pl.name} className={`export-card ${plat===pl.name?"selected":""}`} onClick={()=>{setPlat(pl.name);setShowPreview(false);}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:10,height:10,borderRadius:"50%",background:pl.color}}/><span style={{fontSize:14,fontWeight:600}}>{pl.name}</span></div>
           <div style={{fontSize:11,color:"var(--text-dim)",marginTop:4}}>{fmt} template optimized</div>
           {plat===pl.name&&<div style={{position:"absolute",top:10,right:10}}><Icon name="check" size={14} color="#10B981"/></div>}
@@ -579,10 +855,36 @@ const ExportStep = ({ onComplete }) => {
       </div>
       <div style={{padding:16,background:"var(--hover-bg)",borderRadius:10,border:"1px solid var(--border)"}}>
         <div style={{fontSize:12,fontWeight:700,color:"var(--text-dim)",marginBottom:10,letterSpacing:"0.06em"}}>EXPORT SUMMARY</div>
-        {[["Product","Sony WH-1000XM5 Headphones"],["Format",fmt],["Platform",plat],["Images","3 selected (top quality)"],["Description","AI-Generated (Professional)"]].map(([k,v])=><div key={k} style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:13}}><span style={{color:"var(--text-dim)"}}>{k}</span><span className={k==="Format"?"mono":""} style={{color:"var(--text-sec)"}}>{v}</span></div>)}
+        {[["Product",productName],["Format",fmt],["Platform",plat],["Barcode",product.barcode||"N/A"],["Description",product.ai_description_professional||product.edited_description?"AI-Generated":"Standard"],["Price",productData?.enriched?.price||"Not set"],["Images",String(productData?.enriched?.selectedImages?.length||0)+" selected"]].map(([k,v])=><div key={k} style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:13}}><span style={{color:"var(--text-dim)"}}>{k}</span><span className={k==="Format"?"mono":""} style={{color:"var(--text-sec)"}}>{v}</span></div>)}
       </div>
+      {showPreview&&preview&&<div style={{maxHeight:250,overflow:"auto",background:"var(--hover-bg)",border:"1px solid var(--border)",borderRadius:10,padding:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+          <span style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em"}}>EXPORT PREVIEW — {fmt}</span>
+          <button className="btn btn-ghost" style={{fontSize:11,padding:"2px 8px"}} onClick={()=>setShowPreview(false)}><Icon name="x" size={12}/></button>
+        </div>
+        <pre className="mono" style={{fontSize:11,color:"var(--text-muted)",whiteSpace:"pre-wrap",wordBreak:"break-all",lineHeight:1.5,margin:0}}>{preview}</pre>
+      </div>}
       {exporting&&<div><div style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:12}}><span style={{color:"var(--text-muted)"}}>Generating {fmt}...</span><span className="mono" style={{color:"#10B981"}}>{progress}%</span></div><div className="progress-bar" style={{height:6}}><div className="progress-fill" style={{width:`${progress}%`,background:"linear-gradient(90deg,#2563EB,#10B981)"}}/></div></div>}
-      <button className="btn btn-success" style={{justifyContent:"center",fontSize:15,padding:14}} onClick={handleExport} disabled={exporting}>{exporting?<><Icon name="refresh" size={15}/> Generating...</>:<><Icon name="download" size={15}/> Export to {plat}</>}</button>
+      <div style={{display:"flex",gap:10}}>
+        <button className="btn btn-ghost" style={{justifyContent:"center",fontSize:13,padding:14}} onClick={handlePreview} disabled={exporting}><Icon name="search" size={15}/> Preview</button>
+        <button className="btn btn-success" style={{flex:1,justifyContent:"center",fontSize:15,padding:14}} onClick={handleExport} disabled={exporting}>{exporting?<><Icon name="refresh" size={15}/> Generating...</>:<><Icon name="download" size={15}/> Export to {plat}</>}</button>
+      </div>
+      <div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}} onClick={()=>setShowHistory(!showHistory)}>
+          <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em"}}>EXPORT HISTORY ({history.length})</div>
+          <Icon name={showHistory?"chevronDown":"chevronRight"} size={14} color="var(--text-dim)"/>
+        </div>
+        {showHistory&&<div style={{marginTop:8,display:"flex",flexDirection:"column",gap:6,maxHeight:200,overflow:"auto"}}>
+          {history.length===0&&<div style={{fontSize:12,color:"var(--text-dim)",textAlign:"center",padding:12}}>No exports yet</div>}
+          {history.map(exp=><div key={exp.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"var(--hover-bg)",borderRadius:6,fontSize:12,border:"1px solid var(--border)"}}>
+            <div>
+              <div style={{fontWeight:600,color:"var(--text-sec)"}}>{exp.product_name||exp.barcode}</div>
+              <div style={{fontSize:11,color:"var(--text-dim)",marginTop:2}}>{exp.platform} · {exp.format} · {new Date(exp.created_at).toLocaleDateString()}</div>
+            </div>
+            <button className="btn btn-ghost" style={{fontSize:11,padding:"4px 10px"}} onClick={()=>handleRedownload(exp)}><Icon name="download" size={12}/></button>
+          </div>)}
+        </div>}
+      </div>
     </div>
   );
 };
@@ -590,7 +892,7 @@ const ExportStep = ({ onComplete }) => {
 // ============================================================
 // DASHBOARD
 // ============================================================
-const Dashboard = ({ onNew, onViewVoices }) => {
+const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
   const [stats, setStats] = useState(null);
   const [catalog, setCatalog] = useState([]);
   const [voices, setVoices] = useState([]);
@@ -621,7 +923,7 @@ const Dashboard = ({ onNew, onViewVoices }) => {
 
   const statCards = stats ? [
     {label:"Total Products",value:String(stats.total_products||0),icon:"package",color:"#3B82F6"},
-    {label:"Published",value:String(stats.published||0),icon:"check",color:"#10B981"},
+    {label:"Exported",value:String(stats.published||0),icon:"check",color:"#10B981"},
     {label:"Total Searches",value:String(stats.total_searches||0),icon:"search",color:"#8B5CF6"},
     {label:"Cache Hit Rate",value:`${stats.cache_hit_rate||0}%`,icon:"zap",color:"#F59E0B"},
   ] : [{label:"Total Products",value:"—",icon:"package",color:"#3B82F6"},{label:"Published",value:"—",icon:"check",color:"#10B981"},{label:"Total Searches",value:"—",icon:"search",color:"#8B5CF6"},{label:"Cache Hit Rate",value:"—",icon:"zap",color:"#F59E0B"}];
@@ -661,7 +963,11 @@ const Dashboard = ({ onNew, onViewVoices }) => {
               <td style={{padding:"12px 16px"}}><span className="mono" style={{fontSize:12,color:"var(--text-muted)"}}>{item.barcode||"—"}</span></td>
               <td style={{padding:"12px 16px"}}><span className={`badge ${sc[item.status]||"badge-neutral"}`}>{item.status||"Draft"}</span></td>
               <td style={{padding:"12px 16px"}}><span style={{fontSize:12,color:"var(--text-dim)"}}>{item.updated_at?new Date(item.updated_at).toLocaleDateString():""}</span></td>
-              <td style={{padding:"12px 16px"}}><div style={{display:"flex",gap:6}}>{["eye","edit","download"].map(ic=><button key={ic} className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}}><Icon name={ic} size={12}/></button>)}</div></td>
+              <td style={{padding:"12px 16px"}}><div style={{display:"flex",gap:6}}>
+                <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="View" onClick={(e)=>{e.stopPropagation();onViewProduct(item.product_id,1);}}><Icon name="eye" size={12}/></button>
+                <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Edit & Re-export" onClick={(e)=>{e.stopPropagation();onViewProduct(item.product_id,1);}}><Icon name="edit" size={12}/></button>
+                <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Export" onClick={(e)=>{e.stopPropagation();onExportProduct(item.product_id);}}><Icon name="download" size={12}/></button>
+              </div></td>
             </tr>)}</tbody>
           </table>
         )}
@@ -1053,8 +1359,23 @@ const AuthPage = ({ onLogin, dark }) => {
               <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
             </div>
 
-            {/* Social placeholder */}
-            <button className="btn btn-ghost" style={{ justifyContent: "center", width: "100%", padding: "11px 0", fontSize: 13 }}>
+            {/* Google Sign-In */}
+            <button className="btn btn-ghost" style={{ justifyContent: "center", width: "100%", padding: "11px 0", fontSize: 13 }}
+              onClick={() => {
+                if (!window.google) { setError("Google Sign-In is loading. Please try again."); return; }
+                window.google.accounts.id.initialize({
+                  client_id: '411509104508-t3q1qg1m0cmjmh4s2ct0aqkgvv8c1r1r.apps.googleusercontent.com',
+                  callback: async (response) => {
+                    clear(); setLoading(true);
+                    try {
+                      const data = await googleSignIn(response.credential);
+                      setLoading(false);
+                      onLogin({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store: data.user.store_name });
+                    } catch (err) { setLoading(false); setError(err.message); }
+                  },
+                });
+                window.google.accounts.id.prompt();
+              }}>
               <svg width={16} height={16} viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
               Continue with Google
             </button>
@@ -1873,13 +2194,30 @@ export default function App() {
           </div>
 
           <div style={{ flex: 1, overflow: "auto", padding: "20px 28px" }}>
-            {view === "dashboard" && <Dashboard onNew={() => { setStep(0); setProductData(null); setView("catalog"); }} onViewVoices={() => setView("voices")} />}
+            {view === "dashboard" && <Dashboard onNew={() => { setStep(0); setProductData(null); setView("catalog"); }} onViewVoices={() => setView("voices")}
+              onViewProduct={async (productId, step) => {
+                try {
+                  const data = await getProductById(productId);
+                  setProductData(data);
+                  setStep(step || 1);
+                  setView("catalog");
+                } catch {}
+              }}
+              onExportProduct={async (productId) => {
+                try {
+                  const data = await getProductById(productId);
+                  setProductData(data);
+                  setStep(2);
+                  setView("catalog");
+                } catch {}
+              }}
+            />}
             {view === "catalog" && (
               <div>
                 <StepIndicator currentStep={step} />
                 {step === 0 && <SearchStep onSearch={(data) => { setProductData(data); setStep(1); }} />}
-                {step === 1 && <ReviewStep onExport={() => setStep(2)} productData={productData} />}
-                {step === 2 && <ExportStep onComplete={() => { setStep(0); setView("dashboard"); }} />}
+                {step === 1 && <ReviewStep onExport={(enrichedData) => { setProductData(enrichedData); setStep(2); }} onSave={() => { setStep(0); setProductData(null); setView("dashboard"); }} productData={productData} />}
+                {step === 2 && <ExportStep onComplete={() => { setStep(0); setView("dashboard"); }} productData={productData} />}
               </div>
             )}
             {view === "analytics" && <Analytics />}

@@ -5,6 +5,8 @@ const db = require('../db');
 const auth = require('../middleware/auth');
 require('dotenv').config({ path: __dirname + '/../.env' });
 
+const { OAuth2Client } = require('google-auth-library');
+
 const router = express.Router();
 
 // Sign Up
@@ -168,6 +170,62 @@ router.put('/settings', auth, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Google OAuth
+router.post('/google', async (req, res) => {
+  try {
+    const { credential } = req.body;
+    if (!credential) return res.status(400).json({ error: 'Google credential is required' });
+
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) return res.status(500).json({ error: 'Google OAuth not configured' });
+
+    const client = new OAuth2Client(clientId);
+    const ticket = await client.verifyIdToken({ idToken: credential, audience: clientId });
+    const payload = ticket.getPayload();
+
+    const email = payload.email.toLowerCase().trim();
+    const name = payload.name || email.split('@')[0];
+
+    // Check if user exists
+    const [existing] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
+
+    if (existing.length > 0) {
+      // Existing user — sign in
+      const user = existing[0];
+      const token = jwt.sign(
+        { id: user.id, email: user.email, role: user.role },
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.JWT_EXPIRES_IN }
+      );
+      return res.json({
+        token,
+        user: { id: user.id, name: user.name, email: user.email, role: user.role, store_name: user.store_name }
+      });
+    }
+
+    // New user — create account (no password needed for Google users)
+    const randomHash = await bcrypt.hash(Math.random().toString(36), 12);
+    const [result] = await db.query(
+      'INSERT INTO users (name, email, password_hash, role, store_name) VALUES (?, ?, ?, ?, ?)',
+      [name, email, randomHash, 'Editor', 'My Store']
+    );
+
+    const token = jwt.sign(
+      { id: result.insertId, email, role: 'Editor' },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN }
+    );
+
+    res.status(201).json({
+      token,
+      user: { id: result.insertId, name, email, role: 'Editor', store_name: 'My Store' }
+    });
+  } catch (err) {
+    console.error('Google auth error:', err.message);
+    res.status(401).json({ error: 'Google authentication failed' });
   }
 });
 

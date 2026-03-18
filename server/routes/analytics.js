@@ -8,7 +8,7 @@ const router = express.Router();
 router.get('/stats', auth, async (req, res) => {
   try {
     const [totalProducts] = await db.query('SELECT COUNT(*) as count FROM catalog_entries WHERE user_id = ?', [req.user.id]);
-    const [published] = await db.query("SELECT COUNT(*) as count FROM catalog_entries WHERE user_id = ? AND status = 'Published'", [req.user.id]);
+    const [exported] = await db.query("SELECT COUNT(*) as count FROM catalog_entries WHERE user_id = ? AND status = 'Exported'", [req.user.id]);
     const [searches] = await db.query('SELECT COUNT(*) as count FROM search_history WHERE user_id = ?', [req.user.id]);
     const [cacheHits] = await db.query('SELECT COUNT(*) as count FROM search_history WHERE user_id = ? AND cache_hit = TRUE', [req.user.id]);
     const [avgTime] = await db.query('SELECT AVG(response_time_ms) as avg_ms FROM search_history WHERE user_id = ?', [req.user.id]);
@@ -17,7 +17,7 @@ router.get('/stats', auth, async (req, res) => {
 
     res.json({
       total_products: totalProducts[0].count,
-      published: published[0].count,
+      published: exported[0].count,
       total_searches: searches[0].count,
       cache_hit_rate: cacheHitRate,
       avg_response_time: Math.round(avgTime[0].avg_ms || 0)

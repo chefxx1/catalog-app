@@ -273,6 +273,99 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
+// Save for later (saves product + creates catalog entry with Review status)
+router.post('/save-for-later', auth, async (req, res) => {
+  try {
+    const { product: p, sources, images, enriched } = req.body;
+    if (!p?.name) return res.status(400).json({ error: 'Product name is required' });
+
+    const barcode = p.barcode || `AI-${Date.now()}`;
+    const cacheExpiry = new Date();
+    cacheExpiry.setDate(cacheExpiry.getDate() + CACHE_DAYS);
+
+    // Insert or update product
+    const [existing] = await db.query('SELECT id FROM products WHERE barcode = ?', [barcode]);
+    let productId;
+
+    if (existing.length > 0) {
+      productId = existing[0].id;
+      await db.query(
+        `UPDATE products SET name = ?, brand = ?, description = ?,
+         ai_description_professional = ?, ai_description_friendly = ?, ai_description_luxury = ?,
+         ai_category_suggestion = ?, seo_tags = ?, cached_at = NOW(), cache_expires_at = ?
+         WHERE id = ?`,
+        [p.name, p.brand, p.description,
+         p.ai_description_professional || null, p.ai_description_friendly || null, p.ai_description_luxury || null,
+         p.ai_category_suggestion || null, p.seo_tags ? JSON.stringify(p.seo_tags) : null, cacheExpiry, productId]
+      );
+    } else {
+      const [result] = await db.query(
+        `INSERT INTO products (barcode, name, brand, description,
+         ai_description_professional, ai_description_friendly, ai_description_luxury,
+         ai_category_suggestion, seo_tags, cache_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [barcode, p.name, p.brand, p.description,
+         p.ai_description_professional || null, p.ai_description_friendly || null, p.ai_description_luxury || null,
+         p.ai_category_suggestion || null, p.seo_tags ? JSON.stringify(p.seo_tags) : null, cacheExpiry]
+      );
+      productId = result.insertId;
+    }
+
+    // Save images (skip base64)
+    if (images?.length > 0) {
+      await db.query('DELETE FROM product_images WHERE product_id = ?', [productId]);
+      for (let i = 0; i < images.length; i++) {
+        const url = images[i].image_url || images[i].url;
+        if (url && !url.startsWith('data:')) {
+          await db.query(
+            'INSERT INTO product_images (product_id, source_name, image_url, quality_score, sort_order) VALUES (?, ?, ?, ?, ?)',
+            [productId, images[i].source_name || 'Web', url, images[i].quality_score || 80, i]
+          );
+        }
+      }
+    }
+
+    // Save sources (skip invalid enum values)
+    if (sources?.length > 0) {
+      const validSources = ['Amazon', 'Alibaba', 'Open Food Facts', 'UPC Database', 'Google'];
+      await db.query('DELETE FROM product_sources WHERE product_id = ?', [productId]);
+      for (const src of sources) {
+        if (!validSources.includes(src.source_name)) continue;
+        try {
+          await db.query(
+            `INSERT INTO product_sources (product_id, source_name, source_url, price, currency, weight, description, trust_score, specs)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [productId, src.source_name, src.source_url || null, src.price || null, src.currency || 'USD',
+             src.weight || null, src.description || null, src.trust_score || 0, src.specs ? JSON.stringify(src.specs) : null]
+          );
+        } catch {}
+      }
+    }
+
+    // Create or update catalog entry with "Review" status
+    const [existingEntry] = await db.query(
+      'SELECT id FROM catalog_entries WHERE user_id = ? AND product_id = ?',
+      [req.user.id, productId]
+    );
+    if (existingEntry.length === 0) {
+      await db.query(
+        `INSERT INTO catalog_entries (user_id, product_id, status, custom_name, custom_description, custom_price)
+         VALUES (?, ?, 'Review', ?, ?, ?)`,
+        [req.user.id, productId, p.name, p.edited_description || p.description || null, enriched?.price || null]
+      );
+    } else {
+      await db.query(
+        "UPDATE catalog_entries SET status = 'Review', custom_name = ?, custom_description = ?, custom_price = ?, updated_at = NOW() WHERE id = ?",
+        [p.name, p.edited_description || p.description || null, enriched?.price || null, existingEntry[0].id]
+      );
+    }
+
+    res.status(201).json({ success: true, productId });
+  } catch (err) {
+    console.error('Save for later error:', err.message);
+    res.status(500).json({ error: 'Failed to save product: ' + err.message });
+  }
+});
+
 // Resolve a conflict
 router.patch('/conflicts/:id/resolve', auth, async (req, res) => {
   try {
@@ -335,6 +428,20 @@ router.patch('/catalog/:id', auth, async (req, res) => {
     const { status } = req.body;
     await db.query('UPDATE catalog_entries SET status = ? WHERE id = ? AND user_id = ?', [status, req.params.id, req.user.id]);
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get product by ID (for catalog view/edit) — must be after /catalog to avoid conflict
+router.get('/:id', auth, async (req, res) => {
+  try {
+    const [product] = await db.query('SELECT * FROM products WHERE id = ?', [req.params.id]);
+    if (!product[0]) return res.status(404).json({ error: 'Product not found' });
+    const [sources] = await db.query('SELECT * FROM product_sources WHERE product_id = ?', [req.params.id]);
+    const [images] = await db.query('SELECT * FROM product_images WHERE product_id = ? ORDER BY sort_order', [req.params.id]);
+    const [conflicts] = await db.query('SELECT * FROM conflicts WHERE product_id = ?', [req.params.id]);
+    res.json({ product: product[0], sources, images, conflicts });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }

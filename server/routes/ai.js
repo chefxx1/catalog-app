@@ -104,4 +104,108 @@ Return a JSON object with exactly this structure (no markdown, no code fences, j
   }
 });
 
+// POST /api/ai/identify — identify product from image
+router.post('/identify', auth, async (req, res) => {
+  try {
+    const { image } = req.body; // base64 image data
+    if (!image) return res.status(400).json({ error: 'Image data is required' });
+
+    const model = getModel();
+
+    const prompt = `You are a product identification expert. Analyze this product image and identify the product.
+
+Return a JSON object with exactly this structure (no markdown, no code fences, just raw JSON):
+{
+  "name": "Full product name (be specific with model if identifiable)",
+  "brand": "Brand name (or 'Unknown' if not identifiable)",
+  "category": "Category path like: Main Category > Subcategory > Type",
+  "description": "Brief product description (2-3 sentences)",
+  "barcode": "Barcode/UPC if visible in image, otherwise null",
+  "confidence": 85,
+  "specs": {
+    "key": "value"
+  },
+  "sources": [
+    {"name": "Store Name", "trustScore": 85, "price": "$XX.XX", "url": "https://..."}
+  ]
+}
+
+IMPORTANT for specs: Generate 5-8 specifications that are RELEVANT to this specific product type. Examples:
+- Chair/Furniture: Material, Dimensions, Weight Capacity, Color, Assembly Required, Style
+- Clothing/Shoes: Material, Size Range, Color, Care Instructions, Season, Fit Type
+- Electronics/TV: Screen Size, Resolution, Connectivity, Weight, Dimensions, Processor
+- Food/Beverage: Ingredients, Weight/Volume, Nutrition, Allergens, Origin
+- Headphones/Audio: Driver Size, Frequency Response, Battery Life, Connectivity, Weight
+Do NOT include specs from other product types (e.g. no "Battery Life" for a chair).
+
+For sources: Suggest 3-5 real retailers where this type of product is commonly sold (e.g. Amazon, IKEA, Walmart, Wayfair, Best Buy, Target, etc). Estimate realistic prices and trust scores (60-95).
+
+Be as specific as possible. If you can identify the exact product model, include it. Set confidence 0-100 based on how certain you are.`;
+
+    // Strip data URL prefix if present
+    const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
+    const mimeMatch = image.match(/^data:(image\/\w+);base64,/);
+    const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+
+    const result = await model.generateContent([
+      prompt,
+      { inlineData: { data: base64Data, mimeType } },
+    ]);
+    const text = result.response.text().trim();
+
+    let parsed;
+    try {
+      const jsonStr = text.replace(/^```json?\s*/i, '').replace(/```\s*$/, '').trim();
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      return res.status(500).json({ error: 'Failed to parse AI response' });
+    }
+
+    res.json(parsed);
+  } catch (err) {
+    console.error('AI identify error:', err.message);
+    if (err.message.includes('GEMINI_API_KEY')) {
+      return res.status(400).json({ error: 'AI API key not configured.' });
+    }
+    res.status(500).json({ error: 'Image identification failed: ' + err.message });
+  }
+});
+
+// POST /api/ai/search-images — find product images by name (Serper.dev)
+router.post('/search-images', auth, async (req, res) => {
+  try {
+    const { query } = req.body;
+    if (!query) return res.status(400).json({ error: 'Search query is required' });
+
+    const response = await fetch('https://google.serper.dev/images', {
+      method: 'POST',
+      headers: {
+        'X-API-KEY': process.env.SERPER_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ q: query + ' product high quality', num: 8 }),
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(400).json({ error: data.message || 'Image search failed' });
+    }
+
+    const images = (data.images || []).map((item, i) => ({
+      id: i + 1,
+      url: item.imageUrl,
+      thumbnail: item.thumbnailUrl || item.imageUrl,
+      title: item.title || '',
+      source: item.source || '',
+      width: item.imageWidth || 0,
+      height: item.imageHeight || 0,
+    }));
+
+    res.json({ images });
+  } catch (err) {
+    console.error('Image search error:', err.message);
+    res.status(500).json({ error: 'Image search failed: ' + err.message });
+  }
+});
+
 module.exports = router;

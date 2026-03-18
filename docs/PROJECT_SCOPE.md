@@ -108,7 +108,4 @@ CatalogAI provides a single platform where merchants can:
 
 ---
 
-## Team
-- Naim (chefxx1) — Project Lead / Full-Stack Development
-- plgammer331 — Development
-- Afif-Tamim — Development
+
