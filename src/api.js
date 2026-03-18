@@ -86,6 +86,24 @@ export const refreshProduct = async (barcode) => {
 };
 
 // ── CATALOG ──
+export const saveForLater = async (productData) => {
+  const res = await fetch(`${API_URL}/products/save-for-later`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify(productData),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+};
+
+export const getProductById = async (id) => {
+  const res = await fetch(`${API_URL}/products/${id}`, { headers: headers() });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+};
+
 export const getCatalog = async () => {
   const res = await fetch(`${API_URL}/products/catalog`, { headers: headers() });
   const data = await res.json();
@@ -217,6 +235,65 @@ export const generateAIContent = async (productData) => {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error);
+  return data;
+};
+
+export const identifyProduct = async (imageBase64) => {
+  const res = await fetch(`${API_URL}/ai/identify`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ image: imageBase64 }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+};
+
+export const searchProductImages = async (query) => {
+  const res = await fetch(`${API_URL}/ai/search-images`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ query }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data.images;
+};
+
+export const exportProduct = async (format, platform, barcode, productData) => {
+  const res = await fetch(`${API_URL}/export`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ format, platform, barcode, productData }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+};
+
+export const getExportHistory = async () => {
+  const res = await fetch(`${API_URL}/export/history`, { headers: headers() });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data.exports;
+};
+
+export const downloadExport = async (exportId) => {
+  const res = await fetch(`${API_URL}/export/history/${exportId}/download`, { headers: headers() });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+};
+
+export const googleSignIn = async (credential) => {
+  const res = await fetch(`${API_URL}/auth/google`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ credential }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  setToken(data.token);
   return data;
 };
 
