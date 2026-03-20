@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, setOnUnauthorized, getCatalog, getStats, getSourcePerformance, getSearchHistory, searchProduct, getProductById, saveForLater, resolveConflict, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice, generateAIContent, identifyProduct, searchProductImages, exportProduct, getExportHistory, downloadExport, googleSignIn } from "./api";
+import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, setOnUnauthorized, getCatalog, getStats, getSourcePerformance, getSearchHistory, searchProduct, getProductById, saveForLater, resolveConflict, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice, generateAIContent, identifyProduct, searchProductImages, exportProduct, getExportHistory, downloadExport, googleSignIn, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, deleteAllData, deleteAccount, clearSearchHistory } from "./api";
 import { Html5Qrcode } from "html5-qrcode";
 
 // ============================================================
@@ -151,6 +151,7 @@ const GlobalStyles = ({ dark }) => (
     .animate-glow { animation: glow 2s ease-in-out infinite; }
     .animate-scaleIn { animation: scaleIn 0.35s ease-out both; }
     .animate-theme { animation: themeSwitch 0.4s ease-out; }
+    tr:hover .row-check { opacity:1 !important; }
 
     .skeleton { background: linear-gradient(90deg, var(--surface) 25%, var(--surface-light) 50%, var(--surface) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 4px; }
 
@@ -441,17 +442,28 @@ const ReviewStep = ({ onExport, onSave, productData }) => {
   })) : [];
 
   // Parse real specs from source data or AI-identified attributes
+  const parseSpecs = (raw) => {
+    if (!raw) return null;
+    let parsed = raw;
+    // Unwrap double/triple stringified JSON
+    while (typeof parsed === 'string') {
+      try { parsed = JSON.parse(parsed); } catch { return null; }
+    }
+    return (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length > 0) ? parsed : null;
+  };
+
   const realSpecs = (() => {
     for (const s of dbSources) {
       if (s.specs) {
-        try { return typeof s.specs === 'string' ? JSON.parse(s.specs) : s.specs; } catch { }
+        const p = parseSpecs(s.specs);
+        if (p) return p;
       }
     }
     return null;
   })();
 
-  // Use AI-identified attributes if available
-  const aiAttrs = product.attributes || null;
+  // Use AI-identified attributes if available (from frontend pass-through or DB)
+  const aiAttrs = product.attributes || parseSpecs(product.ai_attributes) || null;
   const specs = realSpecs || (aiAttrs ? Object.fromEntries(Object.entries(aiAttrs).filter(([,v]) => v && v !== "null")) : null);
 
   const defaultDescs = [
@@ -694,6 +706,7 @@ const ReviewStep = ({ onExport, onSave, productData }) => {
               await saveForLater({
                 product: {
                   ...product,
+                  attributes: specs || product.attributes || null,
                   ai_description_professional: aiDescs.find(d=>d.tone==="Professional")?.text || editedDesc,
                   ai_description_friendly: aiDescs.find(d=>d.tone==="Friendly")?.text || '',
                   ai_description_luxury: aiDescs.find(d=>d.tone==="Luxury")?.text || '',
@@ -715,6 +728,7 @@ const ReviewStep = ({ onExport, onSave, productData }) => {
               ...productData,
               product: {
                 ...product,
+                attributes: specs || product.attributes || null,
                 ai_description_professional: aiDescs.find(d=>d.tone==="Professional")?.text || editedDesc,
                 ai_description_friendly: aiDescs.find(d=>d.tone==="Friendly")?.text || '',
                 ai_description_luxury: aiDescs.find(d=>d.tone==="Luxury")?.text || '',
@@ -901,8 +915,19 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
   const [voices, setVoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchFilter, setSearchFilter] = useState("");
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editPrice, setEditPrice] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [selected, setSelected] = useState(new Set());
+  const [showDeleteDialog, setShowDeleteDialog] = useState(null);
+  const [batchExporting, setBatchExporting] = useState(false);
+  const [showBatchModal, setShowBatchModal] = useState(false);
+  const [batchFmt, setBatchFmt] = useState("CSV");
+  const [batchPlat, setBatchPlat] = useState("Shopify");
+  const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
 
-  useEffect(() => {
+  const reload = () => {
     Promise.all([
       getStats().catch(err => { toast.error("Failed to load stats"); return {}; }),
       getCatalog().catch(() => []),
@@ -916,13 +941,125 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
       }));
       setLoading(false);
     });
-  }, []);
+  };
+
+  useEffect(() => { reload(); }, []);
 
   const sc={Published:"badge-success",Review:"badge-warning",Draft:"badge-neutral",Exported:"badge-primary"};
 
   const filteredCatalog = catalog.filter(item =>
-    !searchFilter || (item.name || "").toLowerCase().includes(searchFilter.toLowerCase()) || (item.barcode || "").includes(searchFilter)
+    !searchFilter || (item.custom_name || item.name || "").toLowerCase().includes(searchFilter.toLowerCase()) || (item.barcode || "").includes(searchFilter)
   );
+
+  const startEdit = (item) => {
+    setEditingId(item.id);
+    setEditName(item.custom_name || item.name || "");
+    setEditPrice(item.custom_price || "");
+    setEditDesc(item.custom_description || "");
+  };
+
+  const saveEdit = async () => {
+    try {
+      await updateCatalogEntry(editingId, { custom_name: editName, custom_price: editPrice || null, custom_description: editDesc || null });
+      setCatalog(prev => prev.map(c => c.id === editingId ? { ...c, custom_name: editName, custom_price: editPrice, custom_description: editDesc } : c));
+      toast.success("Entry updated");
+      setEditingId(null);
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleStatusChange = async (id, status) => {
+    try {
+      await updateCatalogStatus(id, status);
+      setCatalog(prev => prev.map(c => c.id === id ? { ...c, status } : c));
+      toast.success(`Status changed to ${status}`);
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      await deleteCatalogEntry(id);
+      setCatalog(prev => prev.filter(c => c.id !== id));
+      setSelected(prev => { const n = new Set(prev); n.delete(id); return n; });
+      setShowDeleteDialog(null);
+      toast.success("Entry deleted");
+      // Refresh stats
+      getStats().then(s => setStats(s)).catch(() => {});
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const toggleSelect = (id) => {
+    setSelected(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selected.size === filteredCatalog.length) setSelected(new Set());
+    else setSelected(new Set(filteredCatalog.map(c => c.id)));
+  };
+
+  const handleBatchExport = () => {
+    if (selected.size === 0) return toast.warning("Select products to export");
+    if (selected.size === 1) {
+      const item = catalog.find(c => selected.has(c.id));
+      if (item) onExportProduct(item.product_id);
+      return;
+    }
+    setShowBatchModal(true);
+  };
+
+  const doBatchExport = async () => {
+    const items = [...selected].map(id => catalog.find(c => c.id === id)).filter(Boolean);
+    setBatchExporting(true);
+    setBatchProgress({ done: 0, total: items.length });
+    const allContent = [];
+    let success = 0;
+    for (const item of items) {
+      try {
+        const result = await exportProduct(batchFmt, batchPlat, null, null, item.product_id);
+        await updateCatalogStatus(item.id, "Exported");
+        if (result.content) allContent.push({ content: result.content, filename: result.filename, contentType: result.contentType });
+        success++;
+      } catch {}
+      setBatchProgress(prev => ({ ...prev, done: prev.done + 1 }));
+    }
+    setBatchExporting(false);
+    if (success > 0) {
+      // Download combined file or individual files
+      if (allContent.length === 1) {
+        const f = allContent[0];
+        const blob = new Blob([f.content], { type: f.contentType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = f.filename; a.click();
+        URL.revokeObjectURL(url);
+      } else if (allContent.length > 1) {
+        // Merge into single file for CSV, or download individually for XML/JSON
+        if (batchFmt === "CSV") {
+          const lines = allContent.map((f, i) => {
+            const rows = f.content.split('\n');
+            return i === 0 ? rows.join('\n') : rows.slice(1).join('\n');
+          }).join('\n');
+          const blob = new Blob([lines], { type: "text/csv" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a'); a.href = url; a.download = `batch-export-${batchPlat.toLowerCase()}-${items.length}products.csv`; a.click();
+          URL.revokeObjectURL(url);
+        } else {
+          allContent.forEach(f => {
+            const blob = new Blob([f.content], { type: f.contentType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = f.filename; a.click();
+            URL.revokeObjectURL(url);
+          });
+        }
+      }
+      toast.success(`Exported ${success} product${success > 1 ? "s" : ""} as ${batchFmt}/${batchPlat}`);
+      setCatalog(prev => prev.map(c => selected.has(c.id) ? { ...c, status: "Exported" } : c));
+      setSelected(new Set());
+      setShowBatchModal(false);
+    } else { toast.error("Batch export failed"); }
+  };
 
   const statCards = stats ? [
     {label:"Total Products",value:String(stats.total_products||0),icon:"package",color:"#3B82F6"},
@@ -944,7 +1081,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
       <div className="card" style={{padding:0,overflow:"hidden"}}>
         <div style={{padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid var(--border)"}}>
           <div style={{display:"flex",alignItems:"center",gap:12}}><h3 style={{fontSize:16,fontWeight:700}}>Catalog Entries</h3><span className="badge badge-neutral">{catalog.length}</span></div>
-          <div style={{display:"flex",gap:10}}>
+          <div style={{display:"flex",gap:10,alignItems:"center"}}>
             <div style={{position:"relative"}}><div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)"}}><Icon name="search" size={13} color="var(--text-dim)"/></div><input className="input" placeholder="Search..." value={searchFilter} onChange={e=>setSearchFilter(e.target.value)} style={{paddingLeft:32,width:180,fontSize:13,padding:"7px 12px 7px 30px"}}/></div>
             <button className="btn btn-primary" onClick={onNew}><Icon name="plus" size={14}/> New Product</button>
           </div>
@@ -960,19 +1097,61 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
           </div>
         ) : (
           <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead><tr style={{borderBottom:"1px solid var(--border)"}}>{["Product","Barcode","Status","Date","Actions"].map(h=><th key={h} style={{padding:"10px 16px",textAlign:"left",fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.06em"}}>{h.toUpperCase()}</th>)}</tr></thead>
-            <tbody>{filteredCatalog.map((item,i)=><tr key={item.id||i} style={{borderBottom:"1px solid var(--border-light)",transition:"background 0.15s",cursor:"pointer"}} onMouseEnter={e=>e.currentTarget.style.background="var(--hover-bg)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-              <td style={{padding:"12px 16px"}}><span style={{fontSize:13,fontWeight:600}}>{item.custom_name||item.name||"Untitled"}</span>{item.brand&&<span style={{fontSize:11,color:"var(--text-dim)",marginLeft:8}}>{item.brand}</span>}</td>
+            <thead><tr style={{borderBottom:"1px solid var(--border)"}}>
+              {["Product","Barcode","Status","Date","Actions"].map(h=><th key={h} style={{padding:"10px 16px",textAlign:"left",fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.06em"}}>{h.toUpperCase()}</th>)}
+            </tr></thead>
+            <tbody>{filteredCatalog.map((item,i)=>{
+              const isSelected = selected.has(item.id);
+              return <tr key={item.id||i} onClick={()=>toggleSelect(item.id)} style={{borderBottom:"1px solid var(--border-light)",transition:"all 0.15s",background:isSelected?"rgba(59,130,246,0.06)":"transparent",cursor:"pointer"}} onMouseEnter={e=>{if(!isSelected)e.currentTarget.style.background="var(--hover-bg)"}} onMouseLeave={e=>{if(!isSelected)e.currentTarget.style.background="transparent"}}>
+              <td style={{padding:"12px 16px",position:"relative"}}>
+                <div style={{position:"absolute",left:6,top:"50%",transform:"translateY(-50%)",width:18,height:18,borderRadius:5,border:isSelected?"2px solid #3B82F6":"2px solid var(--border)",background:isSelected?"#3B82F6":"transparent",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s",opacity:isSelected||selected.size>0?1:0}} className="row-check">
+                  {isSelected && <Icon name="check" size={11} color="#fff"/>}
+                </div>
+                {editingId === item.id ? (
+                  <div style={{display:"flex",flexDirection:"column",gap:6,marginLeft:20}} onClick={e=>e.stopPropagation()}>
+                    <input className="input" value={editName} onChange={e=>setEditName(e.target.value)} style={{fontSize:13,padding:"4px 8px"}} placeholder="Product name"/>
+                    <div style={{display:"flex",gap:6}}>
+                      <input className="input" value={editPrice} onChange={e=>setEditPrice(e.target.value)} style={{fontSize:12,padding:"3px 8px",width:90}} placeholder="Price"/>
+                      <input className="input" value={editDesc} onChange={e=>setEditDesc(e.target.value)} style={{fontSize:12,padding:"3px 8px",flex:1}} placeholder="Description"/>
+                    </div>
+                    <div style={{display:"flex",gap:6}}>
+                      <button className="btn btn-primary" style={{padding:"3px 10px",fontSize:11}} onClick={saveEdit}><Icon name="check" size={11}/> Save</button>
+                      <button className="btn btn-ghost" style={{padding:"3px 10px",fontSize:11}} onClick={()=>setEditingId(null)}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <span style={{marginLeft:20}}><span style={{fontSize:13,fontWeight:600}}>{item.custom_name||item.name||"Untitled"}</span>{item.brand&&<span style={{fontSize:11,color:"var(--text-dim)",marginLeft:8}}>{item.brand}</span>}{item.custom_price&&<span style={{fontSize:11,color:"#10B981",marginLeft:8}}>${item.custom_price}</span>}</span>
+                )}
+              </td>
               <td style={{padding:"12px 16px"}}><span className="mono" style={{fontSize:12,color:"var(--text-muted)"}}>{item.barcode||"—"}</span></td>
               <td style={{padding:"12px 16px"}}><span className={`badge ${sc[item.status]||"badge-neutral"}`}>{item.status||"Draft"}</span></td>
               <td style={{padding:"12px 16px"}}><span style={{fontSize:12,color:"var(--text-dim)"}}>{item.updated_at?new Date(item.updated_at).toLocaleDateString():""}</span></td>
-              <td style={{padding:"12px 16px"}}><div style={{display:"flex",gap:6}}>
-                <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="View" onClick={(e)=>{e.stopPropagation();onViewProduct(item.product_id,1);}}><Icon name="eye" size={12}/></button>
-                <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Edit & Re-export" onClick={(e)=>{e.stopPropagation();onViewProduct(item.product_id,1);}}><Icon name="edit" size={12}/></button>
-                <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Export" onClick={(e)=>{e.stopPropagation();onExportProduct(item.product_id);}}><Icon name="download" size={12}/></button>
+              <td style={{padding:"12px 16px"}}><div style={{display:"flex",gap:6}} onClick={e=>e.stopPropagation()}>
+                <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="View" onClick={()=>onViewProduct(item.product_id,1)}><Icon name="eye" size={12}/></button>
+                <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Edit" onClick={()=>startEdit(item)}><Icon name="edit" size={12}/></button>
+                <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Export" onClick={()=>onExportProduct(item.product_id)}><Icon name="download" size={12}/></button>
+                <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11,color:"#EF4444"}} title="Delete" onClick={()=>setShowDeleteDialog(item.id)}><Icon name="trash" size={12} color="#EF4444"/></button>
               </div></td>
-            </tr>)}</tbody>
+            </tr>})}</tbody>
           </table>
+        )}
+        {selected.size > 0 && (
+          <div style={{position:"sticky",bottom:0,left:0,right:0,padding:"12px 20px",background:"var(--bg-card)",borderTop:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",backdropFilter:"blur(12px)",animation:"slideUp 0.2s ease"}}>
+            <div style={{display:"flex",alignItems:"center",gap:12}}>
+              <span style={{fontSize:13,fontWeight:600,color:"var(--text)"}}>{selected.size} selected</span>
+              <button className="btn btn-ghost" style={{fontSize:11,padding:"4px 10px"}} onClick={()=>{selected.size===filteredCatalog.length?setSelected(new Set()):setSelected(new Set(filteredCatalog.map(c=>c.id)));}}>
+                {selected.size===filteredCatalog.length?"Deselect All":"Select All"}
+              </button>
+            </div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <button className="btn btn-ghost" style={{fontSize:12,padding:"6px 14px"}} onClick={()=>setSelected(new Set())}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" style={{fontSize:12,padding:"6px 16px"}} disabled={batchExporting} onClick={handleBatchExport}>
+                <Icon name="download" size={13}/> {batchExporting?"Exporting...":`Export ${selected.size} Product${selected.size>1?"s":""}`}
+              </button>
+            </div>
+          </div>
         )}
       </div>
       <div className="card">
@@ -992,6 +1171,47 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
           </div>
         )}
       </div>
+      {showDeleteDialog && <ConfirmDialog title="Delete Catalog Entry" message="This will permanently remove this product from your catalog. This action cannot be undone."
+        confirmLabel="Delete" confirmColor="#EF4444" onCancel={() => setShowDeleteDialog(null)} onConfirm={() => handleDelete(showDeleteDialog)} />}
+
+      {showBatchModal && <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{if(!batchExporting)setShowBatchModal(false);}}>
+        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(4px)"}}/>
+        <div className="card animate-scaleIn" style={{position:"relative",width:440,maxWidth:"90vw",padding:28}} onClick={e=>e.stopPropagation()}>
+          <h3 style={{fontSize:17,fontWeight:700,marginBottom:4}}>Batch Export</h3>
+          <p style={{fontSize:13,color:"var(--text-dim)",marginBottom:20}}>{selected.size} product{selected.size>1?"s":""} selected</p>
+
+          <div style={{marginBottom:18}}>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--text-dim)",marginBottom:8,display:"block",letterSpacing:"0.04em"}}>FORMAT</label>
+            <div style={{display:"flex",gap:8}}>{["CSV","JSON","XML"].map(f=><button key={f} onClick={()=>setBatchFmt(f)} className="mono" style={{flex:1,padding:12,borderRadius:8,border:`2px solid ${batchFmt===f?"#3B82F6":"var(--border)"}`,background:batchFmt===f?"rgba(37,99,235,0.1)":"var(--hover-bg)",color:batchFmt===f?"#60A5FA":"var(--text-muted)",fontSize:14,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}>{f}</button>)}</div>
+          </div>
+
+          <div style={{marginBottom:24}}>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--text-dim)",marginBottom:8,display:"block",letterSpacing:"0.04em"}}>PLATFORM</label>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{[
+              {name:"Shopify",color:"#96BF48"},{name:"WooCommerce",color:"#7F54B3"},{name:"Magento",color:"#EE672F"},{name:"BigCommerce",color:"#34313F"}
+            ].map(p=><button key={p.name} onClick={()=>setBatchPlat(p.name)} style={{padding:12,borderRadius:8,border:`2px solid ${batchPlat===p.name?p.color:"var(--border)"}`,background:batchPlat===p.name?p.color+"18":"var(--hover-bg)",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:8}}>
+              <div style={{width:10,height:10,borderRadius:"50%",background:p.color}}/>
+              <span style={{fontSize:13,fontWeight:600,color:batchPlat===p.name?"var(--text)":"var(--text-muted)"}}>{p.name}</span>
+            </button>)}</div>
+          </div>
+
+          {batchExporting && <div style={{marginBottom:16}}>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"var(--text-dim)",marginBottom:6}}>
+              <span>Exporting...</span><span>{batchProgress.done}/{batchProgress.total}</span>
+            </div>
+            <div style={{height:6,borderRadius:3,background:"var(--hover-bg)",overflow:"hidden"}}>
+              <div style={{height:"100%",borderRadius:3,background:"#3B82F6",transition:"width 0.3s",width:`${batchProgress.total?((batchProgress.done/batchProgress.total)*100):0}%`}}/>
+            </div>
+          </div>}
+
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+            <button className="btn btn-ghost" style={{fontSize:13}} disabled={batchExporting} onClick={()=>setShowBatchModal(false)}>Cancel</button>
+            <button className="btn btn-primary" style={{fontSize:13,padding:"8px 20px"}} disabled={batchExporting} onClick={doBatchExport}>
+              <Icon name="download" size={14}/> {batchExporting?`Exporting ${batchProgress.done}/${batchProgress.total}...`:`Export & Download`}
+            </button>
+          </div>
+        </div>
+      </div>}
     </div>
   );
 };
@@ -1049,7 +1269,12 @@ const Analytics = () => {
         </div>
 
         <div className="card" style={{padding:24}}>
-          <h3 style={{fontWeight:700,marginBottom:20}}>Recent Searches</h3>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+            <h3 style={{fontWeight:700}}>Recent Searches</h3>
+            {history.length > 0 && <button className="btn btn-ghost" style={{fontSize:11,color:"#EF4444"}} onClick={async ()=>{
+              try { await clearSearchHistory(); setHistory([]); toast.success("Search history cleared"); } catch(err) { toast.error(err.message); }
+            }}><Icon name="trash" size={12} color="#EF4444"/> Clear All</button>}
+          </div>
           {loading ? <div style={{textAlign:"center",padding:20}}><LoadingDots/></div> :
            history.length === 0 ? <p style={{fontSize:13,color:"var(--text-dim)",textAlign:"center",padding:20}}>No searches yet. Try scanning a barcode!</p> :
           <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:300,overflowY:"auto"}}>
@@ -1846,9 +2071,13 @@ const Settings = ({ user, onUserUpdate }) => {
       )}
 
       {showDeleteData && <ConfirmDialog title="Delete All Catalog Data" message="This will permanently delete all your products, catalog entries, export history, and analytics data. This action cannot be undone."
-        confirmLabel="Delete All Data" confirmColor="#EF4444" onCancel={() => setShowDeleteData(false)} onConfirm={() => setShowDeleteData(false)} />}
+        confirmLabel="Delete All Data" confirmColor="#EF4444" onCancel={() => setShowDeleteData(false)} onConfirm={async () => {
+          try { await deleteAllData(); toast.success("All data deleted"); setShowDeleteData(false); } catch (err) { toast.error(err.message); }
+        }} />}
       {showDeleteAccount && <ConfirmDialog title="Delete Account" message="This will permanently delete your account and all associated data. You will be logged out immediately. This action cannot be undone."
-        confirmLabel="Delete My Account" confirmColor="#EF4444" onCancel={() => setShowDeleteAccount(false)} onConfirm={() => setShowDeleteAccount(false)} />}
+        confirmLabel="Delete My Account" confirmColor="#EF4444" onCancel={() => setShowDeleteAccount(false)} onConfirm={async () => {
+          try { await deleteAccount(); setToken(null); if (onUserUpdate) onUserUpdate(null); toast.success("Account deleted"); } catch (err) { toast.error(err.message); }
+        }} />}
     </div>
   );
 };

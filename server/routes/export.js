@@ -66,10 +66,11 @@ router.post('/', auth, async (req, res) => {
       const [result] = await db.query(
         `INSERT INTO products (barcode, name, brand, description,
          ai_description_professional, ai_description_friendly, ai_description_luxury,
-         ai_category_suggestion, seo_tags, cache_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ai_category_suggestion, ai_attributes, seo_tags, cache_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [generatedBarcode, p.name, p.brand, p.description,
          p.ai_description_professional || null, p.ai_description_friendly || null, p.ai_description_luxury || null,
-         p.ai_category_suggestion || null, p.seo_tags ? JSON.stringify(p.seo_tags) : null, cacheExpiry]
+         p.ai_category_suggestion || null, p.attributes ? JSON.stringify(p.attributes) : null,
+         p.seo_tags ? JSON.stringify(p.seo_tags) : null, cacheExpiry]
       );
       const newProductId = result.insertId;
 
@@ -83,7 +84,7 @@ router.post('/', auth, async (req, res) => {
               `INSERT INTO product_sources (product_id, source_name, source_url, price, currency, weight, description, trust_score, specs)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [newProductId, src.source_name, src.source_url || null, src.price || null, src.currency || 'USD',
-               src.weight || null, src.description || null, src.trust_score || 0, src.specs ? JSON.stringify(src.specs) : null]
+               src.weight || null, src.description || null, src.trust_score || 0, src.specs ? (typeof src.specs === 'string' ? src.specs : JSON.stringify(src.specs)) : null]
             );
           } catch {}
         }

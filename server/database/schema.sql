@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS products (
   ai_description_friendly TEXT NULL,
   ai_description_luxury TEXT NULL,
   ai_category_suggestion VARCHAR(255) NULL,
+  ai_attributes JSON NULL,
   seo_tags JSON NULL,
   search_count INT DEFAULT 1,
   cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
