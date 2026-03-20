@@ -223,7 +223,7 @@ router.post('/', auth, async (req, res) => {
           `INSERT INTO product_sources (product_id, source_name, source_url, price, currency, weight, color, description, specs, trust_score)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [productId, src.source_name, src.source_url, src.price, src.currency || 'USD',
-           src.weight, src.color, src.description, JSON.stringify(src.specs), src.trust_score || 0]
+           src.weight, src.color, src.description, typeof src.specs === 'string' ? src.specs : JSON.stringify(src.specs), src.trust_score || 0]
         );
       }
     }
@@ -292,20 +292,22 @@ router.post('/save-for-later', auth, async (req, res) => {
       await db.query(
         `UPDATE products SET name = ?, brand = ?, description = ?,
          ai_description_professional = ?, ai_description_friendly = ?, ai_description_luxury = ?,
-         ai_category_suggestion = ?, seo_tags = ?, cached_at = NOW(), cache_expires_at = ?
+         ai_category_suggestion = ?, ai_attributes = ?, seo_tags = ?, cached_at = NOW(), cache_expires_at = ?
          WHERE id = ?`,
         [p.name, p.brand, p.description,
          p.ai_description_professional || null, p.ai_description_friendly || null, p.ai_description_luxury || null,
-         p.ai_category_suggestion || null, p.seo_tags ? JSON.stringify(p.seo_tags) : null, cacheExpiry, productId]
+         p.ai_category_suggestion || null, p.attributes ? JSON.stringify(p.attributes) : null,
+         p.seo_tags ? JSON.stringify(p.seo_tags) : null, cacheExpiry, productId]
       );
     } else {
       const [result] = await db.query(
         `INSERT INTO products (barcode, name, brand, description,
          ai_description_professional, ai_description_friendly, ai_description_luxury,
-         ai_category_suggestion, seo_tags, cache_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ai_category_suggestion, ai_attributes, seo_tags, cache_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [barcode, p.name, p.brand, p.description,
          p.ai_description_professional || null, p.ai_description_friendly || null, p.ai_description_luxury || null,
-         p.ai_category_suggestion || null, p.seo_tags ? JSON.stringify(p.seo_tags) : null, cacheExpiry]
+         p.ai_category_suggestion || null, p.attributes ? JSON.stringify(p.attributes) : null,
+         p.seo_tags ? JSON.stringify(p.seo_tags) : null, cacheExpiry]
       );
       productId = result.insertId;
     }
@@ -335,7 +337,7 @@ router.post('/save-for-later', auth, async (req, res) => {
             `INSERT INTO product_sources (product_id, source_name, source_url, price, currency, weight, description, trust_score, specs)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [productId, src.source_name, src.source_url || null, src.price || null, src.currency || 'USD',
-             src.weight || null, src.description || null, src.trust_score || 0, src.specs ? JSON.stringify(src.specs) : null]
+             src.weight || null, src.description || null, src.trust_score || 0, src.specs ? (typeof src.specs === 'string' ? src.specs : JSON.stringify(src.specs)) : null]
           );
         } catch {}
       }
@@ -422,11 +424,30 @@ router.post('/catalog', auth, async (req, res) => {
   }
 });
 
-// Update catalog entry status
+// Update catalog entry (status, custom fields)
 router.patch('/catalog/:id', auth, async (req, res) => {
   try {
-    const { status } = req.body;
-    await db.query('UPDATE catalog_entries SET status = ? WHERE id = ? AND user_id = ?', [status, req.params.id, req.user.id]);
+    const { status, custom_name, custom_description, custom_price } = req.body;
+    const fields = [];
+    const values = [];
+    if (status !== undefined) { fields.push('status = ?'); values.push(status); }
+    if (custom_name !== undefined) { fields.push('custom_name = ?'); values.push(custom_name); }
+    if (custom_description !== undefined) { fields.push('custom_description = ?'); values.push(custom_description); }
+    if (custom_price !== undefined) { fields.push('custom_price = ?'); values.push(custom_price); }
+    if (fields.length === 0) return res.status(400).json({ error: 'No fields to update' });
+    fields.push('updated_at = NOW()');
+    values.push(req.params.id, req.user.id);
+    await db.query(`UPDATE catalog_entries SET ${fields.join(', ')} WHERE id = ? AND user_id = ?`, values);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Delete catalog entry
+router.delete('/catalog/:id', auth, async (req, res) => {
+  try {
+    await db.query('DELETE FROM catalog_entries WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });

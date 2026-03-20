@@ -173,6 +173,38 @@ router.put('/settings', auth, async (req, res) => {
   }
 });
 
+// Delete all catalog data (Danger Zone)
+router.delete('/data', auth, async (req, res) => {
+  try {
+    await db.query('DELETE FROM exports WHERE user_id = ?', [req.user.id]);
+    await db.query('DELETE FROM catalog_entries WHERE user_id = ?', [req.user.id]);
+    await db.query('DELETE FROM search_history WHERE user_id = ?', [req.user.id]);
+    await db.query('DELETE FROM brand_voices WHERE user_id = ?', [req.user.id]);
+    await db.query('DELETE FROM user_settings WHERE user_id = ?', [req.user.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete data error:', err.message);
+    res.status(500).json({ error: 'Failed to delete data' });
+  }
+});
+
+// Delete account (Danger Zone)
+router.delete('/account', auth, async (req, res) => {
+  try {
+    // Cascading deletes handle most child rows, but be explicit for safety
+    await db.query('DELETE FROM exports WHERE user_id = ?', [req.user.id]);
+    await db.query('DELETE FROM catalog_entries WHERE user_id = ?', [req.user.id]);
+    await db.query('DELETE FROM search_history WHERE user_id = ?', [req.user.id]);
+    await db.query('DELETE FROM brand_voices WHERE user_id = ?', [req.user.id]);
+    await db.query('DELETE FROM user_settings WHERE user_id = ?', [req.user.id]);
+    await db.query('DELETE FROM users WHERE id = ?', [req.user.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete account error:', err.message);
+    res.status(500).json({ error: 'Failed to delete account' });
+  }
+});
+
 // Google OAuth
 router.post('/google', async (req, res) => {
   try {

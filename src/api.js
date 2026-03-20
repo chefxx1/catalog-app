@@ -135,13 +135,59 @@ export const saveToCatalog = async (entry) => {
   return res.json();
 };
 
-export const updateCatalogStatus = async (id, status) => {
+export const updateCatalogEntry = async (id, fields) => {
   const res = await fetch(`${API_URL}/products/catalog/${id}`, {
     method: 'PATCH',
     headers: headers(),
-    body: JSON.stringify({ status }),
+    body: JSON.stringify(fields),
   });
-  return res.json();
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Update failed');
+  return data;
+};
+
+export const updateCatalogStatus = async (id, status) => {
+  return updateCatalogEntry(id, { status });
+};
+
+export const deleteCatalogEntry = async (id) => {
+  const res = await fetch(`${API_URL}/products/catalog/${id}`, {
+    method: 'DELETE',
+    headers: headers(),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Delete failed');
+  return data;
+};
+
+export const deleteAllData = async () => {
+  const res = await fetch(`${API_URL}/auth/data`, {
+    method: 'DELETE',
+    headers: headers(),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to delete data');
+  return data;
+};
+
+export const deleteAccount = async () => {
+  const res = await fetch(`${API_URL}/auth/account`, {
+    method: 'DELETE',
+    headers: headers(),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to delete account');
+  return data;
+};
+
+export const clearSearchHistory = async () => {
+  const res = await fetch(`${API_URL}/analytics/searches`, {
+    method: 'DELETE',
+    headers: headers(),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to clear history');
+  return data;
 };
 
 // ── ANALYTICS ──
@@ -275,11 +321,11 @@ export const searchProductImages = async (query) => {
   return data.images;
 };
 
-export const exportProduct = async (format, platform, barcode, productData) => {
+export const exportProduct = async (format, platform, barcode, productData, productId) => {
   const res = await fetch(`${API_URL}/export`, {
     method: 'POST',
     headers: headers(),
-    body: JSON.stringify({ format, platform, barcode, productData }),
+    body: JSON.stringify({ format, platform, barcode, productData, productId }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error);

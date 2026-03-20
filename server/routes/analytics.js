@@ -53,4 +53,27 @@ router.get('/searches', auth, async (req, res) => {
   }
 });
 
+// Delete search history (cleanup)
+router.delete('/searches', auth, async (req, res) => {
+  try {
+    await db.query('DELETE FROM search_history WHERE user_id = ?', [req.user.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Auto-purge old search records (keep last 90 days)
+router.post('/searches/cleanup', auth, async (req, res) => {
+  try {
+    const [result] = await db.query(
+      'DELETE FROM search_history WHERE user_id = ? AND created_at < DATE_SUB(NOW(), INTERVAL 90 DAY)',
+      [req.user.id]
+    );
+    res.json({ success: true, deleted: result.affectedRows });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;
