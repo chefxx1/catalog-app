@@ -45,6 +45,8 @@ const Icon = ({ name, size = 16, color = "currentColor" }) => {
     bell: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
     palette: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="12.5" r="2.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.5-.7 1.5-1.5 0-.4-.1-.7-.4-1-.3-.3-.4-.7-.4-1.1 0-.8.7-1.5 1.5-1.5H16c3.3 0 6-2.7 6-6 0-5.5-4.5-9.8-10-10z"/></svg>,
     bookmark: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>,
+    copy: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>,
+    menu: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="18" x2="20" y2="18"/></svg>,
   };
   return icons[name] || <span>{name}</span>;
 };
@@ -153,7 +155,29 @@ const GlobalStyles = ({ dark }) => (
     .animate-theme { animation: themeSwitch 0.4s ease-out; }
     tr:hover .row-check { opacity:1 !important; }
 
-    .skeleton { background: linear-gradient(90deg, var(--surface) 25%, var(--surface-light) 50%, var(--surface) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 4px; }
+    .skeleton { background: linear-gradient(90deg, var(--surface) 25%, var(--surface-light) 50%, var(--surface) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 4px; display:block; }
+    .skeleton-text { height:14px; margin-bottom:6px; }
+    .skeleton-heading { height:28px; width:60%; margin-bottom:8px; }
+    .skeleton-circle { border-radius:50%; }
+    .skeleton-card { height:80px; border-radius:12px; }
+
+    .copy-btn { opacity:0; transition:opacity 0.15s; cursor:pointer; padding:2px; border:none; background:none; }
+    .copy-btn:hover { color:#3B82F6; }
+    *:hover > .copy-btn, .copy-btn:focus { opacity:1; }
+
+    @media (max-width: 768px) {
+      .sidebar { display:none !important; }
+      .sidebar.open { display:flex !important; position:fixed; z-index:9999; inset:0; width:240px; }
+      .sidebar-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9998; }
+      .sidebar-overlay.open { display:block; }
+      .mobile-menu-btn { display:flex !important; }
+      .main-content { padding:16px !important; }
+      .stat-grid { grid-template-columns:repeat(2,1fr) !important; }
+      .analytics-grid { grid-template-columns:1fr !important; }
+    }
+    @media (min-width: 769px) {
+      .mobile-menu-btn { display:none !important; }
+    }
 
     .btn { display:inline-flex; align-items:center; gap:8px; padding:8px 18px; border-radius:8px; font-family:'Sora',sans-serif; font-weight:600; font-size:13px; cursor:pointer; border:none; transition:all 0.2s; white-space:nowrap; }
     .btn:hover { transform:translateY(-1px); } .btn:active { transform:translateY(0); }
@@ -218,6 +242,9 @@ const GlobalStyles = ({ dark }) => (
 const Confetti = ({ active }) => { if (!active) return null; return <>{Array.from({length:60},(_,i)=><div key={i} className="confetti-piece" style={{left:Math.random()*100+"vw",top:"-20px",background:["#2563EB","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899"][i%6],width:Math.random()*8+6,height:Math.random()*8+6,animationDelay:Math.random()*0.8+"s",animationDuration:(Math.random()*2+2)+"s"}}/>)}</>; };
 const LoadingDots = () => <div style={{display:"flex",gap:6,alignItems:"center"}}>{[0,1,2].map(i=><div key={i} className={`dot-${i+1}`} style={{width:8,height:8,borderRadius:"50%",background:"#3B82F6"}}/>)}</div>;
 const ConfidenceScore = ({ score }) => { const c = score>=85?"#10B981":score>=65?"#F59E0B":"#EF4444"; return <div style={{display:"inline-flex",alignItems:"center",gap:4}}><div style={{width:48,height:4,background:"rgba(100,116,139,0.3)",borderRadius:2,overflow:"hidden"}}><div style={{width:`${score}%`,height:"100%",background:c,borderRadius:2,transition:"width 0.6s ease"}}/></div><span className="mono" style={{fontSize:11,color:c,fontWeight:600}}>{score}%</span></div>; };
+const Skeleton = ({ w, h, r, style }) => <div className="skeleton" style={{width:w||"100%",height:h||14,borderRadius:r||4,...style}}/>;
+const SkeletonCard = () => <div className="card" style={{padding:20}}><Skeleton h={20} w="50%" style={{marginBottom:12}}/><Skeleton h={28} w="40%" style={{marginBottom:8}}/><Skeleton h={12} w="70%"/></div>;
+const CopyButton = ({ text, size=12 }) => { const [copied,setCopied]=useState(false); return <button className="copy-btn" title="Copy" onClick={(e)=>{e.stopPropagation();navigator.clipboard.writeText(text);setCopied(true);setTimeout(()=>setCopied(false),1500);}} style={{color:copied?"#10B981":"var(--text-dim)"}}><Icon name={copied?"check":"copy"} size={size}/></button>; };
 
 const ThemeToggle = ({ dark, onToggle }) => (
   <div onClick={onToggle} style={{ position:"relative", width:48, height:26, borderRadius:13, cursor:"pointer", border:"1px solid var(--border)", background: dark ? "var(--surface)" : "#E2E8F0", transition:"all 0.3s" }}>
@@ -504,6 +531,7 @@ const ReviewStep = ({ onExport, onSave, productData }) => {
   const [images,setImages]=useState(p.images); const [activeTab,setActiveTab]=useState("overview"); const [regenerating,setRegenerating]=useState(false);
   const [aiError, setAiError] = useState(null);
   const [editPrice, setEditPrice] = useState(dbSources.find(s => s.price)?.price || '');
+  const [editFields, setEditFields] = useState({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [lightbox, setLightbox] = useState(null);
@@ -591,10 +619,9 @@ const ReviewStep = ({ onExport, onSave, productData }) => {
             {Object.keys(resolvedConflicts).length>0&&<div style={{fontSize:12,color:"var(--success-light)",display:"flex",alignItems:"center",gap:4}}><Icon name="check" size={12} color="#10B981"/>{Object.keys(resolvedConflicts).length} conflict(s) resolved</div>}
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
               <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:2}}>PRODUCT DATA</div>
-              {[{l:"Name",v:p.name,c:94},{l:"Brand",v:p.brand,c:96},{l:"UPC",v:p.upc,c:100},{l:"Category",v:p.category,c:88},...(aiCategory?[{l:"AI Category",v:aiCategory,c:90,ai:true}]:[])].map((f,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:f.ai?"rgba(37,99,235,0.06)":"var(--hover-bg)",borderRadius:6,border:f.ai?"1px solid rgba(37,99,235,0.15)":"none"}}>
+              {[{l:"Name",v:p.name,c:94,edit:true,key:"name"},{l:"Brand",v:p.brand,c:96,edit:true,key:"brand"},{l:"UPC",v:p.upc,c:100},{l:"Category",v:p.category,c:88},...(aiCategory?[{l:"AI Category",v:aiCategory,c:90,ai:true}]:[])].map((f,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:f.ai?"rgba(37,99,235,0.06)":"var(--hover-bg)",borderRadius:6,border:f.ai?"1px solid rgba(37,99,235,0.15)":"none"}}>
                 <span style={{fontSize:12,color:f.ai?"#3B82F6":"var(--text-dim)",width:80,flexShrink:0}}>{f.l}{f.ai&&<span className="badge badge-ai" style={{marginLeft:4,fontSize:9}}>AI</span>}</span>
-                <span className={f.l==="UPC"?"mono":""} style={{fontSize:12,flex:1,color:"var(--text-sec)"}}>{f.v}</span>
-                <ConfidenceScore score={f.c}/>
+                {f.edit?<input className="input" value={editFields[f.key]??f.v} onChange={e=>setEditFields(prev=>({...prev,[f.key]:e.target.value}))} style={{fontSize:12,flex:1,padding:"4px 8px",background:"transparent",border:"1px solid var(--border)",borderRadius:4}}/>:<span className={f.l==="UPC"?"mono":""} style={{fontSize:12,flex:1,color:"var(--text-sec)",display:"flex",alignItems:"center",gap:4}}>{f.v}<CopyButton text={f.v}/></span>}
               </div>)}
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:"var(--hover-bg)",borderRadius:6}}>
                 <span style={{fontSize:12,color:"var(--text-dim)",width:80,flexShrink:0}}>Price</span>
@@ -686,12 +713,12 @@ const ReviewStep = ({ onExport, onSave, productData }) => {
             {regenerating?<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12,padding:"30px 0"}}><div className="loading-spinner" style={{width:28,height:28,border:"3px solid var(--border)",borderTopColor:"#3B82F6",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/><span style={{fontSize:12,color:"var(--text-dim)"}}>AI is writing descriptions...</span></div>:aiDescs.map((d,i)=><div key={i} className={`description-card ${selectedDesc===i?"selected":""}`} onClick={()=>{setSelectedDesc(i);setEditedDesc(d.text);}}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}><span className="badge badge-neutral">{d.tone}</span>{selectedDesc===i&&<Icon name="check" size={12} color="#10B981"/>}</div>
-                <ConfidenceScore score={92-i*7}/>
+                <CopyButton text={d.text}/>
               </div>
               <p style={{fontSize:13,lineHeight:1.6,color:"var(--text-muted)"}}>{d.text.slice(0,120)}...</p>
             </div>)}
           </div>
-          <div><div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:8}}>FINAL DESCRIPTION <span className="badge badge-ai" style={{marginLeft:6}}>Editable</span></div>
+          <div><div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:8,display:"flex",alignItems:"center",gap:8}}>FINAL DESCRIPTION <span className="badge badge-ai">Editable</span><CopyButton text={editedDesc}/></div>
             <textarea className="input" value={editedDesc} onChange={e=>setEditedDesc(e.target.value)} rows={5} style={{lineHeight:1.6}}/>
           </div>
           <div style={{padding:12,background:"var(--hover-bg)",borderRadius:8,border:"1px solid var(--border)"}}>
@@ -706,6 +733,8 @@ const ReviewStep = ({ onExport, onSave, productData }) => {
               await saveForLater({
                 product: {
                   ...product,
+                  name: editFields.name || product.name,
+                  brand: editFields.brand || product.brand,
                   attributes: specs || product.attributes || null,
                   ai_description_professional: aiDescs.find(d=>d.tone==="Professional")?.text || editedDesc,
                   ai_description_friendly: aiDescs.find(d=>d.tone==="Friendly")?.text || '',
@@ -728,14 +757,16 @@ const ReviewStep = ({ onExport, onSave, productData }) => {
               ...productData,
               product: {
                 ...product,
+                name: editFields.name || product.name,
+                brand: editFields.brand || product.brand,
                 attributes: specs || product.attributes || null,
                 ai_description_professional: aiDescs.find(d=>d.tone==="Professional")?.text || editedDesc,
                 ai_description_friendly: aiDescs.find(d=>d.tone==="Friendly")?.text || '',
                 ai_description_luxury: aiDescs.find(d=>d.tone==="Luxury")?.text || '',
                 ai_category_suggestion: aiCategory || product.ai_category_suggestion || p.category,
                 seo_tags: seoTags,
-                meta_title: metaTitle || `${p.name} | ${p.brand}`,
-                meta_description: metaDescription || `Shop ${p.name} from ${p.brand}.`,
+                meta_title: metaTitle || `${editFields.name||p.name} | ${editFields.brand||p.brand}`,
+                meta_description: metaDescription || `Shop ${editFields.name||p.name} from ${editFields.brand||p.brand}.`,
                 edited_description: editedDesc,
                 selected_tone: aiDescs[selectedDesc]?.tone || 'Professional',
               },
@@ -1070,11 +1101,11 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
 
   return (
     <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",gap:24}}>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
-        {statCards.map((s,i)=><div key={i} className="card animate-slideUp" style={{position:"relative",overflow:"hidden",animationDelay:`${i*0.06}s`}}>
+      <div className="stat-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
+        {statCards.map((s,i)=><div key={i} className="card" style={{position:"relative",overflow:"hidden"}}>
           <div style={{position:"absolute",top:-12,right:-12,width:60,height:60,borderRadius:"50%",background:s.color+"15"}}/>
           <div style={{marginBottom:8}}><Icon name={s.icon} size={20} color={s.color}/></div>
-          <div className="mono" style={{fontSize:26,fontWeight:800,color:s.color}}>{loading?"—":s.value}</div>
+          <div className="mono" style={{fontSize:26,fontWeight:800,color:s.color,minHeight:32}}>{loading?"—":s.value}</div>
           <div style={{fontSize:12,color:"var(--text-dim)",marginTop:2}}>{s.label}</div>
         </div>)}
       </div>
@@ -1087,7 +1118,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
           </div>
         </div>
         {loading ? (
-          <div style={{padding:40,textAlign:"center"}}><LoadingDots /><p style={{color:"var(--text-dim)",fontSize:13,marginTop:12}}>Loading catalog...</p></div>
+          <div style={{padding:"12px 0"}}>{[0,1,2,3].map(i=><div key={i} style={{display:"flex",alignItems:"center",gap:16,padding:"14px 20px",borderBottom:"1px solid var(--border-light)",opacity:1-i*0.15}}><div className="skeleton" style={{height:14,width:"30%",borderRadius:4}}/><div className="skeleton" style={{height:12,width:"18%",borderRadius:4}}/><div className="skeleton" style={{height:22,width:60,borderRadius:20}}/><div className="skeleton" style={{height:12,width:"12%",borderRadius:4}}/><div className="skeleton" style={{height:12,width:80,borderRadius:4}}/></div>)}</div>
         ) : catalog.length === 0 ? (
           <div style={{padding:40,textAlign:"center"}}>
             <Icon name="package" size={36} color="var(--text-dim)"/>
@@ -1123,7 +1154,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
                   <span style={{marginLeft:20}}><span style={{fontSize:13,fontWeight:600}}>{item.custom_name||item.name||"Untitled"}</span>{item.brand&&<span style={{fontSize:11,color:"var(--text-dim)",marginLeft:8}}>{item.brand}</span>}{item.custom_price&&<span style={{fontSize:11,color:"#10B981",marginLeft:8}}>${item.custom_price}</span>}</span>
                 )}
               </td>
-              <td style={{padding:"12px 16px"}}><span className="mono" style={{fontSize:12,color:"var(--text-muted)"}}>{item.barcode||"—"}</span></td>
+              <td style={{padding:"12px 16px"}}><span className="mono" style={{fontSize:12,color:"var(--text-muted)",display:"flex",alignItems:"center",gap:4}}>{item.barcode||"—"}{item.barcode&&<CopyButton text={item.barcode}/>}</span></td>
               <td style={{padding:"12px 16px"}}><span className={`badge ${sc[item.status]||"badge-neutral"}`}>{item.status||"Draft"}</span></td>
               <td style={{padding:"12px 16px"}}><span style={{fontSize:12,color:"var(--text-dim)"}}>{item.updated_at?new Date(item.updated_at).toLocaleDateString():""}</span></td>
               <td style={{padding:"12px 16px"}}><div style={{display:"flex",gap:6}} onClick={e=>e.stopPropagation()}>
@@ -1160,7 +1191,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
           <button className="btn btn-ghost" style={{fontSize:12}} onClick={onViewVoices}><Icon name="plus" size={13}/> New Profile</button>
         </div>
         {voices.length === 0 ? (
-          <div style={{padding:20,textAlign:"center"}}><p style={{fontSize:13,color:"var(--text-dim)"}}>No brand voices yet. <span style={{color:"#3B82F6",cursor:"pointer",fontWeight:600}} onClick={onViewVoices}>Create one</span></p></div>
+          <div style={{padding:30,textAlign:"center"}}><Icon name="tag" size={28} color="var(--text-dim)"/><p style={{fontSize:13,color:"var(--text-dim)",marginTop:8}}>No brand voices yet.</p><button className="btn btn-primary" style={{marginTop:12,fontSize:12}} onClick={onViewVoices}><Icon name="plus" size={13}/> Create Voice Profile</button></div>
         ) : (
           <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(voices.length,3)},1fr)`,gap:10}}>
             {voices.slice(0,3).map((pr,i)=><div key={pr.id||i} style={{padding:14,background:"var(--hover-bg)",borderRadius:8,border:"1px solid var(--border)",transition:"all 0.35s",cursor:"pointer"}} onClick={onViewVoices}>
@@ -1242,25 +1273,25 @@ const Analytics = () => {
 
   return (
     <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",gap:20}}>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
+      <div className="stat-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
         {[
           {l:"Total Searches",v:loading?"—":String(stats?.total_searches||0),i:"search",color:"#3B82F6"},
           {l:"Cache Hit Rate",v:loading?"—":`${stats?.cache_hit_rate||0}%`,i:"zap",color:"#10B981"},
           {l:"Avg Response Time",v:loading?"—":`${stats?.avg_response_time||0}ms`,i:"clock",color:"#8B5CF6"},
           {l:"Products in Catalog",v:loading?"—":String(stats?.total_products||0),i:"package",color:"#F59E0B"},
-        ].map((s,idx)=><div key={idx} className="card animate-slideUp" style={{position:"relative",overflow:"hidden",animationDelay:`${idx*0.06}s`}}>
+        ].map((s,idx)=><div key={idx} className="card" style={{position:"relative",overflow:"hidden"}}>
           <div style={{position:"absolute",top:-12,right:-12,width:60,height:60,borderRadius:"50%",background:s.color+"15"}}/>
           <div style={{marginBottom:8}}><Icon name={s.i} size={18} color={s.color}/></div>
-          <div className="mono" style={{fontSize:26,fontWeight:800,color:s.color}}>{s.v}</div>
+          <div className="mono" style={{fontSize:26,fontWeight:800,color:s.color,minHeight:32}}>{s.v}</div>
           <div style={{fontSize:12,color:"var(--text-dim)",marginTop:2}}>{s.l}</div>
         </div>)}
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+      <div className="analytics-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
         <div className="card" style={{padding:24}}>
           <h3 style={{fontWeight:700,marginBottom:20}}>Data Source Performance</h3>
           {loading ? <div style={{textAlign:"center",padding:20}}><LoadingDots/></div> :
-           sources.length === 0 ? <p style={{fontSize:13,color:"var(--text-dim)",textAlign:"center",padding:20}}>No source data yet. Search for products to see performance.</p> :
+           sources.length === 0 ? <div style={{textAlign:"center",padding:30}}><Icon name="chart" size={28} color="var(--text-dim)"/><p style={{fontSize:13,color:"var(--text-dim)",marginTop:8}}>No source data yet. Search for products to see performance.</p></div> :
            sources.map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
             <div style={{width:120,fontSize:13,fontWeight:600}}>{s.source_name}</div>
             <div style={{flex:1}}><div className="progress-bar" style={{height:8}}><div className="progress-fill" style={{width:`${Math.round(s.avg_trust||0)}%`,background:sourceColors[s.source_name]||"#3B82F6"}}/></div></div>
@@ -1276,7 +1307,7 @@ const Analytics = () => {
             }}><Icon name="trash" size={12} color="#EF4444"/> Clear All</button>}
           </div>
           {loading ? <div style={{textAlign:"center",padding:20}}><LoadingDots/></div> :
-           history.length === 0 ? <p style={{fontSize:13,color:"var(--text-dim)",textAlign:"center",padding:20}}>No searches yet. Try scanning a barcode!</p> :
+           history.length === 0 ? <div style={{textAlign:"center",padding:30}}><Icon name="search" size={28} color="var(--text-dim)"/><p style={{fontSize:13,color:"var(--text-dim)",marginTop:8}}>No searches yet. Try scanning a barcode!</p></div> :
           <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:300,overflowY:"auto"}}>
             {history.slice(0,15).map((h,i)=><div key={h.id||i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:"var(--hover-bg)",borderRadius:8}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -2358,8 +2389,10 @@ export default function App() {
   const [dark, setDark] = useState(true);
   const [view, setView] = useState("dashboard");
   const [step, setStep] = useState(0);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [productData, setProductData] = useState(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   // Register 401 handler for auto-logout
   useEffect(() => {
@@ -2376,6 +2409,22 @@ export default function App() {
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    if (!user) return;
+    const handleKey = (e) => {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
+      const views = ["dashboard","catalog","analytics","voices","settings"];
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key >= "1" && e.key <= "5") { e.preventDefault(); setView(views[parseInt(e.key)-1]); if(e.key==="2") setStep(0); }
+        if (e.key === "n" || e.key === "N") { e.preventDefault(); setView("catalog"); setStep(0); setProductData(null); }
+      }
+      if (e.key === "?" && !e.ctrlKey) setShowShortcuts(s => !s);
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [user]);
 
   const handleLogout = () => { setToken(null); setUser(null); };
 
@@ -2404,8 +2453,10 @@ export default function App() {
       <GlobalStyles dark={dark} />
       <ToastContainer />
       <div className="animate-theme" key={dark ? "dark" : "light"} style={{ display: "flex", minHeight: "100vh", background: "var(--bg)", transition: "background 0.35s" }}>
+        {/* Mobile overlay */}
+        <div className={`sidebar-overlay${sidebarOpen?" open":""}`} onClick={()=>setSidebarOpen(false)}/>
         {/* Sidebar */}
-        <div style={{ width: 200, background: "var(--bg-sidebar)", borderRight: "1px solid var(--border-light)", padding: "20px 12px", display: "flex", flexDirection: "column", flexShrink: 0, transition: "background 0.35s, border-color 0.35s" }}>
+        <div className={`sidebar${sidebarOpen?" open":""}`} style={{ width: 200, background: "var(--bg-sidebar)", borderRight: "1px solid var(--border-light)", padding: "20px 12px", display: "flex", flexDirection: "column", flexShrink: 0, transition: "background 0.35s, border-color 0.35s" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 12px", marginBottom: 28 }}>
             <div style={{ width: 30, height: 30, borderRadius: 8, background: "linear-gradient(135deg,#2563EB,#10B981)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               <Icon name="cpu" size={15} color="white" />
@@ -2416,7 +2467,7 @@ export default function App() {
           <nav style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
             {navItems.map(item => (
               <div key={item.id} className={`nav-item ${view === item.id ? "active" : ""}`}
-                onClick={() => { setView(item.id); if (item.id === "catalog") setStep(0); }}>
+                onClick={() => { setView(item.id); if (item.id === "catalog") setStep(0); setSidebarOpen(false); }}>
                 <Icon name={item.icon} size={15} /> {item.label}
               </div>
             ))}
@@ -2455,12 +2506,15 @@ export default function App() {
         {/* Main */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ background: "var(--glass)", backdropFilter: "blur(8px)", borderBottom: "1px solid var(--border-light)", padding: "14px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0, transition: "background 0.35s" }}>
-            <div>
-              <h2 style={{ fontSize: 17, fontWeight: 700 }}>
-                {view === "dashboard" ? "Merchant Dashboard" : view === "catalog" ? "New Catalog Entry" : view === "analytics" ? "Analytics" : view === "voices" ? "Brand Voice Profiles" : "Settings"}
-              </h2>
-              <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 1 }}>
-                {new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+            <div style={{display:"flex",alignItems:"center",gap:12}}>
+              <button className="mobile-menu-btn btn btn-ghost" style={{padding:6}} onClick={()=>setSidebarOpen(true)}><Icon name="menu" size={20}/></button>
+              <div>
+                <h2 style={{ fontSize: 17, fontWeight: 700 }}>
+                  {view === "dashboard" ? "Merchant Dashboard" : view === "catalog" ? "New Catalog Entry" : view === "analytics" ? "Analytics" : view === "voices" ? "Brand Voice Profiles" : "Settings"}
+                </h2>
+                <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 1 }}>
+                  {new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+                </div>
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -2472,7 +2526,7 @@ export default function App() {
             </div>
           </div>
 
-          <div style={{ flex: 1, overflow: "auto", padding: "20px 28px" }}>
+          <div className="main-content" style={{ flex: 1, overflow: "auto", padding: "20px 28px" }}>
             {view === "dashboard" && <Dashboard onNew={() => { setStep(0); setProductData(null); setView("catalog"); }} onViewVoices={() => setView("voices")}
               onViewProduct={async (productId, step) => {
                 try {
@@ -2505,6 +2559,25 @@ export default function App() {
           </div>
         </div>
       </div>
+      {showShortcuts && <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setShowShortcuts(false)}>
+        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(4px)"}}/>
+        <div className="card animate-scaleIn" style={{position:"relative",width:380,maxWidth:"90vw",padding:24}} onClick={e=>e.stopPropagation()}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <h3 style={{fontSize:16,fontWeight:700}}>Keyboard Shortcuts</h3>
+            <button className="btn btn-ghost" style={{padding:4}} onClick={()=>setShowShortcuts(false)}><Icon name="x" size={16}/></button>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {[
+              {keys:"Ctrl + 1-5",desc:"Navigate to page"},
+              {keys:"Ctrl + N",desc:"New product"},
+              {keys:"?",desc:"Toggle this menu"},
+            ].map((s,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<2?"1px solid var(--border-light)":"none"}}>
+              <span style={{fontSize:13,color:"var(--text-muted)"}}>{s.desc}</span>
+              <kbd style={{padding:"3px 8px",borderRadius:4,fontSize:11,fontFamily:"monospace",background:"var(--hover-bg)",border:"1px solid var(--border)",color:"var(--text-dim)"}}>{s.keys}</kbd>
+            </div>)}
+          </div>
+        </div>
+      </div>}
     </>
   );
 }
