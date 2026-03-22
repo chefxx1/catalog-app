@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, setOnUnauthorized, getCatalog, getStats, getSourcePerformance, getSearchHistory, searchProduct, getProductById, saveForLater, resolveConflict, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice, generateAIContent, identifyProduct, searchProductImages, exportProduct, getExportHistory, downloadExport, googleSignIn, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, deleteAllData, deleteAccount, clearSearchHistory } from "./api";
+import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, setOnUnauthorized, getCatalog, getStats, getSourcePerformance, getSearchHistory, searchProduct, getProductById, saveForLater, resolveConflict, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice, generateAIContent, identifyProduct, searchProductImages, exportProduct, getExportHistory, downloadExport, googleSignIn, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, deleteAllData, deleteAccount, clearSearchHistory, forgotPassword, resetPassword, logout } from "./api";
 import { Html5Qrcode } from "html5-qrcode";
 
 // ============================================================
@@ -1440,7 +1440,7 @@ const InputField = ({ label, type = "text", placeholder, value, onChange, onKeyD
 // AUTH PAGE (Sign In / Sign Up / Forgot Password)
 // ============================================================
 const AuthPage = ({ onLogin, dark }) => {
-  const [mode, setMode] = useState("signin");
+  const [mode, setMode] = useState(() => new URLSearchParams(window.location.search).get('reset') ? "reset" : "signin");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -1512,9 +1512,30 @@ const AuthPage = ({ onLogin, dark }) => {
     if (!forgotEmail.trim()) return setError("Please enter your email address.");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail)) return setError("Please enter a valid email.");
     setLoading(true);
-    await new Promise(r => setTimeout(r, 1400));
+    try {
+      await forgotPassword(forgotEmail.trim());
+      setSuccess(`If an account exists for ${forgotEmail}, a reset link has been sent. Check your inbox.`);
+    } catch (err) { setError(err.message); }
     setLoading(false);
-    setSuccess(`If an account exists for ${forgotEmail}, a reset link has been sent. Check your inbox.`);
+  };
+
+  // ── RESET PASSWORD ──
+  const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get('reset'));
+  const [newPass, setNewPass] = useState("");
+  const [confirmPass, setConfirmPass] = useState("");
+  const handleReset = async () => {
+    clear();
+    if (!newPass || newPass.length < 8) return setError("Password must be at least 8 characters.");
+    if (newPass !== confirmPass) return setError("Passwords do not match.");
+    setLoading(true);
+    try {
+      await resetPassword(resetToken, newPass);
+      setSuccess("Password reset successfully! You can now sign in.");
+      window.history.replaceState({}, '', window.location.pathname);
+      setResetToken(null);
+      setTimeout(() => switchMode("signin"), 2000);
+    } catch (err) { setError(err.message); }
+    setLoading(false);
   };
 
   // ── SHARED COMPONENTS ──
@@ -1748,8 +1769,39 @@ const AuthPage = ({ onLogin, dark }) => {
           </div>
         )}
 
+        {/* ═══════════ RESET PASSWORD (from email link) ═══════════ */}
+        {(mode === "reset" || resetToken) && (
+          <div className="card animate-fadeIn" style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
+            <div>
+              <h2 style={{ fontSize: 21, fontWeight: 800, marginBottom: 3 }}>Set new password</h2>
+              <p style={{ fontSize: 13, color: "var(--text-dim)" }}>Choose a new password for your account</p>
+            </div>
+            <ErrorBanner />
+            {success ? (
+              <div style={{ padding: 20, background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 10, textAlign: "center" }}>
+                <div style={{ marginBottom: 10 }}><Icon name="check" size={36} color="#10B981" /></div>
+                <p style={{ fontSize: 13, color: "#34D399", fontWeight: 600 }}>{success}</p>
+                <button onClick={() => switchMode("signin")} className="btn btn-ghost" style={{ marginTop: 14, width: "100%", justifyContent: "center", fontSize: 13 }}>Sign in now</button>
+              </div>
+            ) : (
+              <>
+                <InputField label="New password" type="password" placeholder="Min 8 characters" icon="key"
+                  value={newPass} onChange={e => { setNewPass(e.target.value); clear(); }} />
+                <InputField label="Confirm password" type="password" placeholder="Re-enter password" icon="key"
+                  value={confirmPass} onChange={e => { setConfirmPass(e.target.value); clear(); }}
+                  onKeyDown={e => e.key === "Enter" && handleReset()} />
+                <PasswordStrengthBar password={newPass} />
+                <button className="btn btn-primary" style={{ justifyContent: "center", padding: "13px 0", fontSize: 14, width: "100%" }}
+                  onClick={handleReset} disabled={loading}>
+                  {loading ? <LoadingDots /> : "Reset Password"}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
         {/* ═══════════ FORGOT PASSWORD ═══════════ */}
-        {mode === "forgot" && (
+        {mode === "forgot" && !resetToken && (
           <div className="card animate-fadeIn" style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
             <div>
               <button onClick={() => switchMode("signin")} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-dim)", fontFamily: "'Sora',sans-serif", fontSize: 12, display: "flex", alignItems: "center", gap: 6, marginBottom: 12, padding: 0 }}>
@@ -2426,7 +2478,7 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [user]);
 
-  const handleLogout = () => { setToken(null); setUser(null); };
+  const handleLogout = async () => { await logout(); setUser(null); };
 
   if (loading) return null;
 

@@ -3,6 +3,8 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const auth = require('../middleware/auth');
 const db = require('../db');
 
+const { sanitize } = require('../middleware/validate');
+
 const router = express.Router();
 
 function getModel() {
@@ -15,9 +17,10 @@ function getModel() {
 // POST /api/ai/generate — generate descriptions, category, and SEO tags
 router.post('/generate', auth, async (req, res) => {
   try {
-    const { name, brand, category, description, specs, brandVoice, customInstructions } = req.body;
+    const { name, brand, category, description, specs, brandVoice, customInstructions: rawInstructions } = req.body;
 
     if (!name) return res.status(400).json({ error: 'Product name is required' });
+    const customInstructions = rawInstructions ? sanitize(rawInstructions).slice(0, 500) : null;
 
     const model = getModel();
 
@@ -174,7 +177,7 @@ Be as specific as possible. If you can identify the exact product model, include
 // POST /api/ai/search-images — find product images by name (Serper.dev)
 router.post('/search-images', auth, async (req, res) => {
   try {
-    const { query } = req.body;
+    const query = req.body.query ? sanitize(req.body.query).slice(0, 200) : null;
     if (!query) return res.status(400).json({ error: 'Search query is required' });
 
     const response = await fetch('https://google.serper.dev/images', {

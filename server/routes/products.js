@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const auth = require('../middleware/auth');
+const { sanitize } = require('../middleware/validate');
 
 const router = express.Router();
 
@@ -371,7 +372,7 @@ router.post('/save-for-later', auth, async (req, res) => {
 // Resolve a conflict
 router.patch('/conflicts/:id/resolve', auth, async (req, res) => {
   try {
-    const { chosen_value } = req.body;
+    const chosen_value = req.body.chosen_value ? sanitize(String(req.body.chosen_value)).slice(0, 500) : null;
     await db.query(
       'UPDATE conflicts SET is_resolved = TRUE, chosen_value = ?, resolved_by = ?, resolved_at = NOW() WHERE id = ?',
       [chosen_value, req.user.id, req.params.id]
@@ -412,7 +413,10 @@ router.get('/catalog', auth, async (req, res) => {
 // Save to catalog
 router.post('/catalog', auth, async (req, res) => {
   try {
-    const { product_id, custom_name, custom_description, custom_price, brand_voice, notes } = req.body;
+    const { product_id, custom_name: rawName, custom_description: rawDesc, custom_price, brand_voice, notes: rawNotes } = req.body;
+    const custom_name = rawName ? sanitize(rawName).slice(0, 200) : null;
+    const custom_description = rawDesc ? sanitize(rawDesc).slice(0, 5000) : null;
+    const notes = rawNotes ? sanitize(rawNotes).slice(0, 2000) : null;
     const [result] = await db.query(
       `INSERT INTO catalog_entries (user_id, product_id, custom_name, custom_description, custom_price, brand_voice, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -427,12 +431,16 @@ router.post('/catalog', auth, async (req, res) => {
 // Update catalog entry (status, custom fields)
 router.patch('/catalog/:id', auth, async (req, res) => {
   try {
-    const { status, custom_name, custom_description, custom_price } = req.body;
+    const { status, custom_name: rawName, custom_description: rawDesc, custom_price } = req.body;
+    const validStatuses = ['Draft', 'Review', 'Published', 'Exported'];
+    if (status !== undefined && !validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
     const fields = [];
     const values = [];
     if (status !== undefined) { fields.push('status = ?'); values.push(status); }
-    if (custom_name !== undefined) { fields.push('custom_name = ?'); values.push(custom_name); }
-    if (custom_description !== undefined) { fields.push('custom_description = ?'); values.push(custom_description); }
+    if (rawName !== undefined) { fields.push('custom_name = ?'); values.push(sanitize(rawName).slice(0, 200)); }
+    if (rawDesc !== undefined) { fields.push('custom_description = ?'); values.push(sanitize(rawDesc).slice(0, 5000)); }
     if (custom_price !== undefined) { fields.push('custom_price = ?'); values.push(custom_price); }
     if (fields.length === 0) return res.status(400).json({ error: 'No fields to update' });
     fields.push('updated_at = NOW()');

@@ -17,8 +17,10 @@ export const setOnUnauthorized = (handler) => { onUnauthorized = handler; };
 
 const headers = () => ({
   'Content-Type': 'application/json',
-  ...(token ? { Authorization: `Bearer ${token}` } : {}),
 });
+
+// Wrap fetch to always include credentials (sends httpOnly cookie)
+const apiFetch = (url, opts = {}) => fetch(url, { ...opts, credentials: 'include' });
 
 const handleResponse = async (res) => {
   if (res.status === 401 && onUnauthorized) {
@@ -33,7 +35,7 @@ const handleResponse = async (res) => {
 
 // ── AUTH ──
 export const signUp = async (name, email, password, role, store_name) => {
-  const res = await fetch(`${API_URL}/auth/signup`, {
+  const res = await apiFetch(`${API_URL}/auth/signup`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify({ name, email, password, role, store_name }),
@@ -45,7 +47,7 @@ export const signUp = async (name, email, password, role, store_name) => {
 };
 
 export const signIn = async (email, password) => {
-  const res = await fetch(`${API_URL}/auth/signin`, {
+  const res = await apiFetch(`${API_URL}/auth/signin`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify({ email, password }),
@@ -58,22 +60,40 @@ export const signIn = async (email, password) => {
 
 export const getMe = async () => {
   if (!token) return null;
-  const res = await fetch(`${API_URL}/auth/me`, { headers: headers() });
+  const res = await apiFetch(`${API_URL}/auth/me`, { headers: headers() });
   if (!res.ok) { setToken(null); return null; }
   const data = await res.json();
   return data.user;
 };
 
+export const forgotPassword = async (email) => {
+  const res = await apiFetch(`${API_URL}/auth/forgot-password`, {
+    method: 'POST', headers: headers(), body: JSON.stringify({ email }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+};
+
+export const resetPassword = async (token, password) => {
+  const res = await apiFetch(`${API_URL}/auth/reset-password`, {
+    method: 'POST', headers: headers(), body: JSON.stringify({ token, password }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+};
+
 // ── PRODUCTS ──
 export const searchProduct = async (barcode) => {
-  const res = await fetch(`${API_URL}/products/search/${barcode}`, { headers: headers() });
+  const res = await apiFetch(`${API_URL}/products/search/${barcode}`, { headers: headers() });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error);
   return data;
 };
 
 export const saveProduct = async (productData) => {
-  const res = await fetch(`${API_URL}/products`, {
+  const res = await apiFetch(`${API_URL}/products`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify(productData),
@@ -84,7 +104,7 @@ export const saveProduct = async (productData) => {
 };
 
 export const resolveConflict = async (conflictId, chosenValue) => {
-  const res = await fetch(`${API_URL}/products/conflicts/${conflictId}/resolve`, {
+  const res = await apiFetch(`${API_URL}/products/conflicts/${conflictId}/resolve`, {
     method: 'PATCH',
     headers: headers(),
     body: JSON.stringify({ chosen_value: chosenValue }),
@@ -93,7 +113,7 @@ export const resolveConflict = async (conflictId, chosenValue) => {
 };
 
 export const refreshProduct = async (barcode) => {
-  const res = await fetch(`${API_URL}/products/refresh/${barcode}`, {
+  const res = await apiFetch(`${API_URL}/products/refresh/${barcode}`, {
     method: 'POST',
     headers: headers(),
   });
@@ -102,7 +122,7 @@ export const refreshProduct = async (barcode) => {
 
 // ── CATALOG ──
 export const saveForLater = async (productData) => {
-  const res = await fetch(`${API_URL}/products/save-for-later`, {
+  const res = await apiFetch(`${API_URL}/products/save-for-later`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify(productData),
@@ -113,21 +133,21 @@ export const saveForLater = async (productData) => {
 };
 
 export const getProductById = async (id) => {
-  const res = await fetch(`${API_URL}/products/${id}`, { headers: headers() });
+  const res = await apiFetch(`${API_URL}/products/${id}`, { headers: headers() });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error);
   return data;
 };
 
 export const getCatalog = async () => {
-  const res = await fetch(`${API_URL}/products/catalog`, { headers: headers() });
+  const res = await apiFetch(`${API_URL}/products/catalog`, { headers: headers() });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error);
   return data.entries;
 };
 
 export const saveToCatalog = async (entry) => {
-  const res = await fetch(`${API_URL}/products/catalog`, {
+  const res = await apiFetch(`${API_URL}/products/catalog`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify(entry),
@@ -136,7 +156,7 @@ export const saveToCatalog = async (entry) => {
 };
 
 export const updateCatalogEntry = async (id, fields) => {
-  const res = await fetch(`${API_URL}/products/catalog/${id}`, {
+  const res = await apiFetch(`${API_URL}/products/catalog/${id}`, {
     method: 'PATCH',
     headers: headers(),
     body: JSON.stringify(fields),
@@ -151,7 +171,7 @@ export const updateCatalogStatus = async (id, status) => {
 };
 
 export const deleteCatalogEntry = async (id) => {
-  const res = await fetch(`${API_URL}/products/catalog/${id}`, {
+  const res = await apiFetch(`${API_URL}/products/catalog/${id}`, {
     method: 'DELETE',
     headers: headers(),
   });
@@ -161,7 +181,7 @@ export const deleteCatalogEntry = async (id) => {
 };
 
 export const deleteAllData = async () => {
-  const res = await fetch(`${API_URL}/auth/data`, {
+  const res = await apiFetch(`${API_URL}/auth/data`, {
     method: 'DELETE',
     headers: headers(),
   });
@@ -171,7 +191,7 @@ export const deleteAllData = async () => {
 };
 
 export const deleteAccount = async () => {
-  const res = await fetch(`${API_URL}/auth/account`, {
+  const res = await apiFetch(`${API_URL}/auth/account`, {
     method: 'DELETE',
     headers: headers(),
   });
@@ -181,7 +201,7 @@ export const deleteAccount = async () => {
 };
 
 export const clearSearchHistory = async () => {
-  const res = await fetch(`${API_URL}/analytics/searches`, {
+  const res = await apiFetch(`${API_URL}/analytics/searches`, {
     method: 'DELETE',
     headers: headers(),
   });
@@ -192,23 +212,23 @@ export const clearSearchHistory = async () => {
 
 // ── ANALYTICS ──
 export const getStats = async () => {
-  const res = await fetch(`${API_URL}/analytics/stats`, { headers: headers() });
+  const res = await apiFetch(`${API_URL}/analytics/stats`, { headers: headers() });
   return res.json();
 };
 
 export const getSourcePerformance = async () => {
-  const res = await fetch(`${API_URL}/analytics/sources`, { headers: headers() });
+  const res = await apiFetch(`${API_URL}/analytics/sources`, { headers: headers() });
   return res.json();
 };
 
 export const getSearchHistory = async () => {
-  const res = await fetch(`${API_URL}/analytics/searches`, { headers: headers() });
+  const res = await apiFetch(`${API_URL}/analytics/searches`, { headers: headers() });
   return res.json();
 };
 
 // ── AUTH SETTINGS ──
 export const changePassword = async (currentPassword, newPassword) => {
-  const res = await fetch(`${API_URL}/auth/change-password`, {
+  const res = await apiFetch(`${API_URL}/auth/change-password`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify({ currentPassword, newPassword }),
@@ -219,7 +239,7 @@ export const changePassword = async (currentPassword, newPassword) => {
 };
 
 export const updateProfile = async (profileData) => {
-  const res = await fetch(`${API_URL}/auth/profile`, {
+  const res = await apiFetch(`${API_URL}/auth/profile`, {
     method: 'PUT',
     headers: headers(),
     body: JSON.stringify(profileData),
@@ -230,14 +250,14 @@ export const updateProfile = async (profileData) => {
 };
 
 export const getSettings = async () => {
-  const res = await fetch(`${API_URL}/auth/settings`, { headers: headers() });
+  const res = await apiFetch(`${API_URL}/auth/settings`, { headers: headers() });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error);
   return data;
 };
 
 export const updateSettings = async (settings) => {
-  const res = await fetch(`${API_URL}/auth/settings`, {
+  const res = await apiFetch(`${API_URL}/auth/settings`, {
     method: 'PUT',
     headers: headers(),
     body: JSON.stringify(settings),
@@ -249,14 +269,14 @@ export const updateSettings = async (settings) => {
 
 // ── BRAND VOICES ──
 export const getBrandVoices = async () => {
-  const res = await fetch(`${API_URL}/brand-voices`, { headers: headers() });
+  const res = await apiFetch(`${API_URL}/brand-voices`, { headers: headers() });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error);
   return data.voices;
 };
 
 export const createBrandVoice = async (voice) => {
-  const res = await fetch(`${API_URL}/brand-voices`, {
+  const res = await apiFetch(`${API_URL}/brand-voices`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify(voice),
@@ -267,7 +287,7 @@ export const createBrandVoice = async (voice) => {
 };
 
 export const updateBrandVoice = async (id, voice) => {
-  const res = await fetch(`${API_URL}/brand-voices/${id}`, {
+  const res = await apiFetch(`${API_URL}/brand-voices/${id}`, {
     method: 'PUT',
     headers: headers(),
     body: JSON.stringify(voice),
@@ -278,7 +298,7 @@ export const updateBrandVoice = async (id, voice) => {
 };
 
 export const deleteBrandVoice = async (id) => {
-  const res = await fetch(`${API_URL}/brand-voices/${id}`, {
+  const res = await apiFetch(`${API_URL}/brand-voices/${id}`, {
     method: 'DELETE',
     headers: headers(),
   });
@@ -289,7 +309,7 @@ export const deleteBrandVoice = async (id) => {
 
 // ── AI ──
 export const generateAIContent = async (productData) => {
-  const res = await fetch(`${API_URL}/ai/generate`, {
+  const res = await apiFetch(`${API_URL}/ai/generate`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify(productData),
@@ -300,7 +320,7 @@ export const generateAIContent = async (productData) => {
 };
 
 export const identifyProduct = async (imageBase64) => {
-  const res = await fetch(`${API_URL}/ai/identify`, {
+  const res = await apiFetch(`${API_URL}/ai/identify`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify({ image: imageBase64 }),
@@ -311,7 +331,7 @@ export const identifyProduct = async (imageBase64) => {
 };
 
 export const searchProductImages = async (query) => {
-  const res = await fetch(`${API_URL}/ai/search-images`, {
+  const res = await apiFetch(`${API_URL}/ai/search-images`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify({ query }),
@@ -322,7 +342,7 @@ export const searchProductImages = async (query) => {
 };
 
 export const exportProduct = async (format, platform, barcode, productData, productId) => {
-  const res = await fetch(`${API_URL}/export`, {
+  const res = await apiFetch(`${API_URL}/export`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify({ format, platform, barcode, productData, productId }),
@@ -333,21 +353,21 @@ export const exportProduct = async (format, platform, barcode, productData, prod
 };
 
 export const getExportHistory = async () => {
-  const res = await fetch(`${API_URL}/export/history`, { headers: headers() });
+  const res = await apiFetch(`${API_URL}/export/history`, { headers: headers() });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error);
   return data.exports;
 };
 
 export const downloadExport = async (exportId) => {
-  const res = await fetch(`${API_URL}/export/history/${exportId}/download`, { headers: headers() });
+  const res = await apiFetch(`${API_URL}/export/history/${exportId}/download`, { headers: headers() });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error);
   return data;
 };
 
 export const googleSignIn = async (credential) => {
-  const res = await fetch(`${API_URL}/auth/google`, {
+  const res = await apiFetch(`${API_URL}/auth/google`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ credential }),
@@ -360,6 +380,11 @@ export const googleSignIn = async (credential) => {
 
 // ── HEALTH ──
 export const healthCheck = async () => {
-  const res = await fetch(`${API_URL}/health`);
+  const res = await apiFetch(`${API_URL}/health`);
   return res.json();
+};
+
+export const logout = async () => {
+  try { await apiFetch(`${API_URL}/auth/logout`, { method: 'POST', headers: headers() }); } catch {}
+  setToken(null);
 };
