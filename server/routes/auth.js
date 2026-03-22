@@ -281,6 +281,7 @@ router.post('/google', async (req, res) => {
         process.env.JWT_SECRET,
         { expiresIn: process.env.JWT_EXPIRES_IN }
       );
+      setAuthCookie(res, token);
       return res.json({
         token,
         user: { id: user.id, name: user.name, email: user.email, role: user.role, store_name: user.store_name }
@@ -300,6 +301,7 @@ router.post('/google', async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN }
     );
 
+    setAuthCookie(res, token);
     res.status(201).json({
       token,
       user: { id: result.insertId, name, email, role: 'Editor', store_name: 'My Store' }
