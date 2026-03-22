@@ -327,12 +327,11 @@ router.post('/save-for-later', auth, async (req, res) => {
       }
     }
 
-    // Save sources (skip invalid enum values)
+    // Save sources
     if (sources?.length > 0) {
-      const validSources = ['Amazon', 'Alibaba', 'Open Food Facts', 'UPC Database', 'Google'];
       await db.query('DELETE FROM product_sources WHERE product_id = ?', [productId]);
       for (const src of sources) {
-        if (!validSources.includes(src.source_name)) continue;
+        if (!src.source_name) continue;
         try {
           await db.query(
             `INSERT INTO product_sources (product_id, source_name, source_url, price, currency, weight, description, trust_score, specs)

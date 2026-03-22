@@ -52,55 +52,6 @@ const Icon = ({ name, size = 16, color = "currentColor" }) => {
 };
 
 // ============================================================
-// MOCK DATA
-// ============================================================
-const MOCK_PRODUCT = {
-  upc: "012345678901", name: "Sony WH-1000XM5 Wireless Noise Canceling Headphones",
-  brand: "Sony", category: "Electronics > Audio > Headphones",
-  price: { amazon: "$349.99", alibaba: "$298.00" }, weight: "250g", dimensions: "7.5 x 3.3 x 9.6 inches",
-  sources: [
-    { name: "Amazon", icon: "package", trustScore: 92, color: "#FF9900", data: { price: "$349.99", inStock: "true", rating: "4.4/5", reviews: "12,847" } },
-    { name: "Open Food Facts", icon: "database", trustScore: 78, color: "#10B981", data: { category: "Electronics", format: "Over-ear", brand: "Sony" } },
-    { name: "UPC Database", icon: "barcode", trustScore: 88, color: "#6366F1", data: { upc: "012345678901", ean: "4548736120693", format: "EAN-13" } },
-    { name: "Alibaba", icon: "package", trustScore: 71, color: "#FF6A00", data: { price: "$298.00", minOrder: "5 units", supplier: "Verified" } },
-    { name: "Google Search", icon: "search", trustScore: 65, color: "#4285F4", data: { snippets: "12", results: "847,000", topResult: "Sony.com" } },
-  ],
-  images: [
-    { id: 1, url: "https://picsum.photos/seed/sony1/400/400", qualityScore: 9.2, selected: true, label: "Front view, white bg" },
-    { id: 2, url: "https://picsum.photos/seed/sony2/400/400", qualityScore: 8.7, selected: true, label: "Side profile" },
-    { id: 3, url: "https://picsum.photos/seed/sony3/400/400", qualityScore: 8.1, selected: true, label: "Lifestyle shot" },
-    { id: 4, url: "https://picsum.photos/seed/sony4/400/400", qualityScore: 7.4, selected: false, label: "Box contents" },
-    { id: 5, url: "https://picsum.photos/seed/sony5/400/400", qualityScore: 6.8, selected: false, label: "Folded view" },
-    { id: 6, url: "https://picsum.photos/seed/sony6/400/400", qualityScore: 6.1, selected: false, label: "In-use photo" },
-  ],
-  conflicts: [
-    { field: "Price", values: { Amazon: "$349.99", Alibaba: "$298.00" }, severity: "medium" },
-    { field: "Weight", values: { Amazon: "250g", UPC: "255g" }, severity: "low" },
-  ],
-  seoTags: ["wireless headphones", "noise canceling", "sony wh1000xm5", "premium audio", "bluetooth headphones", "over-ear"],
-  aiDescriptions: [
-    { tone: "Professional", text: "The Sony WH-1000XM5 redefines premium audio with industry-leading noise cancellation technology. Featuring dual processors and eight-microphone array, these headphones deliver exceptional acoustic performance for the discerning audiophile. With up to 30 hours of battery life and multi-point connectivity, they seamlessly integrate into any professional workflow." },
-    { tone: "Friendly", text: "Say goodbye to distractions with Sony's amazing WH-1000XM5! These headphones are like having your own personal sound bubble — crazy good noise cancellation keeps the world out while crystal-clear audio pulls you in. Plus, they're super comfy for all-day wear, and the 30-hour battery means you won't be reaching for the charger anytime soon!" },
-    { tone: "Luxury", text: "Transcend the ordinary with the Sony WH-1000XM5 — an opus of acoustic engineering that sets the benchmark for wireless audio excellence. Meticulously crafted for those who demand nothing less than perfection, these headphones envelop you in an intimate soundstage while proprietary HD Noise Canceling Processor QN1 silences the world's intrusions." },
-  ],
-  specs: { "Driver Unit": "30mm", "Frequency Response": "4Hz-40,000Hz", "Battery Life": "30 hours", "Charging Time": "3.5 hours", "Bluetooth": "5.2", "Weight": "250g", "Foldable": "No", "Microphones": "8 built-in" },
-};
-
-const SAMPLE_CATALOG = [
-  { id: 1, name: "Sony WH-1000XM5 Headphones", upc: "012345678901", status: "Published", category: "Electronics", date: "2025-02-15", sources: 5, image: "https://picsum.photos/seed/product1/60/60" },
-  { id: 2, name: "Apple AirPods Pro (2nd Gen)", upc: "194253378693", status: "Review", category: "Electronics", date: "2025-02-14", sources: 4, image: "https://picsum.photos/seed/product2/60/60" },
-  { id: 3, name: "Organic Green Tea 100g", upc: "748927401832", status: "Draft", category: "Food & Beverage", date: "2025-02-13", sources: 3, image: "https://picsum.photos/seed/product3/60/60" },
-  { id: 4, name: "Nike Air Max 270 Sneakers", upc: "887791153846", status: "Exported", category: "Footwear", date: "2025-02-12", sources: 4, image: "https://picsum.photos/seed/product4/60/60" },
-  { id: 5, name: "Instant Pot Duo 7-in-1", upc: "853236004885", status: "Published", category: "Home & Kitchen", date: "2025-02-11", sources: 5, image: "https://picsum.photos/seed/product5/60/60" },
-];
-
-const MOCK_BRAND_VOICES = [
-  { id: 1, name: "Main Store", tone: "Professional", color: "#3B82F6", audience: "B2B buyers and procurement teams", style: "Clear, concise, and data-driven. Focus on specifications and value propositions.", includeKeywords: ["premium", "reliable", "industry-leading", "certified"], excludeKeywords: ["cheap", "budget", "basic"], description: "Our flagship brand voice for professional communications", isDefault: true },
-  { id: 2, name: "Consumer Direct", tone: "Friendly", color: "#10B981", audience: "End consumers, 25-45 age range", style: "Warm, approachable, conversational. Use contractions and relatable language.", includeKeywords: ["love", "amazing", "easy", "enjoy"], excludeKeywords: ["enterprise", "procurement", "compliance"], description: "Casual tone for direct-to-consumer product listings", isDefault: false },
-  { id: 3, name: "Premium Line", tone: "Luxury", color: "#F59E0B", audience: "High-income consumers seeking premium products", style: "Elevated, aspirational, refined. Emphasize craftsmanship and exclusivity.", includeKeywords: ["exquisite", "handcrafted", "exclusive", "timeless"], excludeKeywords: ["affordable", "discount", "mass-produced"], description: "Sophisticated voice for our luxury product range", isDefault: false },
-];
-
-// ============================================================
 // GLOBAL STYLES (Theme-aware via CSS custom properties)
 // ============================================================
 const GlobalStyles = ({ dark }) => (
@@ -131,7 +82,7 @@ const GlobalStyles = ({ dark }) => (
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
     .mono { font-family: 'DM Mono', monospace; }
 
-    @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
     @keyframes slideIn { from { opacity:0; transform:translateX(-16px); } to { opacity:1; transform:translateX(0); } }
     @keyframes slideUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
     @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
@@ -139,12 +90,11 @@ const GlobalStyles = ({ dark }) => (
     @keyframes shimmer { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
     @keyframes float { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-6px); } }
     @keyframes glow { 0%,100% { box-shadow:0 0 20px rgba(37,99,235,0.3); } 50% { box-shadow:0 0 40px rgba(37,99,235,0.6); } }
-    @keyframes confetti { 0% { transform:translateY(-20px) rotate(0deg); opacity:1; } 100% { transform:translateY(100vh) rotate(720deg); opacity:0; } }
     @keyframes bounceDot { 0%,80%,100% { transform:scale(0); } 40% { transform:scale(1); } }
     @keyframes scaleIn { from { opacity:0; transform:scale(0.96); } to { opacity:1; transform:scale(1); } }
     @keyframes themeSwitch { 0% { opacity:0.5; filter:blur(2px); } 100% { opacity:1; filter:blur(0); } }
 
-    .animate-fadeIn { animation: fadeIn 0.35s ease-out both; }
+    .animate-fadeIn { animation: fadeIn 0.2s ease-out both; }
     .animate-slideIn { animation: slideIn 0.3s ease-out both; }
     .animate-slideUp { animation: slideUp 0.4s ease-out both; }
     .animate-pulse { animation: pulse 2s infinite; }
@@ -229,7 +179,6 @@ const GlobalStyles = ({ dark }) => (
     @keyframes orbitSlow { 0%{transform:rotate(0deg) translateX(150px) rotate(0deg)} 100%{transform:rotate(360deg) translateX(150px) rotate(-360deg)} }
     @keyframes dashboardFloat { 0%{transform:perspective(1000px) rotateX(2deg) rotateY(-2deg) translateY(0)} 50%{transform:perspective(1000px) rotateX(-1deg) rotateY(1deg) translateY(-10px)} 100%{transform:perspective(1000px) rotateX(2deg) rotateY(-2deg) translateY(0)} }
 
-    .confetti-piece { position:fixed; width:8px; height:8px; border-radius:2px; animation:confetti 3s ease-in both; z-index:9999; }
     .dot-1 { animation:bounceDot 1.4s infinite ease-in-out; animation-delay:-0.32s; }
     .dot-2 { animation:bounceDot 1.4s infinite ease-in-out; animation-delay:-0.16s; }
     .dot-3 { animation:bounceDot 1.4s infinite ease-in-out; }
@@ -239,7 +188,6 @@ const GlobalStyles = ({ dark }) => (
 // ============================================================
 // SMALL COMPONENTS
 // ============================================================
-const Confetti = ({ active }) => { if (!active) return null; return <>{Array.from({length:60},(_,i)=><div key={i} className="confetti-piece" style={{left:Math.random()*100+"vw",top:"-20px",background:["#2563EB","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899"][i%6],width:Math.random()*8+6,height:Math.random()*8+6,animationDelay:Math.random()*0.8+"s",animationDuration:(Math.random()*2+2)+"s"}}/>)}</>; };
 const LoadingDots = () => <div style={{display:"flex",gap:6,alignItems:"center"}}>{[0,1,2].map(i=><div key={i} className={`dot-${i+1}`} style={{width:8,height:8,borderRadius:"50%",background:"#3B82F6"}}/>)}</div>;
 const ConfidenceScore = ({ score }) => { const c = score>=85?"#10B981":score>=65?"#F59E0B":"#EF4444"; return <div style={{display:"inline-flex",alignItems:"center",gap:4}}><div style={{width:48,height:4,background:"rgba(100,116,139,0.3)",borderRadius:2,overflow:"hidden"}}><div style={{width:`${score}%`,height:"100%",background:c,borderRadius:2,transition:"width 0.6s ease"}}/></div><span className="mono" style={{fontSize:11,color:c,fontWeight:600}}>{score}%</span></div>; };
 const Skeleton = ({ w, h, r, style }) => <div className="skeleton" style={{width:w||"100%",height:h||14,borderRadius:r||4,...style}}/>;
@@ -404,7 +352,7 @@ const SearchStep = ({ onSearch }) => {
             {searchingImages&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0"}}><div style={{width:16,height:16,borderRadius:"50%",border:"2px solid var(--border)",borderTopColor:"#3B82F6",animation:"spin 0.8s linear infinite"}}/><span style={{fontSize:12,color:"var(--text-dim)"}}>Finding product images...</span></div>}
             <div style={{display:"grid",gridTemplateColumns:"repeat(4, 1fr)",gap:6}}>
               {productImages.map((img,i)=><div key={i} onClick={()=>setSelectedImages(prev=>{const s=new Set(prev);s.has(i)?s.delete(i):s.add(i);return s;})} style={{position:"relative",borderRadius:6,overflow:"hidden",cursor:"pointer",border:`2px solid ${selectedImages.has(i)?"#10B981":"transparent"}`,opacity:selectedImages.has(i)?1:0.5,transition:"all 0.2s",aspectRatio:"1"}}>
-                <img src={img.thumbnail||img.url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>{e.target.style.display="none";}}/>
+                <img src={img.thumbnail||img.url} alt="" loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>{e.target.style.display="none";}}/>
                 {selectedImages.has(i)&&<div style={{position:"absolute",top:3,right:3,width:16,height:16,borderRadius:"50%",background:"#10B981",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon name="check" size={10} color="white"/></div>}
               </div>)}
             </div>
@@ -613,7 +561,7 @@ const ReviewStep = ({ onExport, onSave, productData }) => {
               <div style={{display:"flex",alignItems:"center",gap:6,color:"var(--warning-light)",fontSize:12,fontWeight:700,letterSpacing:"0.06em"}}><Icon name="warning" size={14} color="#F59E0B"/> CONFLICTS DETECTED</div>
               {p.conflicts.filter(c=>!resolvedConflicts[c.field]).map((c,i)=><div key={i} className="highlight-warning" style={{borderRadius:8,padding:12}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><span style={{fontSize:12,fontWeight:700,color:"var(--warning-light)"}}>{c.field}</span><span className="badge badge-warning">{c.severity}</span></div>
-                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{Object.entries(c.values).map(([s,v])=><button key={s} className="btn btn-ghost" style={{fontSize:11,padding:"4px 10px"}} onClick={async()=>{setResolvedConflicts(prev=>({...prev,[c.field]:v}));if(c.id)try{await resolveConflict(c.id,typeof v==='object'?v.join(', '):v);toast.success(`${c.field} resolved`);}catch{}}}>{s}: {typeof v==='object'?v.join(', '):v}</button>)}</div>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{Object.entries(c.values).map(([s,v])=><button key={s} className="btn btn-ghost" style={{fontSize:11,padding:"4px 10px"}} onClick={async()=>{setResolvedConflicts(prev=>({...prev,[c.field]:v}));if(c.id)try{await resolveConflict(c.id,typeof v==='object'?v.join(', '):v);toast.success(`${c.field} resolved`);}catch(err){toast.error("Failed to resolve conflict");}}}>{s}: {typeof v==='object'?v.join(', '):v}</button>)}</div>
               </div>)}
             </div>}
             {Object.keys(resolvedConflicts).length>0&&<div style={{fontSize:12,color:"var(--success-light)",display:"flex",alignItems:"center",gap:4}}><Icon name="check" size={12} color="#10B981"/>{Object.keys(resolvedConflicts).length} conflict(s) resolved</div>}
@@ -673,7 +621,7 @@ const ReviewStep = ({ onExport, onSave, productData }) => {
               {/* Thumbnail strip */}
               <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:4}}>
                 {images.map((img,i)=><div key={img.id} onClick={()=>setImages(prev=>prev.map((im,j)=>({...im,selected:j===i})))} style={{width:56,height:56,borderRadius:6,overflow:"hidden",cursor:"pointer",border:`2px solid ${img.selected?"#3B82F6":"transparent"}`,opacity:img.selected?1:0.5,transition:"all 0.2s",flexShrink:0}}>
-                  <img src={img.url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                  <img src={img.url} alt="" loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                 </div>)}
               </div>
               <div style={{fontSize:11,color:"var(--text-dim)",textAlign:"center"}}>{images.length} image{images.length!==1?"s":""} · Click thumbnails to browse · Click main image to zoom</div>
@@ -801,7 +749,7 @@ const ReviewStep = ({ onExport, onSave, productData }) => {
         {/* Thumbnail strip */}
         <div style={{display:"flex",gap:8,padding:"16px 0",justifyContent:"center"}} onClick={e=>e.stopPropagation()}>
           {images.map((img,i)=><div key={img.id} onClick={()=>{setLightbox(i);setZoomLevel(1);}} style={{width:52,height:52,borderRadius:6,overflow:"hidden",cursor:"pointer",border:`2px solid ${i===lightbox?"#3B82F6":"rgba(255,255,255,0.2)"}`,opacity:i===lightbox?1:0.5,transition:"all 0.2s"}}>
-            <img src={img.url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+            <img src={img.url} alt="" loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
           </div>)}
         </div>
         <div style={{color:"rgba(255,255,255,0.5)",fontSize:12,paddingBottom:12}}>{lightbox+1} / {images.length} · Click image to zoom · Scroll through with arrows</div>
@@ -814,7 +762,7 @@ const ReviewStep = ({ onExport, onSave, productData }) => {
 // STEP 3: EXPORT
 // ============================================================
 const ExportStep = ({ onComplete, productData }) => {
-  const [fmt,setFmt]=useState("CSV"); const [plat,setPlat]=useState("Shopify"); const [exporting,setExporting]=useState(false); const [progress,setProgress]=useState(0); const [done,setDone]=useState(false); const [showConfetti,setShowConfetti]=useState(false);
+  const [fmt,setFmt]=useState("CSV"); const [plat,setPlat]=useState("Shopify"); const [exporting,setExporting]=useState(false); const [progress,setProgress]=useState(0); const [done,setDone]=useState(false);
   const [exportError, setExportError] = useState(null);
   const [exportedFile, setExportedFile] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -835,7 +783,7 @@ const ExportStep = ({ onComplete, productData }) => {
       clearInterval(progressInterval);
       setProgress(100);
       setExportedFile(result);
-      setTimeout(() => { setExporting(false); setDone(true); setShowConfetti(true); toast.success("Export complete!"); setTimeout(()=>setShowConfetti(false),4000); }, 400);
+      setTimeout(() => { setExporting(false); setDone(true); toast.success("Export complete!"); }, 400);
     } catch (err) {
       clearInterval(progressInterval);
       setExporting(false);
@@ -872,12 +820,11 @@ const ExportStep = ({ onComplete, productData }) => {
       const a = document.createElement('a');
       a.href = url; a.download = data.filename; a.click();
       URL.revokeObjectURL(url);
-    } catch {}
+    } catch (err) { toast.error("Download failed: " + err.message); }
   };
 
   if(done) return (
     <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",alignItems:"center",gap:24,padding:"60px 20px",textAlign:"center"}}>
-      <Confetti active={showConfetti}/>
       <div className="animate-scaleIn" style={{width:80,height:80,borderRadius:"50%",background:"rgba(16,185,129,0.15)",border:"2px solid #10B981",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon name="check" size={36} color="#10B981"/></div>
       <div><h2 style={{fontSize:28,fontWeight:800,marginBottom:8}}>Export Complete!</h2><p style={{color:"var(--text-muted)",maxWidth:400}}>Your product has been exported to {plat} as {fmt}. Ready to import!</p></div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,maxWidth:480}}>
@@ -1046,14 +993,14 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
     setBatchExporting(true);
     setBatchProgress({ done: 0, total: items.length });
     const allContent = [];
-    let success = 0;
+    let success = 0, failed = 0;
     for (const item of items) {
       try {
         const result = await exportProduct(batchFmt, batchPlat, null, null, item.product_id);
         await updateCatalogStatus(item.id, "Exported");
         if (result.content) allContent.push({ content: result.content, filename: result.filename, contentType: result.contentType });
         success++;
-      } catch {}
+      } catch (err) { failed++; }
       setBatchProgress(prev => ({ ...prev, done: prev.done + 1 }));
     }
     setBatchExporting(false);
@@ -1085,7 +1032,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
           });
         }
       }
-      toast.success(`Exported ${success} product${success > 1 ? "s" : ""} as ${batchFmt}/${batchPlat}`);
+      toast.success(`Exported ${success} product${success > 1 ? "s" : ""} as ${batchFmt}/${batchPlat}${failed ? ` (${failed} failed)` : ""}`);
       setCatalog(prev => prev.map(c => selected.has(c.id) ? { ...c, status: "Exported" } : c));
       setSelected(new Set());
       setShowBatchModal(false);
@@ -1962,7 +1909,7 @@ const Settings = ({ user, onUserUpdate }) => {
     try {
       await apiUpdateSettings({ currency, export_format: exportFormat, default_platform: platform, notif_export: notifExport, notif_weekly: notifWeekly, notif_new_source: notifNewSource, notif_price_conflict: notifPriceConflict });
       setSettingsSaved(true); setTimeout(() => setSettingsSaved(false), 2000);
-    } catch {}
+    } catch (err) { toast.error("Failed to save settings"); }
   };
 
   const handleApiSave = () => { setApiSaved(true); setTimeout(() => setApiSaved(false), 2000); };
@@ -2243,16 +2190,16 @@ const BrandVoices = ({ user }) => {
         await apiUpdateBrandVoice(editingVoice.id, { name: editorName, tone: editorTone, description: desc, is_default: editingVoice.isDefault, metadata });
         setVoices(prev => prev.map(x => x.id === editingVoice.id ? { ...x, name: editorName, tone: editorTone, color: editorColor, audience: editorAudience, style: editorStyle, includeKeywords: editorInclude, excludeKeywords: editorExclude, description: desc } : x));
       }
-    } catch {}
+    } catch (err) { toast.error("Failed to save voice: " + err.message); return; }
     setEditingVoice(null); setIsCreating(false);
   };
 
   const deleteVoice = async (id) => {
-    try { await apiDeleteBrandVoice(id); } catch {}
+    try { await apiDeleteBrandVoice(id); } catch (err) { toast.error("Failed to delete voice"); return; }
     setVoices(prev => prev.filter(v => v.id !== id)); setShowDeleteDialog(null);
   };
   const setDefault = async (id) => {
-    try { await apiUpdateBrandVoice(id, { is_default: true }); } catch {}
+    try { await apiUpdateBrandVoice(id, { is_default: true }); } catch (err) { toast.error("Failed to set default"); return; }
     setVoices(prev => prev.map(v => ({ ...v, isDefault: v.id === id })));
   };
 
