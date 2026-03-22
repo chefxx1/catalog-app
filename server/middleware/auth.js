@@ -2,13 +2,20 @@ const jwt = require('jsonwebtoken');
 require('dotenv').config({ path: __dirname + '/../.env' });
 
 const auth = (req, res, next) => {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
+  // Read token from httpOnly cookie first, fall back to Authorization header
+  let token = req.cookies?.token;
+  if (!token) {
+    const header = req.headers.authorization;
+    if (header && header.startsWith('Bearer ')) {
+      token = header.split(' ')[1];
+    }
+  }
+
+  if (!token) {
     return res.status(401).json({ error: 'No token provided' });
   }
 
   try {
-    const token = header.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
     next();

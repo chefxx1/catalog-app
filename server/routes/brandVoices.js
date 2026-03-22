@@ -2,6 +2,8 @@ const express = require('express');
 const db = require('../db');
 const auth = require('../middleware/auth');
 
+const { sanitize } = require('../middleware/validate');
+
 const router = express.Router();
 
 // List user's voices
@@ -20,8 +22,12 @@ router.get('/', auth, async (req, res) => {
 // Create voice
 router.post('/', auth, async (req, res) => {
   try {
-    const { name, tone, description, is_default, metadata } = req.body;
-    if (!name) return res.status(400).json({ error: 'Name is required' });
+    const { name: rawName, tone, description: rawDesc, is_default, metadata } = req.body;
+    if (!rawName) return res.status(400).json({ error: 'Name is required' });
+    const name = sanitize(rawName);
+    const description = rawDesc ? sanitize(rawDesc) : null;
+    if (name.length > 100) return res.status(400).json({ error: 'Name must be under 100 characters' });
+    if (description && description.length > 2000) return res.status(400).json({ error: 'Description must be under 2000 characters' });
 
     // If setting as default, unset others
     if (is_default) {
@@ -43,7 +49,11 @@ router.post('/', auth, async (req, res) => {
 // Update voice
 router.put('/:id', auth, async (req, res) => {
   try {
-    const { name, tone, description, is_default, metadata } = req.body;
+    const { name: rawName, tone, description: rawDesc, is_default, metadata } = req.body;
+    const name = rawName ? sanitize(rawName) : null;
+    const description = rawDesc !== undefined ? (rawDesc ? sanitize(rawDesc) : rawDesc) : undefined;
+    if (name && name.length > 100) return res.status(400).json({ error: 'Name must be under 100 characters' });
+    if (description && description.length > 2000) return res.status(400).json({ error: 'Description must be under 2000 characters' });
 
     // Verify ownership
     const [existing] = await db.query('SELECT * FROM brand_voices WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);

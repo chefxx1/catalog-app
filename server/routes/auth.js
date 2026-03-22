@@ -1,11 +1,35 @@
 const express = require('express');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const nodemailer = require('nodemailer');
 const db = require('../db');
 const auth = require('../middleware/auth');
 require('dotenv').config({ path: __dirname + '/../.env' });
 
 const { OAuth2Client } = require('google-auth-library');
+
+const { sanitize, isValidEmail } = require('../middleware/validate');
+
+// Email transporter
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: parseInt(process.env.SMTP_PORT || '587'),
+  secure: false,
+  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+});
+
+const COOKIE_OPTS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax',
+  maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+  path: '/',
+};
+
+function setAuthCookie(res, token) {
+  res.cookie('token', token, COOKIE_OPTS);
+}
 
 const router = express.Router();
 
@@ -17,8 +41,14 @@ router.post('/signup', async (req, res) => {
     if (!name || !email || !password) {
       return res.status(400).json({ error: 'Name, email, and password are required' });
     }
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+    if (sanitize(name).length > 100) {
+      return res.status(400).json({ error: 'Name must be under 100 characters' });
+    }
+    if (password.length < 8 || password.length > 128) {
+      return res.status(400).json({ error: 'Password must be 8-128 characters' });
     }
 
     // Check if user exists
@@ -40,6 +70,7 @@ router.post('/signup', async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN }
     );
 
+    setAuthCookie(res, token);
     res.status(201).json({
       token,
       user: { id: result.insertId, name: name.trim(), email: email.toLowerCase().trim(), role: role || 'Editor', store_name: store_name || 'My Store' }
@@ -75,6 +106,7 @@ router.post('/signin', async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN }
     );
 
+    setAuthCookie(res, token);
     res.json({
       token,
       user: { id: user.id, name: user.name, email: user.email, role: user.role, store_name: user.store_name }
@@ -82,6 +114,12 @@ router.post('/signin', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
+});
+
+// Logout — clear cookie
+router.post('/logout', (req, res) => {
+  res.clearCookie('token', { path: '/' });
+  res.json({ message: 'Logged out' });
 });
 
 // Get current user
@@ -102,8 +140,8 @@ router.post('/change-password', auth, async (req, res) => {
     if (!currentPassword || !newPassword) {
       return res.status(400).json({ error: 'Both current and new password are required' });
     }
-    if (newPassword.length < 8) {
-      return res.status(400).json({ error: 'New password must be at least 8 characters' });
+    if (newPassword.length < 8 || newPassword.length > 128) {
+      return res.status(400).json({ error: 'New password must be 8-128 characters' });
     }
 
     const [users] = await db.query('SELECT password_hash FROM users WHERE id = ?', [req.user.id]);
@@ -123,14 +161,19 @@ router.post('/change-password', auth, async (req, res) => {
 // Update profile
 router.put('/profile', auth, async (req, res) => {
   try {
-    const { name, email, store_name } = req.body;
+    const { name: rawName, email, store_name: rawStore } = req.body;
+    const name = rawName ? sanitize(rawName) : null;
+    const store_name = rawStore ? sanitize(rawStore) : null;
+    if (name && name.length > 100) return res.status(400).json({ error: 'Name must be under 100 characters' });
+    if (store_name && store_name.length > 100) return res.status(400).json({ error: 'Store name must be under 100 characters' });
+    if (email && !isValidEmail(email)) return res.status(400).json({ error: 'Invalid email format' });
     if (email) {
       const [existing] = await db.query('SELECT id FROM users WHERE email = ? AND id != ?', [email.toLowerCase().trim(), req.user.id]);
       if (existing.length > 0) return res.status(409).json({ error: 'Email already in use' });
     }
     await db.query(
       'UPDATE users SET name = COALESCE(?, name), email = COALESCE(?, email), store_name = COALESCE(?, store_name) WHERE id = ?',
-      [name?.trim() || null, email?.toLowerCase().trim() || null, store_name?.trim() || null, req.user.id]
+      [name || null, email?.toLowerCase().trim() || null, store_name || null, req.user.id]
     );
     const [updated] = await db.query('SELECT id, name, email, role, store_name FROM users WHERE id = ?', [req.user.id]);
     res.json({ user: updated[0] });
@@ -159,6 +202,12 @@ router.get('/settings', auth, async (req, res) => {
 router.put('/settings', auth, async (req, res) => {
   try {
     const { currency, export_format, default_platform, notif_export, notif_weekly, notif_new_source, notif_price_conflict } = req.body;
+    const validCurrencies = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY', 'BDT'];
+    const validFormats = ['CSV', 'JSON', 'XML'];
+    const validPlatforms = ['Shopify', 'WooCommerce', 'Magento', 'BigCommerce'];
+    if (currency && !validCurrencies.includes(currency)) return res.status(400).json({ error: 'Invalid currency' });
+    if (export_format && !validFormats.includes(export_format)) return res.status(400).json({ error: 'Invalid export format' });
+    if (default_platform && !validPlatforms.includes(default_platform)) return res.status(400).json({ error: 'Invalid platform' });
     await db.query(
       `INSERT INTO user_settings (user_id, currency, export_format, default_platform, notif_export, notif_weekly, notif_new_source, notif_price_conflict)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -258,6 +307,87 @@ router.post('/google', async (req, res) => {
   } catch (err) {
     console.error('Google auth error:', err.message);
     res.status(401).json({ error: 'Google authentication failed' });
+  }
+});
+
+// Forgot password — send reset email
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    // Always return success to prevent email enumeration
+    const successMsg = { message: 'If an account with that email exists, a reset link has been sent.' };
+
+    const [users] = await db.query('SELECT id, name FROM users WHERE email = ?', [email.toLowerCase().trim()]);
+    if (users.length === 0) return res.json(successMsg);
+
+    const user = users[0];
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    // Invalidate any existing tokens for this user
+    await db.query('UPDATE password_resets SET used = TRUE WHERE user_id = ?', [user.id]);
+
+    await db.query(
+      'INSERT INTO password_resets (user_id, token, expires_at) VALUES (?, ?, ?)',
+      [user.id, token, expiresAt]
+    );
+
+    const resetUrl = `${process.env.CORS_ORIGIN || 'http://localhost:5173'}?reset=${token}`;
+
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: email.toLowerCase().trim(),
+      subject: 'CatalogAI — Reset Your Password',
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0F172A;border-radius:12px;color:#E2E8F0;">
+          <div style="text-align:center;margin-bottom:24px;">
+            <div style="display:inline-block;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#2563EB,#10B981);line-height:40px;font-size:18px;color:white;font-weight:bold;">C</div>
+            <h2 style="margin:12px 0 0;font-size:20px;color:#F8FAFC;">CatalogAI</h2>
+          </div>
+          <p style="font-size:15px;color:#94A3B8;">Hi ${user.name || 'there'},</p>
+          <p style="font-size:15px;color:#94A3B8;">We received a request to reset your password. Click the button below to choose a new one:</p>
+          <div style="text-align:center;margin:28px 0;">
+            <a href="${resetUrl}" style="display:inline-block;padding:12px 32px;background:#2563EB;color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Reset Password</a>
+          </div>
+          <p style="font-size:13px;color:#64748B;">This link expires in 1 hour. If you didn't request this, you can safely ignore this email.</p>
+          <hr style="border:none;border-top:1px solid #1E293B;margin:24px 0;" />
+          <p style="font-size:11px;color:#475569;text-align:center;">CatalogAI — AI-Powered Product Data Intelligence</p>
+        </div>
+      `,
+    });
+
+    res.json(successMsg);
+  } catch (err) {
+    console.error('Forgot password error:', err.message);
+    res.status(500).json({ error: 'Failed to send reset email' });
+  }
+});
+
+// Reset password — verify token and set new password
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body;
+    if (!token || !password) return res.status(400).json({ error: 'Token and new password are required' });
+    if (password.length < 8 || password.length > 128) return res.status(400).json({ error: 'Password must be 8-128 characters' });
+
+    const [resets] = await db.query(
+      'SELECT * FROM password_resets WHERE token = ? AND used = FALSE AND expires_at > NOW()',
+      [token]
+    );
+    if (resets.length === 0) return res.status(400).json({ error: 'Invalid or expired reset link. Please request a new one.' });
+
+    const reset = resets[0];
+    const hash = await bcrypt.hash(password, 12);
+
+    await db.query('UPDATE users SET password_hash = ? WHERE id = ?', [hash, reset.user_id]);
+    await db.query('UPDATE password_resets SET used = TRUE WHERE id = ?', [reset.id]);
+
+    res.json({ message: 'Password reset successfully. You can now sign in.' });
+  } catch (err) {
+    console.error('Reset password error:', err.message);
+    res.status(500).json({ error: 'Failed to reset password' });
   }
 });
 

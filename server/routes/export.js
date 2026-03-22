@@ -46,6 +46,11 @@ router.post('/', auth, async (req, res) => {
       return res.status(400).json({ error: 'Format and platform are required' });
     }
 
+    const validFormats = ['CSV', 'JSON', 'XML'];
+    const validPlatforms = ['Shopify', 'WooCommerce', 'Magento', 'BigCommerce'];
+    if (!validFormats.includes(format)) return res.status(400).json({ error: 'Invalid export format' });
+    if (!validPlatforms.includes(platform)) return res.status(400).json({ error: 'Invalid platform' });
+
     // Fetch product data from DB
     let product;
     if (barcode) {
