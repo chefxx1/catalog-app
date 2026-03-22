@@ -48,6 +48,18 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
+// Auto-purge expired product cache every 24 hours
+async function purgeExpiredCache() {
+  try {
+    const [result] = await db.query('DELETE FROM products WHERE cache_expires_at < NOW() AND id NOT IN (SELECT product_id FROM catalog_entries)');
+    if (result.affectedRows > 0) console.log(`Cache cleanup: purged ${result.affectedRows} expired products`);
+  } catch (err) {
+    console.error('Cache cleanup error:', err.message);
+  }
+}
+setInterval(purgeExpiredCache, 24 * 60 * 60 * 1000);
+
 app.listen(PORT, () => {
   console.log(`CatalogAI API running on http://localhost:${PORT}`);
+  purgeExpiredCache(); // Run once on startup
 });

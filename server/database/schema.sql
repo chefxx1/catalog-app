@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS products (
 CREATE TABLE IF NOT EXISTS product_sources (
   id INT AUTO_INCREMENT PRIMARY KEY,
   product_id INT NOT NULL,
-  source_name ENUM('Amazon', 'Alibaba', 'Open Food Facts', 'UPC Database', 'Google') NOT NULL,
+  source_name VARCHAR(100) NOT NULL,
   source_url VARCHAR(500) NULL,
   price DECIMAL(10,2) NULL,
   currency VARCHAR(10) DEFAULT 'USD',
@@ -115,13 +115,14 @@ CREATE TABLE IF NOT EXISTS catalog_entries (
 CREATE TABLE IF NOT EXISTS exports (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
-  catalog_entry_id INT NOT NULL,
-  format ENUM('CSV', 'JSON', 'XML') NOT NULL,
-  platform ENUM('Shopify', 'WooCommerce', 'Magento', 'BigCommerce') NOT NULL,
-  file_path VARCHAR(500) NULL,
+  format VARCHAR(10) NOT NULL,
+  platform VARCHAR(50) NOT NULL,
+  product_name VARCHAR(255) NULL,
+  barcode VARCHAR(50) NULL,
+  filename VARCHAR(255) NULL,
+  file_content LONGTEXT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY (catalog_entry_id) REFERENCES catalog_entries(id) ON DELETE CASCADE
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Search history (tracks lookups for analytics)
@@ -177,3 +178,19 @@ CREATE TABLE IF NOT EXISTS brand_voices (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+-- ============================================================
+-- PERFORMANCE INDEXES
+-- ============================================================
+CREATE INDEX idx_catalog_user ON catalog_entries(user_id);
+CREATE INDEX idx_catalog_product ON catalog_entries(product_id);
+CREATE INDEX idx_catalog_status ON catalog_entries(user_id, status);
+CREATE INDEX idx_search_user ON search_history(user_id);
+CREATE INDEX idx_search_barcode ON search_history(barcode);
+CREATE INDEX idx_sources_product ON product_sources(product_id);
+CREATE INDEX idx_images_product ON product_images(product_id);
+CREATE INDEX idx_conflicts_product ON conflicts(product_id);
+CREATE INDEX idx_exports_user ON exports(user_id);
+CREATE INDEX idx_brand_voices_user ON brand_voices(user_id);
+CREATE INDEX idx_password_resets_token ON password_resets(token);
+CREATE INDEX idx_products_cache ON products(cache_expires_at);

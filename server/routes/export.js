@@ -79,11 +79,10 @@ router.post('/', auth, async (req, res) => {
       );
       const newProductId = result.insertId;
 
-      // Save sources (skip if source_name doesn't match DB enum)
+      // Save sources
       if (productData.sources?.length > 0) {
-        const validSources = ['Amazon', 'Alibaba', 'Open Food Facts', 'UPC Database', 'Google'];
         for (const src of productData.sources) {
-          if (!validSources.includes(src.source_name)) continue;
+          if (!src.source_name) continue;
           try {
             await db.query(
               `INSERT INTO product_sources (product_id, source_name, source_url, price, currency, weight, description, trust_score, specs)

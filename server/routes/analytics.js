@@ -31,8 +31,12 @@ router.get('/stats', auth, async (req, res) => {
 router.get('/sources', auth, async (req, res) => {
   try {
     const [sources] = await db.query(
-      `SELECT source_name, COUNT(*) as total, AVG(trust_score) as avg_trust
-       FROM product_sources GROUP BY source_name ORDER BY avg_trust DESC`
+      `SELECT ps.source_name, COUNT(*) as total, AVG(ps.trust_score) as avg_trust
+       FROM product_sources ps
+       JOIN catalog_entries ce ON ce.product_id = ps.product_id
+       WHERE ce.user_id = ?
+       GROUP BY ps.source_name ORDER BY avg_trust DESC`,
+      [req.user.id]
     );
     res.json({ sources });
   } catch (err) {
