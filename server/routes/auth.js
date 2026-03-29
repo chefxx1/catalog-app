@@ -9,6 +9,7 @@ require('dotenv').config({ path: __dirname + '/../.env' });
 
 const { OAuth2Client } = require('google-auth-library');
 
+const requireRole = require('../middleware/requireRole');
 const { sanitize, isValidEmail } = require('../middleware/validate');
 
 // Email transporter
@@ -33,10 +34,10 @@ function setAuthCookie(res, token) {
 
 const router = express.Router();
 
-// Sign Up
+// Sign Up — every signup creates a new store + Admin
 router.post('/signup', async (req, res) => {
   try {
-    const { name, email, password, role, store_name } = req.body;
+    const { name, email, password, store_name } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({ error: 'Name, email, and password are required' });
@@ -57,15 +58,20 @@ router.post('/signup', async (req, res) => {
       return res.status(409).json({ error: 'An account with this email already exists' });
     }
 
-    // Hash password and create user
+    // Create store first
+    const finalStoreName = store_name || 'My Store';
+    const [storeResult] = await db.query('INSERT INTO stores (name) VALUES (?)', [finalStoreName]);
+    const storeId = storeResult.insertId;
+
+    // Create user as Admin of this store
     const password_hash = await bcrypt.hash(password, 12);
     const [result] = await db.query(
-      'INSERT INTO users (name, email, password_hash, role, store_name) VALUES (?, ?, ?, ?, ?)',
-      [name.trim(), email.toLowerCase().trim(), password_hash, role || 'Editor', store_name || 'My Store']
+      'INSERT INTO users (name, email, password_hash, role, store_id) VALUES (?, ?, ?, ?, ?)',
+      [name.trim(), email.toLowerCase().trim(), password_hash, 'Admin', storeId]
     );
 
     const token = jwt.sign(
-      { id: result.insertId, email: email.toLowerCase().trim(), role: role || 'Editor' },
+      { id: result.insertId, email: email.toLowerCase().trim(), role: 'Admin', store_id: storeId },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN }
     );
@@ -73,7 +79,7 @@ router.post('/signup', async (req, res) => {
     setAuthCookie(res, token);
     res.status(201).json({
       token,
-      user: { id: result.insertId, name: name.trim(), email: email.toLowerCase().trim(), role: role || 'Editor', store_name: store_name || 'My Store' }
+      user: { id: result.insertId, name: name.trim(), email: email.toLowerCase().trim(), role: 'Admin', store_id: storeId, store_name: finalStoreName }
     });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -100,8 +106,12 @@ router.post('/signin', async (req, res) => {
       return res.status(401).json({ error: 'Incorrect password' });
     }
 
+    // Fetch store name
+    const [stores] = await db.query('SELECT name FROM stores WHERE id = ?', [user.store_id]);
+    const storeName = stores.length ? stores[0].name : 'My Store';
+
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
+      { id: user.id, email: user.email, role: user.role, store_id: user.store_id },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN }
     );
@@ -109,7 +119,7 @@ router.post('/signin', async (req, res) => {
     setAuthCookie(res, token);
     res.json({
       token,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role, store_name: user.store_name }
+      user: { id: user.id, name: user.name, email: user.email, role: user.role, store_id: user.store_id, store_name: storeName }
     });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -125,7 +135,10 @@ router.post('/logout', (req, res) => {
 // Get current user
 router.get('/me', auth, async (req, res) => {
   try {
-    const [users] = await db.query('SELECT id, name, email, role, store_name, created_at FROM users WHERE id = ?', [req.user.id]);
+    const [users] = await db.query(
+      'SELECT u.id, u.name, u.email, u.role, u.store_id, s.name AS store_name, u.created_at FROM users u JOIN stores s ON u.store_id = s.id WHERE u.id = ?',
+      [req.user.id]
+    );
     if (users.length === 0) return res.status(404).json({ error: 'User not found' });
     res.json({ user: users[0] });
   } catch (err) {
@@ -171,11 +184,22 @@ router.put('/profile', auth, async (req, res) => {
       const [existing] = await db.query('SELECT id FROM users WHERE email = ? AND id != ?', [email.toLowerCase().trim(), req.user.id]);
       if (existing.length > 0) return res.status(409).json({ error: 'Email already in use' });
     }
+    // Update user fields
     await db.query(
-      'UPDATE users SET name = COALESCE(?, name), email = COALESCE(?, email), store_name = COALESCE(?, store_name) WHERE id = ?',
-      [name || null, email?.toLowerCase().trim() || null, store_name || null, req.user.id]
+      'UPDATE users SET name = COALESCE(?, name), email = COALESCE(?, email) WHERE id = ?',
+      [name || null, email?.toLowerCase().trim() || null, req.user.id]
     );
-    const [updated] = await db.query('SELECT id, name, email, role, store_name FROM users WHERE id = ?', [req.user.id]);
+    // Update store name (Admin only)
+    if (store_name) {
+      const [userRow] = await db.query('SELECT role, store_id FROM users WHERE id = ?', [req.user.id]);
+      if (userRow[0].role === 'Admin') {
+        await db.query('UPDATE stores SET name = ? WHERE id = ?', [store_name, userRow[0].store_id]);
+      }
+    }
+    const [updated] = await db.query(
+      'SELECT u.id, u.name, u.email, u.role, u.store_id, s.name AS store_name FROM users u JOIN stores s ON u.store_id = s.id WHERE u.id = ?',
+      [req.user.id]
+    );
     res.json({ user: updated[0] });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -198,8 +222,8 @@ router.get('/settings', auth, async (req, res) => {
   }
 });
 
-// Update settings (upsert)
-router.put('/settings', auth, async (req, res) => {
+// Update settings (upsert) — Admin only
+router.put('/settings', auth, requireRole('Admin'), async (req, res) => {
   try {
     const { currency, export_format, default_platform, notif_export, notif_weekly, notif_new_source, notif_price_conflict } = req.body;
     const validCurrencies = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CNY', 'BDT'];
@@ -222,14 +246,19 @@ router.put('/settings', auth, async (req, res) => {
   }
 });
 
-// Delete all catalog data (Danger Zone)
-router.delete('/data', auth, async (req, res) => {
+// Delete all catalog data (Danger Zone) — Admin only, deletes entire store's data
+router.delete('/data', auth, requireRole('Admin'), async (req, res) => {
   try {
-    await db.query('DELETE FROM exports WHERE user_id = ?', [req.user.id]);
-    await db.query('DELETE FROM catalog_entries WHERE user_id = ?', [req.user.id]);
-    await db.query('DELETE FROM search_history WHERE user_id = ?', [req.user.id]);
-    await db.query('DELETE FROM brand_voices WHERE user_id = ?', [req.user.id]);
-    await db.query('DELETE FROM user_settings WHERE user_id = ?', [req.user.id]);
+    const sid = req.user.store_id;
+    await db.query('DELETE FROM exports WHERE store_id = ?', [sid]);
+    await db.query('DELETE FROM catalog_entries WHERE store_id = ?', [sid]);
+    await db.query('DELETE FROM search_history WHERE store_id = ?', [sid]);
+    await db.query('DELETE FROM brand_voices WHERE store_id = ?', [sid]);
+    // user_settings stays user_id scoped — delete for all store members
+    const [members] = await db.query('SELECT id FROM users WHERE store_id = ?', [sid]);
+    for (const m of members) {
+      await db.query('DELETE FROM user_settings WHERE user_id = ?', [m.id]);
+    }
     res.json({ success: true });
   } catch (err) {
     console.error('Delete data error:', err.message);
@@ -237,20 +266,75 @@ router.delete('/data', auth, async (req, res) => {
   }
 });
 
-// Delete account (Danger Zone)
-router.delete('/account', auth, async (req, res) => {
+// Delete account (Danger Zone) — Admin deletes entire store + all members
+router.delete('/account', auth, requireRole('Admin'), async (req, res) => {
   try {
-    // Cascading deletes handle most child rows, but be explicit for safety
-    await db.query('DELETE FROM exports WHERE user_id = ?', [req.user.id]);
-    await db.query('DELETE FROM catalog_entries WHERE user_id = ?', [req.user.id]);
-    await db.query('DELETE FROM search_history WHERE user_id = ?', [req.user.id]);
-    await db.query('DELETE FROM brand_voices WHERE user_id = ?', [req.user.id]);
-    await db.query('DELETE FROM user_settings WHERE user_id = ?', [req.user.id]);
-    await db.query('DELETE FROM users WHERE id = ?', [req.user.id]);
+    // Deleting the store cascades to all users, data, and invitations
+    await db.query('DELETE FROM stores WHERE id = ?', [req.user.store_id]);
+    res.clearCookie('token', { path: '/' });
     res.json({ success: true });
   } catch (err) {
     console.error('Delete account error:', err.message);
     res.status(500).json({ error: 'Failed to delete account' });
+  }
+});
+
+// ── Team Management (Admin only) ──
+
+// List store members
+router.get('/team', auth, requireRole('Admin'), async (req, res) => {
+  try {
+    const [users] = await db.query(
+      'SELECT id, name, email, role, created_at FROM users WHERE store_id = ? ORDER BY created_at ASC',
+      [req.user.store_id]
+    );
+    res.json({ users });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Change user role (must be in same store)
+router.patch('/team/:id/role', auth, requireRole('Admin'), async (req, res) => {
+  try {
+    const targetId = parseInt(req.params.id);
+    if (targetId === req.user.id) {
+      return res.status(400).json({ error: "You can't change your own role" });
+    }
+
+    const { role } = req.body;
+    const validRoles = ['Admin', 'Editor', 'Viewer'];
+    if (!role || !validRoles.includes(role)) {
+      return res.status(400).json({ error: 'Invalid role. Must be Admin, Editor, or Viewer' });
+    }
+
+    const [existing] = await db.query('SELECT id FROM users WHERE id = ? AND store_id = ?', [targetId, req.user.store_id]);
+    if (existing.length === 0) return res.status(404).json({ error: 'User not found' });
+
+    await db.query('UPDATE users SET role = ? WHERE id = ?', [role, targetId]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Remove user from store (cascade deletes their personal data)
+router.delete('/team/:id', auth, requireRole('Admin'), async (req, res) => {
+  try {
+    const targetId = parseInt(req.params.id);
+    if (targetId === req.user.id) {
+      return res.status(400).json({ error: "You can't remove yourself" });
+    }
+
+    const [existing] = await db.query('SELECT id FROM users WHERE id = ? AND store_id = ?', [targetId, req.user.store_id]);
+    if (existing.length === 0) return res.status(404).json({ error: 'User not found' });
+
+    // Delete user — FK cascades handle user_settings, password_resets
+    await db.query('DELETE FROM users WHERE id = ?', [targetId]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Remove user error:', err.message);
+    res.status(500).json({ error: 'Failed to remove user' });
   }
 });
 
@@ -276,27 +360,51 @@ router.post('/google', async (req, res) => {
     if (existing.length > 0) {
       // Existing user — sign in
       const user = existing[0];
+      const [stores] = await db.query('SELECT name FROM stores WHERE id = ?', [user.store_id]);
+      const storeName = stores.length ? stores[0].name : 'My Store';
+
       const token = jwt.sign(
-        { id: user.id, email: user.email, role: user.role },
+        { id: user.id, email: user.email, role: user.role, store_id: user.store_id },
         process.env.JWT_SECRET,
         { expiresIn: process.env.JWT_EXPIRES_IN }
       );
       setAuthCookie(res, token);
       return res.json({
         token,
-        user: { id: user.id, name: user.name, email: user.email, role: user.role, store_name: user.store_name }
+        user: { id: user.id, name: user.name, email: user.email, role: user.role, store_id: user.store_id, store_name: storeName }
       });
     }
 
-    // New user — create account (no password needed for Google users)
-    const randomHash = await bcrypt.hash(Math.random().toString(36), 12);
-    const [result] = await db.query(
-      'INSERT INTO users (name, email, password_hash, role, store_name) VALUES (?, ?, ?, ?, ?)',
-      [name, email, randomHash, 'Editor', 'My Store']
+    // New user via Google — check if there's a pending invitation
+    const [pendingInvite] = await db.query(
+      'SELECT * FROM invitations WHERE email = ? AND accepted = FALSE AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1',
+      [email]
     );
 
+    let storeId, assignedRole;
+    if (pendingInvite.length > 0) {
+      // Accept the invitation — join the inviter's store
+      storeId = pendingInvite[0].store_id;
+      assignedRole = pendingInvite[0].role;
+      await db.query('UPDATE invitations SET accepted = TRUE WHERE id = ?', [pendingInvite[0].id]);
+    } else {
+      // No invitation — create a new store as Admin
+      const [storeResult] = await db.query('INSERT INTO stores (name) VALUES (?)', ['My Store']);
+      storeId = storeResult.insertId;
+      assignedRole = 'Admin';
+    }
+
+    const randomHash = await bcrypt.hash(Math.random().toString(36), 12);
+    const [result] = await db.query(
+      'INSERT INTO users (name, email, password_hash, role, store_id) VALUES (?, ?, ?, ?, ?)',
+      [name, email, randomHash, assignedRole, storeId]
+    );
+
+    const [stores] = await db.query('SELECT name FROM stores WHERE id = ?', [storeId]);
+    const storeName = stores.length ? stores[0].name : 'My Store';
+
     const token = jwt.sign(
-      { id: result.insertId, email, role: 'Editor' },
+      { id: result.insertId, email, role: assignedRole, store_id: storeId },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN }
     );
@@ -304,7 +412,7 @@ router.post('/google', async (req, res) => {
     setAuthCookie(res, token);
     res.status(201).json({
       token,
-      user: { id: result.insertId, name, email, role: 'Editor', store_name: 'My Store' }
+      user: { id: result.insertId, name, email, role: assignedRole, store_id: storeId, store_name: storeName }
     });
   } catch (err) {
     console.error('Google auth error:', err.message);
@@ -390,6 +498,176 @@ router.post('/reset-password', async (req, res) => {
   } catch (err) {
     console.error('Reset password error:', err.message);
     res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
+// ── Invite System ──
+
+// Send invitation (Admin only)
+router.post('/invite', auth, requireRole('Admin'), async (req, res) => {
+  try {
+    const { email, role } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+    if (!isValidEmail(email)) return res.status(400).json({ error: 'Invalid email format' });
+
+    const validRoles = ['Editor', 'Viewer'];
+    if (!role || !validRoles.includes(role)) {
+      return res.status(400).json({ error: 'Role must be Editor or Viewer' });
+    }
+
+    // Check if email already registered
+    const [existing] = await db.query('SELECT id FROM users WHERE email = ?', [email.toLowerCase().trim()]);
+    if (existing.length > 0) {
+      return res.status(409).json({ error: 'A user with this email already has an account' });
+    }
+
+    // Check for pending invite to same email in same store
+    const [pendingInvite] = await db.query(
+      'SELECT id FROM invitations WHERE email = ? AND store_id = ? AND accepted = FALSE AND expires_at > NOW()',
+      [email.toLowerCase().trim(), req.user.store_id]
+    );
+    if (pendingInvite.length > 0) {
+      return res.status(409).json({ error: 'An invitation is already pending for this email' });
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    await db.query(
+      'INSERT INTO invitations (store_id, inviter_id, email, role, token, expires_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.user.store_id, req.user.id, email.toLowerCase().trim(), role, token, expiresAt]
+    );
+
+    // Get store name and inviter name for the email
+    const [stores] = await db.query('SELECT name FROM stores WHERE id = ?', [req.user.store_id]);
+    const storeName = stores[0]?.name || 'a store';
+    const [inviter] = await db.query('SELECT name FROM users WHERE id = ?', [req.user.id]);
+    const inviterName = inviter[0]?.name || 'Your teammate';
+
+    const inviteUrl = `${process.env.CORS_ORIGIN || 'http://localhost:5173'}?invite=${token}`;
+
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: email.toLowerCase().trim(),
+      subject: `CatalogAI — You've been invited to join ${storeName}`,
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0F172A;border-radius:12px;color:#E2E8F0;">
+          <div style="text-align:center;margin-bottom:24px;">
+            <div style="display:inline-block;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#2563EB,#10B981);line-height:40px;font-size:18px;color:white;font-weight:bold;">C</div>
+            <h2 style="margin:12px 0 0;font-size:20px;color:#F8FAFC;">CatalogAI</h2>
+          </div>
+          <p style="font-size:15px;color:#94A3B8;">Hi there,</p>
+          <p style="font-size:15px;color:#94A3B8;"><strong style="color:#F8FAFC;">${inviterName}</strong> has invited you to join <strong style="color:#F8FAFC;">${storeName}</strong> as an <strong style="color:#F8FAFC;">${role}</strong>.</p>
+          <div style="text-align:center;margin:28px 0;">
+            <a href="${inviteUrl}" style="display:inline-block;padding:12px 32px;background:#2563EB;color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Accept Invitation</a>
+          </div>
+          <p style="font-size:13px;color:#64748B;">This invitation expires in 7 days. If you weren't expecting this, you can safely ignore this email.</p>
+          <hr style="border:none;border-top:1px solid #1E293B;margin:24px 0;" />
+          <p style="font-size:11px;color:#475569;text-align:center;">CatalogAI — AI-Powered Product Data Intelligence</p>
+        </div>
+      `,
+    });
+
+    res.json({ success: true, message: 'Invitation sent' });
+  } catch (err) {
+    console.error('Invite error:', err.message);
+    res.status(500).json({ error: 'Failed to send invitation' });
+  }
+});
+
+// Validate invite token (public — no auth)
+router.get('/invite/:token', async (req, res) => {
+  try {
+    const [invites] = await db.query(
+      `SELECT i.email, i.role, s.name AS store_name, u.name AS inviter_name
+       FROM invitations i
+       JOIN stores s ON i.store_id = s.id
+       JOIN users u ON i.inviter_id = u.id
+       WHERE i.token = ? AND i.accepted = FALSE AND i.expires_at > NOW()`,
+      [req.params.token]
+    );
+    if (invites.length === 0) {
+      return res.status(400).json({ error: 'Invalid or expired invitation' });
+    }
+    res.json(invites[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Accept invitation and create account (public — no auth)
+router.post('/invite/:token/accept', async (req, res) => {
+  try {
+    const { name, password } = req.body;
+    if (!name || !password) return res.status(400).json({ error: 'Name and password are required' });
+    if (password.length < 8 || password.length > 128) return res.status(400).json({ error: 'Password must be 8-128 characters' });
+
+    const [invites] = await db.query(
+      'SELECT * FROM invitations WHERE token = ? AND accepted = FALSE AND expires_at > NOW()',
+      [req.params.token]
+    );
+    if (invites.length === 0) {
+      return res.status(400).json({ error: 'Invalid or expired invitation' });
+    }
+
+    const invite = invites[0];
+
+    // Check if email already registered
+    const [existing] = await db.query('SELECT id FROM users WHERE email = ?', [invite.email]);
+    if (existing.length > 0) {
+      return res.status(409).json({ error: 'An account with this email already exists' });
+    }
+
+    const password_hash = await bcrypt.hash(password, 12);
+    const [result] = await db.query(
+      'INSERT INTO users (name, email, password_hash, role, store_id) VALUES (?, ?, ?, ?, ?)',
+      [sanitize(name).slice(0, 100), invite.email, password_hash, invite.role, invite.store_id]
+    );
+
+    // Mark invitation as accepted
+    await db.query('UPDATE invitations SET accepted = TRUE WHERE id = ?', [invite.id]);
+
+    // Get store name
+    const [stores] = await db.query('SELECT name FROM stores WHERE id = ?', [invite.store_id]);
+    const storeName = stores[0]?.name || 'My Store';
+
+    const token = jwt.sign(
+      { id: result.insertId, email: invite.email, role: invite.role, store_id: invite.store_id },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN }
+    );
+
+    setAuthCookie(res, token);
+    res.status(201).json({
+      token,
+      user: { id: result.insertId, name: name.trim(), email: invite.email, role: invite.role, store_id: invite.store_id, store_name: storeName }
+    });
+  } catch (err) {
+    console.error('Accept invite error:', err.message);
+    res.status(500).json({ error: 'Failed to create account' });
+  }
+});
+
+// List pending invitations (Admin only)
+router.get('/invites', auth, requireRole('Admin'), async (req, res) => {
+  try {
+    const [invites] = await db.query(
+      'SELECT id, email, role, accepted, created_at, expires_at FROM invitations WHERE store_id = ? ORDER BY created_at DESC',
+      [req.user.store_id]
+    );
+    res.json({ invites });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Revoke invitation (Admin only)
+router.delete('/invites/:id', auth, requireRole('Admin'), async (req, res) => {
+  try {
+    await db.query('DELETE FROM invitations WHERE id = ? AND store_id = ?', [req.params.id, req.user.store_id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
