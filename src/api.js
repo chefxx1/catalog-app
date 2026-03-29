@@ -28,17 +28,20 @@ const handleResponse = async (res) => {
     onUnauthorized();
     throw new Error('Session expired. Please sign in again.');
   }
+  if (res.status === 403) {
+    throw new Error('You do not have permission to perform this action');
+  }
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Request failed');
   return data;
 };
 
 // ── AUTH ──
-export const signUp = async (name, email, password, role, store_name) => {
+export const signUp = async (name, email, password, store_name) => {
   const res = await apiFetch(`${API_URL}/auth/signup`, {
     method: 'POST',
     headers: headers(),
-    body: JSON.stringify({ name, email, password, role, store_name }),
+    body: JSON.stringify({ name, email, password, store_name }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error);
@@ -376,6 +379,68 @@ export const googleSignIn = async (credential) => {
   if (!res.ok) throw new Error(data.error);
   setToken(data.token);
   return data;
+};
+
+// ── TEAM MANAGEMENT ──
+export const getTeamUsers = async () => {
+  const res = await apiFetch(`${API_URL}/auth/team`, { headers: headers() });
+  return handleResponse(res);
+};
+
+export const updateUserRole = async (userId, role) => {
+  const res = await apiFetch(`${API_URL}/auth/team/${userId}/role`, {
+    method: 'PATCH',
+    headers: headers(),
+    body: JSON.stringify({ role }),
+  });
+  return handleResponse(res);
+};
+
+export const removeTeamUser = async (userId) => {
+  const res = await apiFetch(`${API_URL}/auth/team/${userId}`, {
+    method: 'DELETE',
+    headers: headers(),
+  });
+  return handleResponse(res);
+};
+
+// ── INVITATIONS ──
+export const sendInvite = async (email, role) => {
+  const res = await apiFetch(`${API_URL}/auth/invite`, {
+    method: 'POST', headers: headers(),
+    body: JSON.stringify({ email, role }),
+  });
+  return handleResponse(res);
+};
+
+export const getInviteInfo = async (token) => {
+  const res = await apiFetch(`${API_URL}/auth/invite/${token}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+};
+
+export const acceptInvite = async (token, name, password) => {
+  const res = await apiFetch(`${API_URL}/auth/invite/${token}/accept`, {
+    method: 'POST', headers: headers(),
+    body: JSON.stringify({ name, password }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  setToken(data.token);
+  return data;
+};
+
+export const getPendingInvites = async () => {
+  const res = await apiFetch(`${API_URL}/auth/invites`, { headers: headers() });
+  return handleResponse(res);
+};
+
+export const revokeInvite = async (inviteId) => {
+  const res = await apiFetch(`${API_URL}/auth/invites/${inviteId}`, {
+    method: 'DELETE', headers: headers(),
+  });
+  return handleResponse(res);
 };
 
 // ── HEALTH ──

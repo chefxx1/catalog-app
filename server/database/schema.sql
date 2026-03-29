@@ -3,17 +3,26 @@
 CREATE DATABASE IF NOT EXISTS catalogai;
 USE catalogai;
 
+-- Stores table (each signup creates one)
+CREATE TABLE IF NOT EXISTS stores (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL DEFAULT 'My Store',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
 -- Users table
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
   email VARCHAR(255) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
-  role ENUM('Admin', 'Editor', 'Viewer') DEFAULT 'Editor',
-  store_name VARCHAR(255) DEFAULT 'My Store',
+  role ENUM('Admin', 'Editor', 'Viewer') DEFAULT 'Viewer',
+  store_id INT NOT NULL,
   avatar_url VARCHAR(500) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE
 );
 
 -- Product categories
@@ -93,9 +102,10 @@ CREATE TABLE IF NOT EXISTS conflicts (
   FOREIGN KEY (resolved_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
--- Catalog entries (user's saved/exported products)
+-- Catalog entries (store's saved/exported products)
 CREATE TABLE IF NOT EXISTS catalog_entries (
   id INT AUTO_INCREMENT PRIMARY KEY,
+  store_id INT NOT NULL,
   user_id INT NOT NULL,
   product_id INT NOT NULL,
   status ENUM('Draft', 'Review', 'Published', 'Exported') DEFAULT 'Draft',
@@ -107,6 +117,7 @@ CREATE TABLE IF NOT EXISTS catalog_entries (
   notes TEXT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
 );
@@ -114,6 +125,7 @@ CREATE TABLE IF NOT EXISTS catalog_entries (
 -- Export history
 CREATE TABLE IF NOT EXISTS exports (
   id INT AUTO_INCREMENT PRIMARY KEY,
+  store_id INT NOT NULL,
   user_id INT NOT NULL,
   format VARCHAR(10) NOT NULL,
   platform VARCHAR(50) NOT NULL,
@@ -122,18 +134,21 @@ CREATE TABLE IF NOT EXISTS exports (
   filename VARCHAR(255) NULL,
   file_content LONGTEXT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Search history (tracks lookups for analytics)
 CREATE TABLE IF NOT EXISTS search_history (
   id INT AUTO_INCREMENT PRIMARY KEY,
+  store_id INT NOT NULL,
   user_id INT NOT NULL,
   barcode VARCHAR(50) NULL,
   search_type ENUM('barcode', 'image', 'text') NOT NULL,
   cache_hit BOOLEAN DEFAULT FALSE,
   response_time_ms INT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -167,6 +182,7 @@ CREATE TABLE IF NOT EXISTS password_resets (
 -- Brand voice profiles
 CREATE TABLE IF NOT EXISTS brand_voices (
   id INT AUTO_INCREMENT PRIMARY KEY,
+  store_id INT NOT NULL,
   user_id INT NOT NULL,
   name VARCHAR(100) NOT NULL,
   tone VARCHAR(50) NULL,
@@ -176,21 +192,44 @@ CREATE TABLE IF NOT EXISTS brand_voices (
   metadata JSON NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Team invitations
+CREATE TABLE IF NOT EXISTS invitations (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  store_id INT NOT NULL,
+  inviter_id INT NOT NULL,
+  email VARCHAR(255) NOT NULL,
+  role ENUM('Editor', 'Viewer') NOT NULL DEFAULT 'Editor',
+  token VARCHAR(64) NOT NULL UNIQUE,
+  expires_at TIMESTAMP NOT NULL,
+  accepted BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE,
+  FOREIGN KEY (inviter_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- ============================================================
 -- PERFORMANCE INDEXES
 -- ============================================================
+CREATE INDEX idx_users_store ON users(store_id);
+CREATE INDEX idx_catalog_store ON catalog_entries(store_id);
 CREATE INDEX idx_catalog_user ON catalog_entries(user_id);
 CREATE INDEX idx_catalog_product ON catalog_entries(product_id);
-CREATE INDEX idx_catalog_status ON catalog_entries(user_id, status);
+CREATE INDEX idx_catalog_status ON catalog_entries(store_id, status);
+CREATE INDEX idx_search_store ON search_history(store_id);
 CREATE INDEX idx_search_user ON search_history(user_id);
 CREATE INDEX idx_search_barcode ON search_history(barcode);
 CREATE INDEX idx_sources_product ON product_sources(product_id);
 CREATE INDEX idx_images_product ON product_images(product_id);
 CREATE INDEX idx_conflicts_product ON conflicts(product_id);
+CREATE INDEX idx_exports_store ON exports(store_id);
 CREATE INDEX idx_exports_user ON exports(user_id);
+CREATE INDEX idx_brand_voices_store ON brand_voices(store_id);
 CREATE INDEX idx_brand_voices_user ON brand_voices(user_id);
 CREATE INDEX idx_password_resets_token ON password_resets(token);
 CREATE INDEX idx_products_cache ON products(cache_expires_at);
+CREATE INDEX idx_invitations_token ON invitations(token);
+CREATE INDEX idx_invitations_email ON invitations(email);

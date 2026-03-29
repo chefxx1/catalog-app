@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const auth = require('../middleware/auth');
+const requireRole = require('../middleware/requireRole');
 const { sanitize } = require('../middleware/validate');
 
 const router = express.Router();
@@ -68,6 +69,90 @@ async function fetchFromOpenFoodFacts(barcode) {
   }
 }
 
+// Fetch product data from UPCitemdb (general products — electronics, household, etc.)
+async function fetchFromUPCitemdb(barcode) {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    const res = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${barcode}`, {
+      headers: { 'Accept': 'application/json' },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.items || data.items.length === 0) return null;
+
+    const item = data.items[0];
+    const images = [];
+
+    // Collect images from the API response
+    if (item.images && item.images.length > 0) {
+      item.images.slice(0, 6).forEach((url, i) => {
+        images.push({ source_name: 'UPC Database', image_url: url, quality_score: 85 - (i * 5) });
+      });
+    }
+
+    // Build specs
+    const specs = {};
+    if (item.weight) specs['Weight'] = item.weight;
+    if (item.dimension) specs['Dimensions'] = item.dimension;
+    if (item.color) specs['Color'] = item.color;
+    if (item.size) specs['Size'] = item.size;
+    if (item.model) specs['Model'] = item.model;
+
+    // Get lowest offer price if available
+    let price = null;
+    let currency = 'USD';
+    if (item.offers && item.offers.length > 0) {
+      const offer = item.offers.find(o => o.price) || item.offers[0];
+      if (offer.price) price = offer.price;
+      if (offer.currency) currency = offer.currency;
+    }
+
+    // Clean up description — UPCitemdb often dumps specs into description
+    let cleanDesc = item.description || null;
+    if (cleanDesc && cleanDesc.length > 500) {
+      // Likely a spec dump — truncate to first meaningful sentence
+      const firstBreak = cleanDesc.search(/Features|Specifications|Dimensions|Overall|Frame Material/i);
+      if (firstBreak > 20) cleanDesc = cleanDesc.slice(0, firstBreak).trim();
+      else if (firstBreak >= 0) cleanDesc = null;
+    }
+
+    // Clean category — strip anything after first category-like segment
+    let cleanCategory = item.category || null;
+    if (cleanCategory) {
+      // Take only the last segment if it's a breadcrumb path (e.g. "Home > Furniture > Chairs")
+      const parts = cleanCategory.split('>').map(s => s.trim()).filter(Boolean);
+      cleanCategory = parts[parts.length - 1] || cleanCategory;
+      // If it's still too long (spec dump), discard it
+      if (cleanCategory.length > 100) cleanCategory = null;
+    }
+
+    return {
+      name: item.title || null,
+      brand: item.brand || null,
+      description: cleanDesc,
+      category: cleanCategory,
+      source: {
+        source_name: 'UPC Database',
+        source_url: `https://www.upcitemdb.com/upc/${barcode}`,
+        price: price,
+        currency: currency,
+        weight: item.weight || null,
+        color: item.color || null,
+        description: item.description || null,
+        trust_score: 80,
+        specs: Object.keys(specs).length > 0 ? specs : null,
+      },
+      images,
+    };
+  } catch (err) {
+    console.error('UPCitemdb fetch error:', err.message);
+    return null;
+  }
+}
+
 // Search by barcode (with caching)
 router.get('/search/:barcode', auth, async (req, res) => {
   try {
@@ -91,8 +176,8 @@ router.get('/search/:barcode', auth, async (req, res) => {
 
       // Log search
       await db.query(
-        'INSERT INTO search_history (user_id, barcode, search_type, cache_hit, response_time_ms) VALUES (?, ?, ?, ?, ?)',
-        [req.user.id, barcode, 'barcode', true, Date.now() - startTime]
+        'INSERT INTO search_history (store_id, user_id, barcode, search_type, cache_hit, response_time_ms) VALUES (?, ?, ?, ?, ?, ?)',
+        [req.user.store_id, req.user.id, barcode, 'barcode', true, Date.now() - startTime]
       );
 
       return res.json({
@@ -104,17 +189,32 @@ router.get('/search/:barcode', auth, async (req, res) => {
       });
     }
 
-    // Cache miss — try Open Food Facts API
-    const offData = await fetchFromOpenFoodFacts(barcode);
+    // Cache miss — try multiple barcode APIs
+    const [offData, upcData] = await Promise.all([
+      fetchFromOpenFoodFacts(barcode),
+      fetchFromUPCitemdb(barcode),
+    ]);
 
-    if (!offData || !offData.name) {
+    // Pick the best primary result (prefer whichever has a name)
+    const primary = (offData?.name ? offData : null) || (upcData?.name ? upcData : null);
+
+    if (!primary) {
       // Not found anywhere — log and return null
       await db.query(
-        'INSERT INTO search_history (user_id, barcode, search_type, cache_hit, response_time_ms) VALUES (?, ?, ?, ?, ?)',
-        [req.user.id, barcode, 'barcode', false, Date.now() - startTime]
+        'INSERT INTO search_history (store_id, user_id, barcode, search_type, cache_hit, response_time_ms) VALUES (?, ?, ?, ?, ?, ?)',
+        [req.user.store_id, req.user.id, barcode, 'barcode', false, Date.now() - startTime]
       );
       return res.json({ product: null, cache_hit: false });
     }
+
+    // Merge data from both sources
+    const allSources = [];
+    const allImages = [];
+    if (offData?.name) { allSources.push(offData.source); allImages.push(...offData.images); }
+    if (upcData?.name) { allSources.push(upcData.source); allImages.push(...upcData.images); }
+
+    // Pick best category from API data
+    const apiCategory = primary.category || (offData?.category) || (upcData?.category) || null;
 
     // Save product to DB cache (update if exists, insert if new)
     const cacheExpiry = new Date();
@@ -126,34 +226,40 @@ router.get('/search/:barcode', auth, async (req, res) => {
     if (existing.length > 0) {
       productId = existing[0].id;
       await db.query(
-        `UPDATE products SET name = ?, brand = ?, description = ?, search_count = search_count + 1, cached_at = NOW(), cache_expires_at = ? WHERE id = ?`,
-        [offData.name, offData.brand, offData.description, cacheExpiry, productId]
+        `UPDATE products SET name = ?, brand = ?, description = ?, ai_category_suggestion = COALESCE(ai_category_suggestion, ?), search_count = search_count + 1, cached_at = NOW(), cache_expires_at = ? WHERE id = ?`,
+        [primary.name, primary.brand, primary.description, apiCategory, cacheExpiry, productId]
       );
       // Clear old sources/images for refresh
       await db.query('DELETE FROM product_sources WHERE product_id = ?', [productId]);
       await db.query('DELETE FROM product_images WHERE product_id = ?', [productId]);
     } else {
       const [insertResult] = await db.query(
-        `INSERT INTO products (barcode, name, brand, description, cache_expires_at) VALUES (?, ?, ?, ?, ?)`,
-        [barcode, offData.name, offData.brand, offData.description, cacheExpiry]
+        `INSERT INTO products (barcode, name, brand, description, ai_category_suggestion, cache_expires_at) VALUES (?, ?, ?, ?, ?, ?)`,
+        [barcode, primary.name, primary.brand, primary.description, apiCategory, cacheExpiry]
       );
       productId = insertResult.insertId;
     }
 
-    // Save source (with specs JSON)
-    await db.query(
-      `INSERT INTO product_sources (product_id, source_name, source_url, weight, description, trust_score, specs)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [productId, offData.source.source_name, offData.source.source_url,
-       offData.source.weight, offData.source.description, offData.source.trust_score,
-       offData.source.specs ? JSON.stringify(offData.source.specs) : null]
-    );
+    // Save all sources
+    for (const src of allSources) {
+      await db.query(
+        `INSERT INTO product_sources (product_id, source_name, source_url, price, currency, weight, color, description, trust_score, specs)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [productId, src.source_name, src.source_url, src.price || null, src.currency || 'USD',
+         src.weight || null, src.color || null, src.description || null, src.trust_score,
+         src.specs ? JSON.stringify(src.specs) : null]
+      );
+    }
 
-    // Save images
-    for (let i = 0; i < offData.images.length; i++) {
+    // Save all images (deduplicated)
+    const seenUrls = new Set();
+    let imgOrder = 0;
+    for (const img of allImages) {
+      if (seenUrls.has(img.image_url)) continue;
+      seenUrls.add(img.image_url);
       await db.query(
         'INSERT INTO product_images (product_id, source_name, image_url, quality_score, sort_order) VALUES (?, ?, ?, ?, ?)',
-        [productId, offData.images[i].source_name, offData.images[i].image_url, offData.images[i].quality_score, i]
+        [productId, img.source_name, img.image_url, img.quality_score, imgOrder++]
       );
     }
 
@@ -165,8 +271,8 @@ router.get('/search/:barcode', auth, async (req, res) => {
 
     // Log search
     await db.query(
-      'INSERT INTO search_history (user_id, barcode, search_type, cache_hit, response_time_ms) VALUES (?, ?, ?, ?, ?)',
-      [req.user.id, barcode, 'barcode', false, Date.now() - startTime]
+      'INSERT INTO search_history (store_id, user_id, barcode, search_type, cache_hit, response_time_ms) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.user.store_id, req.user.id, barcode, 'barcode', false, Date.now() - startTime]
     );
 
     res.json({ product: product[0], sources, images, conflicts, cache_hit: false });
@@ -177,7 +283,7 @@ router.get('/search/:barcode', auth, async (req, res) => {
 });
 
 // Save product (after API fetch — stores in cache)
-router.post('/', auth, async (req, res) => {
+router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
     const { barcode, name, brand, description, category, sources, images, ai_descriptions, seo_tags } = req.body;
 
@@ -275,7 +381,7 @@ router.post('/', auth, async (req, res) => {
 });
 
 // Save for later (saves product + creates catalog entry with Review status)
-router.post('/save-for-later', auth, async (req, res) => {
+router.post('/save-for-later', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
     const { product: p, sources, images, enriched } = req.body;
     if (!p?.name) return res.status(400).json({ error: 'Product name is required' });
@@ -345,14 +451,14 @@ router.post('/save-for-later', auth, async (req, res) => {
 
     // Create or update catalog entry with "Review" status
     const [existingEntry] = await db.query(
-      'SELECT id FROM catalog_entries WHERE user_id = ? AND product_id = ?',
-      [req.user.id, productId]
+      'SELECT id FROM catalog_entries WHERE store_id = ? AND product_id = ?',
+      [req.user.store_id, productId]
     );
     if (existingEntry.length === 0) {
       await db.query(
-        `INSERT INTO catalog_entries (user_id, product_id, status, custom_name, custom_description, custom_price)
-         VALUES (?, ?, 'Review', ?, ?, ?)`,
-        [req.user.id, productId, p.name, p.edited_description || p.description || null, enriched?.price || null]
+        `INSERT INTO catalog_entries (store_id, user_id, product_id, status, custom_name, custom_description, custom_price)
+         VALUES (?, ?, ?, 'Review', ?, ?, ?)`,
+        [req.user.store_id, req.user.id, productId, p.name, p.edited_description || p.description || null, enriched?.price || null]
       );
     } else {
       await db.query(
@@ -369,7 +475,7 @@ router.post('/save-for-later', auth, async (req, res) => {
 });
 
 // Resolve a conflict
-router.patch('/conflicts/:id/resolve', auth, async (req, res) => {
+router.patch('/conflicts/:id/resolve', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
     const chosen_value = req.body.chosen_value ? sanitize(String(req.body.chosen_value)).slice(0, 500) : null;
     await db.query(
@@ -383,7 +489,7 @@ router.patch('/conflicts/:id/resolve', auth, async (req, res) => {
 });
 
 // Force refresh (ignore cache)
-router.post('/refresh/:barcode', auth, async (req, res) => {
+router.post('/refresh/:barcode', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
     await db.query('UPDATE products SET cache_expires_at = NOW() WHERE barcode = ?', [req.params.barcode]);
     res.json({ success: true, message: 'Cache cleared — next search will fetch fresh data' });
@@ -399,9 +505,9 @@ router.get('/catalog', auth, async (req, res) => {
       `SELECT ce.*, p.barcode, p.name, p.brand, p.description
        FROM catalog_entries ce
        JOIN products p ON ce.product_id = p.id
-       WHERE ce.user_id = ?
+       WHERE ce.store_id = ?
        ORDER BY ce.updated_at DESC`,
-      [req.user.id]
+      [req.user.store_id]
     );
     res.json({ entries });
   } catch (err) {
@@ -410,16 +516,16 @@ router.get('/catalog', auth, async (req, res) => {
 });
 
 // Save to catalog
-router.post('/catalog', auth, async (req, res) => {
+router.post('/catalog', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
     const { product_id, custom_name: rawName, custom_description: rawDesc, custom_price, brand_voice, notes: rawNotes } = req.body;
     const custom_name = rawName ? sanitize(rawName).slice(0, 200) : null;
     const custom_description = rawDesc ? sanitize(rawDesc).slice(0, 5000) : null;
     const notes = rawNotes ? sanitize(rawNotes).slice(0, 2000) : null;
     const [result] = await db.query(
-      `INSERT INTO catalog_entries (user_id, product_id, custom_name, custom_description, custom_price, brand_voice, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [req.user.id, product_id, custom_name, custom_description, custom_price, brand_voice, notes]
+      `INSERT INTO catalog_entries (store_id, user_id, product_id, custom_name, custom_description, custom_price, brand_voice, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [req.user.store_id, req.user.id, product_id, custom_name, custom_description, custom_price, brand_voice, notes]
     );
     res.status(201).json({ id: result.insertId });
   } catch (err) {
@@ -428,7 +534,7 @@ router.post('/catalog', auth, async (req, res) => {
 });
 
 // Update catalog entry (status, custom fields)
-router.patch('/catalog/:id', auth, async (req, res) => {
+router.patch('/catalog/:id', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
     const { status, custom_name: rawName, custom_description: rawDesc, custom_price } = req.body;
     const validStatuses = ['Draft', 'Review', 'Published', 'Exported'];
@@ -443,8 +549,8 @@ router.patch('/catalog/:id', auth, async (req, res) => {
     if (custom_price !== undefined) { fields.push('custom_price = ?'); values.push(custom_price); }
     if (fields.length === 0) return res.status(400).json({ error: 'No fields to update' });
     fields.push('updated_at = NOW()');
-    values.push(req.params.id, req.user.id);
-    await db.query(`UPDATE catalog_entries SET ${fields.join(', ')} WHERE id = ? AND user_id = ?`, values);
+    values.push(req.params.id, req.user.store_id);
+    await db.query(`UPDATE catalog_entries SET ${fields.join(', ')} WHERE id = ? AND store_id = ?`, values);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -452,9 +558,9 @@ router.patch('/catalog/:id', auth, async (req, res) => {
 });
 
 // Delete catalog entry
-router.delete('/catalog/:id', auth, async (req, res) => {
+router.delete('/catalog/:id', auth, requireRole('Admin'), async (req, res) => {
   try {
-    await db.query('DELETE FROM catalog_entries WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
+    await db.query('DELETE FROM catalog_entries WHERE id = ? AND store_id = ?', [req.params.id, req.user.store_id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, setOnUnauthorized, getCatalog, getStats, getSourcePerformance, getSearchHistory, searchProduct, getProductById, saveForLater, resolveConflict, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice, generateAIContent, identifyProduct, searchProductImages, exportProduct, getExportHistory, downloadExport, googleSignIn, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, deleteAllData, deleteAccount, clearSearchHistory, forgotPassword, resetPassword, logout } from "./api";
+import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, setOnUnauthorized, getCatalog, getStats, getSourcePerformance, getSearchHistory, searchProduct, getProductById, saveForLater, resolveConflict, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice, generateAIContent, identifyProduct, searchProductImages, exportProduct, getExportHistory, downloadExport, googleSignIn, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, deleteAllData, deleteAccount, clearSearchHistory, forgotPassword, resetPassword, logout, getTeamUsers, updateUserRole, removeTeamUser, sendInvite, getInviteInfo, acceptInvite, getPendingInvites, revokeInvite } from "./api";
 import { Html5Qrcode } from "html5-qrcode";
 
 // ============================================================
@@ -40,6 +40,7 @@ const Icon = ({ name, size = 16, color = "currentColor" }) => {
     mail: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>,
     arrowLeft: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>,
     store: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/></svg>,
+    users: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
     trash: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>,
     key: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>,
     bell: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
@@ -393,7 +394,8 @@ const SearchStep = ({ onSearch }) => {
 // ============================================================
 // STEP 2: REVIEW
 // ============================================================
-const ReviewStep = ({ onExport, onSave, productData }) => {
+const ReviewStep = ({ onExport, onSave, productData, user }) => {
+  const canWrite = user?.role === "Admin" || user?.role === "Editor";
   const pd = productData || {};
   const product = pd.product || {};
   const dbSources = pd.sources || [];
@@ -451,7 +453,7 @@ const ReviewStep = ({ onExport, onSave, productData }) => {
     name: product.name || "Unknown Product",
     brand: product.brand || "Unknown",
     upc: product.barcode || "N/A",
-    category: product.ai_category_suggestion || realSpecs?.['Labels'] || product.description || "Uncategorized",
+    category: product.ai_category_suggestion || product.category || realSpecs?.['Labels'] || "Uncategorized",
     weight: dbSources[0]?.weight || "",
     specs: specs,
     seoTags: product.seo_tags ? (typeof product.seo_tags === 'string' ? JSON.parse(product.seo_tags) : product.seo_tags) : [],
@@ -567,7 +569,7 @@ const ReviewStep = ({ onExport, onSave, productData }) => {
             {Object.keys(resolvedConflicts).length>0&&<div style={{fontSize:12,color:"var(--success-light)",display:"flex",alignItems:"center",gap:4}}><Icon name="check" size={12} color="#10B981"/>{Object.keys(resolvedConflicts).length} conflict(s) resolved</div>}
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
               <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:2}}>PRODUCT DATA</div>
-              {[{l:"Name",v:p.name,c:94,edit:true,key:"name"},{l:"Brand",v:p.brand,c:96,edit:true,key:"brand"},{l:"UPC",v:p.upc,c:100},{l:"Category",v:p.category,c:88},...(aiCategory?[{l:"AI Category",v:aiCategory,c:90,ai:true}]:[])].map((f,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:f.ai?"rgba(37,99,235,0.06)":"var(--hover-bg)",borderRadius:6,border:f.ai?"1px solid rgba(37,99,235,0.15)":"none"}}>
+              {[{l:"Name",v:p.name,c:94,edit:true,key:"name"},{l:"Brand",v:p.brand,c:96,edit:true,key:"brand"},{l:"UPC",v:p.upc,c:100},{l:"Category",v:aiCategory||p.category,c:88}].map((f,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:f.ai?"rgba(37,99,235,0.06)":"var(--hover-bg)",borderRadius:6,border:f.ai?"1px solid rgba(37,99,235,0.15)":"none"}}>
                 <span style={{fontSize:12,color:f.ai?"#3B82F6":"var(--text-dim)",width:80,flexShrink:0}}>{f.l}{f.ai&&<span className="badge badge-ai" style={{marginLeft:4,fontSize:9}}>AI</span>}</span>
                 {f.edit?<input className="input" value={editFields[f.key]??f.v} onChange={e=>setEditFields(prev=>({...prev,[f.key]:e.target.value}))} style={{fontSize:12,flex:1,padding:"4px 8px",background:"transparent",border:"1px solid var(--border)",borderRadius:4}}/>:<span className={f.l==="UPC"?"mono":""} style={{fontSize:12,flex:1,color:"var(--text-sec)",display:"flex",alignItems:"center",gap:4}}>{f.v}<CopyButton text={f.v}/></span>}
               </div>)}
@@ -675,7 +677,7 @@ const ReviewStep = ({ onExport, onSave, productData }) => {
           </div>
         </div>
         <div style={{padding:"12px 16px",borderTop:"1px solid var(--border)",display:"flex",gap:10}}>
-          <button className="btn btn-ghost" style={{justifyContent:"center"}} disabled={saving||saved} onClick={async () => {
+          <button className="btn btn-ghost" style={{justifyContent:"center"}} disabled={saving||saved||!canWrite} title={!canWrite?"Viewers cannot save products":""} onClick={async () => {
             setSaving(true);
             try {
               await saveForLater({
@@ -700,7 +702,7 @@ const ReviewStep = ({ onExport, onSave, productData }) => {
               if (onSave) setTimeout(() => onSave(), 1200);
             } catch (err) { setSaving(false); toast.error(err.message || "Failed to save product"); }
           }}>{saved?<><Icon name="check" size={15}/> Saved!</>:saving?<><Icon name="refresh" size={15}/> Saving...</>:<><Icon name="bookmark" size={15}/> Save for Later</>}</button>
-          <button className="btn btn-success" style={{flex:1,justifyContent:"center"}} onClick={() => {
+          <button className="btn btn-success" style={{flex:1,justifyContent:"center"}} disabled={!canWrite} title={!canWrite?"Viewers cannot export products":""} onClick={() => {
             const enriched = {
               ...productData,
               product: {
@@ -761,7 +763,8 @@ const ReviewStep = ({ onExport, onSave, productData }) => {
 // ============================================================
 // STEP 3: EXPORT
 // ============================================================
-const ExportStep = ({ onComplete, productData }) => {
+const ExportStep = ({ onComplete, productData, user }) => {
+  const canWrite = user?.role === "Admin" || user?.role === "Editor";
   const [fmt,setFmt]=useState("CSV"); const [plat,setPlat]=useState("Shopify"); const [exporting,setExporting]=useState(false); const [progress,setProgress]=useState(0); const [done,setDone]=useState(false);
   const [exportError, setExportError] = useState(null);
   const [exportedFile, setExportedFile] = useState(null);
@@ -862,7 +865,7 @@ const ExportStep = ({ onComplete, productData }) => {
       {exporting&&<div><div style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:12}}><span style={{color:"var(--text-muted)"}}>Generating {fmt}...</span><span className="mono" style={{color:"#10B981"}}>{progress}%</span></div><div className="progress-bar" style={{height:6}}><div className="progress-fill" style={{width:`${progress}%`,background:"linear-gradient(90deg,#2563EB,#10B981)"}}/></div></div>}
       <div style={{display:"flex",gap:10}}>
         <button className="btn btn-ghost" style={{justifyContent:"center",fontSize:13,padding:14}} onClick={handlePreview} disabled={exporting}><Icon name="search" size={15}/> Preview</button>
-        <button className="btn btn-success" style={{flex:1,justifyContent:"center",fontSize:15,padding:14}} onClick={handleExport} disabled={exporting}>{exporting?<><Icon name="refresh" size={15}/> Generating...</>:<><Icon name="download" size={15}/> Export to {plat}</>}</button>
+        <button className="btn btn-success" style={{flex:1,justifyContent:"center",fontSize:15,padding:14}} onClick={handleExport} disabled={exporting||!canWrite} title={!canWrite?"Viewers cannot export products":""}>{exporting?<><Icon name="refresh" size={15}/> Generating...</>:<><Icon name="download" size={15}/> Export to {plat}</>}</button>
       </div>
       <div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}} onClick={()=>setShowHistory(!showHistory)}>
@@ -1387,7 +1390,12 @@ const InputField = ({ label, type = "text", placeholder, value, onChange, onKeyD
 // AUTH PAGE (Sign In / Sign Up / Forgot Password)
 // ============================================================
 const AuthPage = ({ onLogin, dark }) => {
-  const [mode, setMode] = useState(() => new URLSearchParams(window.location.search).get('reset') ? "reset" : "signin");
+  const [mode, setMode] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('reset')) return "reset";
+    if (params.get('invite')) return "invite";
+    return "signin";
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -1404,12 +1412,31 @@ const AuthPage = ({ onLogin, dark }) => {
   const [suEmail, setSuEmail] = useState("");
   const [suPassword, setSuPassword] = useState("");
   const [suConfirm, setSuConfirm] = useState("");
-  const [suRole, setSuRole] = useState("Editor");
   const [suStore, setSuStore] = useState("");
   const [agreedTerms, setAgreedTerms] = useState(false);
 
   // Forgot
   const [forgotEmail, setForgotEmail] = useState("");
+
+  // Invite
+  const [inviteToken] = useState(() => new URLSearchParams(window.location.search).get('invite'));
+  const [inviteInfo, setInviteInfo] = useState(null);
+  const [inviteName, setInviteName] = useState("");
+  const [invitePassword, setInvitePassword] = useState("");
+  const [inviteConfirm, setInviteConfirm] = useState("");
+  const [inviteLoading, setInviteLoading] = useState(!!new URLSearchParams(window.location.search).get('invite'));
+
+  useEffect(() => {
+    if (inviteToken) {
+      getInviteInfo(inviteToken).then(info => {
+        setInviteInfo(info);
+        setInviteLoading(false);
+      }).catch(err => {
+        setError(err.message);
+        setInviteLoading(false);
+      });
+    }
+  }, [inviteToken]);
 
   const googleBtnRef = useRef(null);
 
@@ -1429,7 +1456,7 @@ const AuthPage = ({ onLogin, dark }) => {
             try {
               const data = await googleSignIn(response.credential);
               setLoading(false);
-              onLogin({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store: data.user.store_name });
+              onLogin({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store_id: data.user.store_id, store: data.user.store_name });
             } catch (err) { setLoading(false); setError(err.message); }
           },
         });
@@ -1456,7 +1483,7 @@ const AuthPage = ({ onLogin, dark }) => {
     try {
       const data = await apiSignIn(siEmail, siPassword);
       setLoading(false);
-      onLogin({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store: data.user.store_name });
+      onLogin({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store_id: data.user.store_id, store: data.user.store_name });
     } catch (err) {
       setLoading(false);
       setError(err.message);
@@ -1476,9 +1503,29 @@ const AuthPage = ({ onLogin, dark }) => {
     setLoading(true);
 
     try {
-      const data = await apiSignUp(suName, suEmail, suPassword, suRole, suStore || "My Store");
+      const data = await apiSignUp(suName, suEmail, suPassword, suStore || "My Store");
       setLoading(false);
-      onLogin({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store: data.user.store_name });
+      onLogin({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store_id: data.user.store_id, store: data.user.store_name });
+    } catch (err) {
+      setLoading(false);
+      setError(err.message);
+    }
+  };
+
+  // ── ACCEPT INVITE ──
+  const handleAcceptInvite = async () => {
+    clear();
+    if (!inviteName.trim()) return setError("Please enter your full name.");
+    if (!invitePassword) return setError("Please choose a password.");
+    if (invitePassword.length < 8) return setError("Password must be at least 8 characters.");
+    if (invitePassword !== inviteConfirm) return setError("Passwords do not match.");
+    setLoading(true);
+    try {
+      const data = await acceptInvite(inviteToken, inviteName, invitePassword);
+      setLoading(false);
+      // Clean the URL
+      window.history.replaceState({}, '', window.location.pathname);
+      onLogin({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store_id: data.user.store_id, store: data.user.store_name });
     } catch (err) {
       setLoading(false);
       setError(err.message);
@@ -1649,28 +1696,6 @@ const AuthPage = ({ onLogin, dark }) => {
             <InputField label="Email address" type="email" placeholder="you@example.com" icon="mail"
               value={suEmail} onChange={e => { setSuEmail(e.target.value); clear(); }} />
 
-            {/* Role selector */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>Account role</label>
-              <div style={{ display: "flex", gap: 8 }}>
-                {[
-                  { role: "Admin", desc: "Full access", color: "#3B82F6" },
-                  { role: "Editor", desc: "Create & edit", color: "#10B981" },
-                  { role: "Viewer", desc: "View only", color: "#94A3B8" },
-                ].map(r => (
-                  <div key={r.role} onClick={() => setSuRole(r.role)} style={{
-                    flex: 1, padding: "10px 8px", borderRadius: 8, cursor: "pointer", textAlign: "center",
-                    border: `2px solid ${suRole === r.role ? r.color : "var(--border)"}`,
-                    background: suRole === r.role ? r.color + "12" : "transparent",
-                    transition: "all 0.2s"
-                  }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: suRole === r.role ? r.color : "var(--text-dim)" }}>{r.role}</div>
-                    <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 1 }}>{r.desc}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
             {/* Password */}
             <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>Password</label>
@@ -1727,6 +1752,55 @@ const AuthPage = ({ onLogin, dark }) => {
               Already have an account?{" "}
               <button onClick={() => switchMode("signin")} style={{ background: "none", border: "none", cursor: "pointer", color: "#3B82F6", fontFamily: "'Sora',sans-serif", fontWeight: 700, fontSize: 13 }}>Sign in</button>
             </p>
+          </div>
+        )}
+
+        {/* ═══════════ ACCEPT INVITATION ═══════════ */}
+        {mode === "invite" && inviteToken && (
+          <div className="card animate-fadeIn" style={{ padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
+            {inviteLoading ? (
+              <div style={{ display: "flex", justifyContent: "center", padding: 32 }}><LoadingDots /></div>
+            ) : !inviteInfo ? (
+              <div style={{ textAlign: "center", padding: 20 }}>
+                <Icon name="alert" size={36} color="#EF4444" />
+                <p style={{ fontSize: 14, color: "#EF4444", fontWeight: 600, marginTop: 12 }}>Invalid or expired invitation</p>
+                <button onClick={() => { window.history.replaceState({}, '', window.location.pathname); switchMode("signin"); }} className="btn btn-ghost" style={{ marginTop: 14, width: "100%", justifyContent: "center", fontSize: 13 }}>Go to Sign In</button>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <h2 style={{ fontSize: 21, fontWeight: 800, marginBottom: 3 }}>Join {inviteInfo.store_name}</h2>
+                  <p style={{ fontSize: 13, color: "var(--text-dim)" }}>
+                    <strong style={{ color: "var(--text)" }}>{inviteInfo.inviter_name}</strong> invited you to join as <span style={{
+                      padding: "2px 8px", borderRadius: 99, fontSize: 11, fontWeight: 700,
+                      background: inviteInfo.role === "Editor" ? "#10B98118" : "#94A3B818",
+                      color: inviteInfo.role === "Editor" ? "#10B981" : "#94A3B8"
+                    }}>{inviteInfo.role}</span>
+                  </p>
+                </div>
+                <ErrorBanner />
+                <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.2)" }}>
+                  <p style={{ fontSize: 12, color: "var(--text-dim)" }}>Email</p>
+                  <p style={{ fontSize: 14, fontWeight: 600 }}>{inviteInfo.email}</p>
+                </div>
+                <InputField label="Full name" placeholder="Your name" icon="user"
+                  value={inviteName} onChange={e => { setInviteName(e.target.value); clear(); }} />
+                <InputField label="Password" type={showPassword ? "text" : "password"} placeholder="Min. 8 characters" icon="key"
+                  value={invitePassword} onChange={e => { setInvitePassword(e.target.value); clear(); }}
+                  rightEl={<span onClick={() => setShowPassword(p => !p)}><Icon name={showPassword ? "eyeOff" : "eye"} size={16} /></span>} />
+                <PasswordStrengthBar password={invitePassword} />
+                <InputField label="Confirm password" type={showConfirmPassword ? "text" : "password"} placeholder="Re-enter password" icon="key"
+                  value={inviteConfirm} onChange={e => { setInviteConfirm(e.target.value); clear(); }}
+                  onKeyDown={e => e.key === "Enter" && handleAcceptInvite()}
+                  rightEl={<span onClick={() => setShowConfirmPassword(p => !p)}><Icon name={showConfirmPassword ? "eyeOff" : "eye"} size={16} /></span>} />
+                {inviteConfirm && invitePassword !== inviteConfirm && <p style={{ fontSize: 11, color: "#EF4444" }}>Passwords don't match</p>}
+                {inviteConfirm && invitePassword === inviteConfirm && inviteConfirm && <p style={{ fontSize: 11, color: "#10B981", display: "flex", alignItems: "center", gap: 4 }}><Icon name="check" size={11} color="#10B981" /> Passwords match</p>}
+                <button className="btn btn-success" style={{ justifyContent: "center", padding: "13px 0", fontSize: 14, width: "100%" }}
+                  onClick={handleAcceptInvite} disabled={loading}>
+                  {loading ? <LoadingDots /> : "Create Account & Join"}
+                </button>
+              </>
+            )}
           </div>
         )}
 
@@ -1822,6 +1896,193 @@ const AuthPage = ({ onLogin, dark }) => {
 };
 
 // ============================================================
+// TEAM MANAGEMENT (Admin only, used inside Settings)
+// ============================================================
+const TeamManagement = ({ currentUserId }) => {
+  const [teamUsers, setTeamUsers] = useState([]);
+  const [teamLoading, setTeamLoading] = useState(true);
+  const [showRemoveDialog, setShowRemoveDialog] = useState(null);
+  const [showInviteForm, setShowInviteForm] = useState(false);
+  const [invEmail, setInvEmail] = useState("");
+  const [invRole, setInvRole] = useState("Editor");
+  const [invSending, setInvSending] = useState(false);
+  const [pendingInvites, setPendingInvites] = useState([]);
+
+  useEffect(() => {
+    getTeamUsers().then(d => { setTeamUsers(d.users || []); setTeamLoading(false); }).catch(() => setTeamLoading(false));
+    getPendingInvites().then(d => setPendingInvites((d.invites || []).filter(i => !i.accepted))).catch(() => {});
+  }, []);
+
+  const handleSendInvite = async () => {
+    if (!invEmail.trim()) return toast.error("Enter an email address");
+    setInvSending(true);
+    try {
+      await sendInvite(invEmail.trim(), invRole);
+      toast.success("Invitation sent!");
+      setInvEmail(""); setShowInviteForm(false);
+      getPendingInvites().then(d => setPendingInvites((d.invites || []).filter(i => !i.accepted))).catch(() => {});
+    } catch (err) { toast.error(err.message); }
+    setInvSending(false);
+  };
+
+  const handleRevokeInvite = async (id) => {
+    try {
+      await revokeInvite(id);
+      setPendingInvites(prev => prev.filter(i => i.id !== id));
+      toast.success("Invitation revoked");
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleRoleChange = async (userId, newRole) => {
+    try {
+      await updateUserRole(userId, newRole);
+      setTeamUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
+      toast.success("Role updated");
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleRemove = async (userId) => {
+    try {
+      await removeTeamUser(userId);
+      setTeamUsers(prev => prev.filter(u => u.id !== userId));
+      setShowRemoveDialog(null);
+      toast.success("User removed");
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const roleBadge = (role) => {
+    const colors = { Admin: "#3B82F6", Editor: "#10B981", Viewer: "#94A3B8" };
+    return { fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99, background: (colors[role] || "#94A3B8") + "18", color: colors[role] || "#94A3B8" };
+  };
+
+  return (
+    <div className="card" style={{ padding: 24 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Icon name="users" size={20} color="#F59E0B" />
+          <div>
+            <h3 style={{ fontWeight: 700, fontSize: 16 }}>Team Management</h3>
+            <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>Manage users and their roles</p>
+          </div>
+        </div>
+        <button className="btn btn-primary" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => setShowInviteForm(p => !p)}>
+          <Icon name="mail" size={13} /> Invite Member
+        </button>
+      </div>
+
+      {showInviteForm && (
+        <div style={{ marginBottom: 20, padding: 16, borderRadius: 10, background: "rgba(37,99,235,0.06)", border: "1px solid rgba(37,99,235,0.15)", display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>Send Invitation</div>
+          <input type="email" placeholder="Email address" value={invEmail} onChange={e => setInvEmail(e.target.value)}
+            style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-card)", color: "var(--text)", fontSize: 13, outline: "none" }} />
+          <div style={{ display: "flex", gap: 8 }}>
+            {["Editor", "Viewer"].map(r => (
+              <div key={r} onClick={() => setInvRole(r)} style={{
+                flex: 1, padding: "8px 12px", borderRadius: 8, cursor: "pointer", textAlign: "center", fontSize: 12, fontWeight: 600,
+                border: `2px solid ${invRole === r ? (r === "Editor" ? "#10B981" : "#94A3B8") : "var(--border)"}`,
+                background: invRole === r ? (r === "Editor" ? "#10B98112" : "#94A3B812") : "transparent",
+                color: invRole === r ? (r === "Editor" ? "#10B981" : "#94A3B8") : "var(--text-dim)",
+                transition: "all 0.2s"
+              }}>{r}</div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-ghost" style={{ flex: 1, justifyContent: "center", fontSize: 12 }} onClick={() => setShowInviteForm(false)}>Cancel</button>
+            <button className="btn btn-primary" style={{ flex: 1, justifyContent: "center", fontSize: 12 }} onClick={handleSendInvite} disabled={invSending}>
+              {invSending ? <LoadingDots /> : "Send Invite"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {teamLoading ? (
+        <div style={{ display: "flex", justifyContent: "center", padding: 32 }}><LoadingDots /></div>
+      ) : teamUsers.length === 0 ? (
+        <p style={{ fontSize: 13, color: "var(--text-dim)" }}>No team members found.</p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+          {teamUsers.map((member, i) => {
+            const isMe = member.id === currentUserId;
+            return (
+              <div key={member.id} style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0",
+                borderBottom: i < teamUsers.length - 1 ? "1px solid var(--border-light)" : "none"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg,#2563EB,#8B5CF6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "white", flexShrink: 0 }}>
+                    {(member.name || "U")[0].toUpperCase()}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}>
+                      {member.name}
+                      {isMe && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 99, background: "rgba(139,92,246,0.15)", color: "#8B5CF6" }}>You</span>}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-dim)" }}>{member.email}</div>
+                    <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>Joined {new Date(member.created_at).toLocaleDateString()}</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {isMe ? (
+                    <span style={roleBadge(member.role)}>{member.role}</span>
+                  ) : (
+                    <>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        {["Admin", "Editor", "Viewer"].map(r => (
+                          <div key={r} onClick={() => handleRoleChange(member.id, r)} style={{
+                            padding: "4px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600,
+                            background: member.role === r ? (r === "Admin" ? "#3B82F618" : r === "Editor" ? "#10B98118" : "#94A3B818") : "transparent",
+                            color: member.role === r ? (r === "Admin" ? "#3B82F6" : r === "Editor" ? "#10B981" : "#94A3B8") : "var(--text-dim)",
+                            border: `1px solid ${member.role === r ? (r === "Admin" ? "#3B82F640" : r === "Editor" ? "#10B98140" : "#94A3B840") : "var(--border)"}`,
+                            transition: "all 0.2s"
+                          }}>{r}</div>
+                        ))}
+                      </div>
+                      <button onClick={() => setShowRemoveDialog(member)} style={{
+                        background: "transparent", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 6,
+                        padding: "4px 8px", cursor: "pointer", color: "#EF4444", display: "flex", alignItems: "center"
+                      }}><Icon name="trash" size={13} color="#EF4444" /></button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Pending Invitations */}
+      {pendingInvites.length > 0 && (
+        <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--border-light)" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: "var(--text-dim)" }}>Pending Invitations</div>
+          {pendingInvites.map(inv => (
+            <div key={inv.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid var(--border-light)" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>{inv.email}</div>
+                <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                  {inv.role} — expires {new Date(inv.expires_at).toLocaleDateString()}
+                </div>
+              </div>
+              <button onClick={() => handleRevokeInvite(inv.id)} style={{
+                background: "transparent", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 6,
+                padding: "4px 10px", cursor: "pointer", color: "#EF4444", fontSize: 11, fontWeight: 600
+              }}>Revoke</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showRemoveDialog && <ConfirmDialog
+        title={`Remove ${showRemoveDialog.name}?`}
+        message={`This will permanently delete ${showRemoveDialog.name}'s account and all their data (catalog, exports, brand voices, etc). This cannot be undone.`}
+        confirmLabel="Remove User" confirmColor="#EF4444"
+        onCancel={() => setShowRemoveDialog(null)}
+        onConfirm={() => handleRemove(showRemoveDialog.id)}
+      />}
+    </div>
+  );
+};
+
+// ============================================================
 // SETTINGS PAGE
 // ============================================================
 const Settings = ({ user, onUserUpdate }) => {
@@ -1890,7 +2151,7 @@ const Settings = ({ user, onUserUpdate }) => {
     setProfileError("");
     try {
       const data = await apiUpdateProfile({ name: profileName, email: profileEmail, store_name: profileStore });
-      if (onUserUpdate && data.user) onUserUpdate({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store: data.user.store_name });
+      if (onUserUpdate && data.user) onUserUpdate({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store_id: data.user.store_id, store: data.user.store_name });
       setProfileSaved(true); toast.success("Profile updated"); setTimeout(() => setProfileSaved(false), 2000);
     } catch (err) { setProfileError(err.message); toast.error(err.message); }
   };
@@ -1941,7 +2202,7 @@ const Settings = ({ user, onUserUpdate }) => {
           <InputField label="Email address" type="email" placeholder="you@example.com" icon="mail" value={profileEmail} onChange={e => setProfileEmail(e.target.value)} />
         </div>
         <div style={{ marginTop: 16 }}>
-          <InputField label="Store name" placeholder="My Store" icon="store" value={profileStore} onChange={e => setProfileStore(e.target.value)} />
+          {isAdmin && <InputField label="Store name" placeholder="My Store" icon="store" value={profileStore} onChange={e => setProfileStore(e.target.value)} />}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
           <button className="btn btn-primary" onClick={handleProfileSave}><Icon name="check" size={14} /> Save Profile</button>
@@ -1951,19 +2212,18 @@ const Settings = ({ user, onUserUpdate }) => {
       </div>
 
       {/* ── CHANGE PASSWORD ── */}
-      {isEditorOrAdmin && (
-        <div className="card" style={{ padding: 24 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-            <Icon name="shield" size={20} color="#8B5CF6" />
-            <div>
-              <h3 style={{ fontWeight: 700, fontSize: 16 }}>Change Password</h3>
-              <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>Update your account password</p>
-            </div>
+      <div className="card" style={{ padding: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+          <Icon name="shield" size={20} color="#8B5CF6" />
+          <div>
+            <h3 style={{ fontWeight: 700, fontSize: 16 }}>Change Password</h3>
+            <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>Update your account password</p>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <InputField label="Current password" type={showCurrentPwd ? "text" : "password"} placeholder="Enter current password"
-              value={currentPassword} onChange={e => setCurrentPassword(e.target.value)}
-              rightEl={<span onClick={() => setShowCurrentPwd(p => !p)}><Icon name={showCurrentPwd ? "eyeOff" : "eye"} size={16} /></span>} />
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <InputField label="Current password" type={showCurrentPwd ? "text" : "password"} placeholder="Enter current password"
+            value={currentPassword} onChange={e => setCurrentPassword(e.target.value)}
+            rightEl={<span onClick={() => setShowCurrentPwd(p => !p)}><Icon name={showCurrentPwd ? "eyeOff" : "eye"} size={16} /></span>} />
             <InputField label="New password" type={showNewPwd ? "text" : "password"} placeholder="Min. 8 characters"
               value={newPassword} onChange={e => setNewPassword(e.target.value)}
               rightEl={<span onClick={() => setShowNewPwd(p => !p)}><Icon name={showNewPwd ? "eyeOff" : "eye"} size={16} /></span>} />
@@ -1979,8 +2239,10 @@ const Settings = ({ user, onUserUpdate }) => {
             {passwordChanged && <span style={{ fontSize: 12, color: "#10B981", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><Icon name="check" size={12} color="#10B981" /> Password updated</span>}
             {passwordError && <span style={{ fontSize: 12, color: "#EF4444", fontWeight: 600 }}>{passwordError}</span>}
           </div>
-        </div>
-      )}
+      </div>
+
+      {/* ── TEAM MANAGEMENT ── */}
+      {isAdmin && <TeamManagement currentUserId={user.id} />}
 
       {/* ── STORE SETTINGS ── */}
       {isAdmin && (
@@ -2418,7 +2680,7 @@ export default function App() {
   // Auto-login from stored token
   useEffect(() => {
     getMe().then(u => {
-      if (u) setUser({ id: u.id, email: u.email, name: u.name, role: u.role, store: u.store_name });
+      if (u) setUser({ id: u.id, email: u.email, name: u.name, role: u.role, store_id: u.store_id, store: u.store_name });
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
@@ -2562,8 +2824,8 @@ export default function App() {
               <div>
                 <StepIndicator currentStep={step} />
                 {step === 0 && <SearchStep onSearch={(data) => { setProductData(data); setStep(1); }} />}
-                {step === 1 && <ReviewStep onExport={(enrichedData) => { setProductData(enrichedData); setStep(2); }} onSave={() => { setStep(0); setProductData(null); setView("dashboard"); }} productData={productData} />}
-                {step === 2 && <ExportStep onComplete={() => { setStep(0); setView("dashboard"); }} productData={productData} />}
+                {step === 1 && <ReviewStep onExport={(enrichedData) => { setProductData(enrichedData); setStep(2); }} onSave={() => { setStep(0); setProductData(null); setView("dashboard"); }} productData={productData} user={user} />}
+                {step === 2 && <ExportStep onComplete={() => { setStep(0); setView("dashboard"); }} productData={productData} user={user} />}
               </div>
             )}
             {view === "analytics" && <Analytics />}

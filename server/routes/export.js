@@ -1,16 +1,17 @@
 const express = require('express');
 const auth = require('../middleware/auth');
+const requireRole = require('../middleware/requireRole');
 const db = require('../db');
 
 const router = express.Router();
 
 // GET /api/export/history — get user's export history
-router.get('/history', auth, async (req, res) => {
+router.get('/history', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
     const [exports] = await db.query(
       `SELECT id, format, platform, product_name, barcode, filename, created_at
-       FROM exports WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`,
-      [req.user.id]
+       FROM exports WHERE store_id = ? ORDER BY created_at DESC LIMIT 50`,
+      [req.user.store_id]
     );
     res.json({ exports });
   } catch (err) {
@@ -19,11 +20,11 @@ router.get('/history', auth, async (req, res) => {
 });
 
 // GET /api/export/history/:id/download — re-download a past export
-router.get('/history/:id/download', auth, async (req, res) => {
+router.get('/history/:id/download', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
     const [rows] = await db.query(
-      'SELECT * FROM exports WHERE id = ? AND user_id = ?',
-      [req.params.id, req.user.id]
+      'SELECT * FROM exports WHERE id = ? AND store_id = ?',
+      [req.params.id, req.user.store_id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Export not found' });
     const exp = rows[0];
@@ -38,7 +39,7 @@ router.get('/history/:id/download', auth, async (req, res) => {
 });
 
 // POST /api/export — generate export file
-router.post('/', auth, async (req, res) => {
+router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
     const { format, platform, productId, barcode, productData } = req.body;
 
@@ -160,14 +161,14 @@ router.post('/', auth, async (req, res) => {
     // Create catalog entry if not already exists
     try {
       const [existingEntry] = await db.query(
-        'SELECT id FROM catalog_entries WHERE user_id = ? AND product_id = ?',
-        [req.user.id, product.id]
+        'SELECT id FROM catalog_entries WHERE store_id = ? AND product_id = ?',
+        [req.user.store_id, product.id]
       );
       if (existingEntry.length === 0) {
         await db.query(
-          `INSERT INTO catalog_entries (user_id, product_id, status, custom_name, custom_description, custom_price)
-           VALUES (?, ?, 'Exported', ?, ?, ?)`,
-          [req.user.id, product.id, product.name, desc.slice(0, 500), price || null]
+          `INSERT INTO catalog_entries (store_id, user_id, product_id, status, custom_name, custom_description, custom_price)
+           VALUES (?, ?, ?, 'Exported', ?, ?, ?)`,
+          [req.user.store_id, req.user.id, product.id, product.name, desc.slice(0, 500), price || null]
         );
       } else {
         await db.query(
@@ -182,9 +183,9 @@ router.post('/', auth, async (req, res) => {
     // Save to export history
     try {
       await db.query(
-        `INSERT INTO exports (user_id, format, platform, product_name, barcode, filename, file_content)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [req.user.id, format, platform, product.name, product.barcode, filename, content]
+        `INSERT INTO exports (store_id, user_id, format, platform, product_name, barcode, filename, file_content)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [req.user.store_id, req.user.id, format, platform, product.name, product.barcode, filename, content]
       );
     } catch (saveErr) {
       console.error('Failed to save export history:', saveErr.message);

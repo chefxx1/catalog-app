@@ -3,6 +3,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const auth = require('../middleware/auth');
 const db = require('../db');
 
+const requireRole = require('../middleware/requireRole');
 const { sanitize } = require('../middleware/validate');
 
 const router = express.Router();
@@ -15,7 +16,7 @@ function getModel() {
 }
 
 // POST /api/ai/generate — generate descriptions, category, and SEO tags
-router.post('/generate', auth, async (req, res) => {
+router.post('/generate', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
     const { name, brand, category, description, specs, brandVoice, customInstructions: rawInstructions } = req.body;
 

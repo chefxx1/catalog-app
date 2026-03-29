@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db');
 const auth = require('../middleware/auth');
 
+const requireRole = require('../middleware/requireRole');
 const { sanitize } = require('../middleware/validate');
 
 const router = express.Router();
@@ -20,7 +21,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // Create voice
-router.post('/', auth, async (req, res) => {
+router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
     const { name: rawName, tone, description: rawDesc, is_default, metadata } = req.body;
     if (!rawName) return res.status(400).json({ error: 'Name is required' });
@@ -31,12 +32,12 @@ router.post('/', auth, async (req, res) => {
 
     // If setting as default, unset others
     if (is_default) {
-      await db.query('UPDATE brand_voices SET is_default = FALSE WHERE user_id = ?', [req.user.id]);
+      await db.query('UPDATE brand_voices SET is_default = FALSE WHERE store_id = ?', [req.user.store_id]);
     }
 
     const [result] = await db.query(
-      'INSERT INTO brand_voices (user_id, name, tone, description, is_default, metadata) VALUES (?, ?, ?, ?, ?, ?)',
-      [req.user.id, name, tone || 'Professional', description || null, is_default || false, JSON.stringify(metadata || null)]
+      'INSERT INTO brand_voices (store_id, user_id, name, tone, description, is_default, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [req.user.store_id, req.user.id, name, tone || 'Professional', description || null, is_default || false, JSON.stringify(metadata || null)]
     );
 
     const [created] = await db.query('SELECT * FROM brand_voices WHERE id = ?', [result.insertId]);
@@ -47,7 +48,7 @@ router.post('/', auth, async (req, res) => {
 });
 
 // Update voice
-router.put('/:id', auth, async (req, res) => {
+router.put('/:id', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
     const { name: rawName, tone, description: rawDesc, is_default, metadata } = req.body;
     const name = rawName ? sanitize(rawName) : null;
@@ -56,12 +57,12 @@ router.put('/:id', auth, async (req, res) => {
     if (description && description.length > 2000) return res.status(400).json({ error: 'Description must be under 2000 characters' });
 
     // Verify ownership
-    const [existing] = await db.query('SELECT * FROM brand_voices WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
+    const [existing] = await db.query('SELECT * FROM brand_voices WHERE id = ? AND store_id = ?', [req.params.id, req.user.store_id]);
     if (existing.length === 0) return res.status(404).json({ error: 'Voice not found' });
 
     // If setting as default, unset others
     if (is_default) {
-      await db.query('UPDATE brand_voices SET is_default = FALSE WHERE user_id = ?', [req.user.id]);
+      await db.query('UPDATE brand_voices SET is_default = FALSE WHERE store_id = ?', [req.user.store_id]);
     }
 
     await db.query(
@@ -78,12 +79,12 @@ router.put('/:id', auth, async (req, res) => {
 });
 
 // Delete voice
-router.delete('/:id', auth, async (req, res) => {
+router.delete('/:id', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
-    const [existing] = await db.query('SELECT * FROM brand_voices WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
+    const [existing] = await db.query('SELECT * FROM brand_voices WHERE id = ? AND store_id = ?', [req.params.id, req.user.store_id]);
     if (existing.length === 0) return res.status(404).json({ error: 'Voice not found' });
 
-    await db.query('DELETE FROM brand_voices WHERE id = ? AND user_id = ?', [req.params.id, req.user.id]);
+    await db.query('DELETE FROM brand_voices WHERE id = ? AND store_id = ?', [req.params.id, req.user.store_id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
