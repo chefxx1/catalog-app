@@ -445,6 +445,7 @@ router.post('/forgot-password', async (req, res) => {
     );
 
     const resetUrl = `${process.env.CORS_ORIGIN || 'http://localhost:5173'}?reset=${token}`;
+    const escHtml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
     await transporter.sendMail({
       from: process.env.SMTP_FROM || process.env.SMTP_USER,
@@ -456,7 +457,7 @@ router.post('/forgot-password', async (req, res) => {
             <div style="display:inline-block;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#2563EB,#10B981);line-height:40px;font-size:18px;color:white;font-weight:bold;">C</div>
             <h2 style="margin:12px 0 0;font-size:20px;color:#F8FAFC;">CatalogAI</h2>
           </div>
-          <p style="font-size:15px;color:#94A3B8;">Hi ${user.name || 'there'},</p>
+          <p style="font-size:15px;color:#94A3B8;">Hi ${escHtml(user.name) || 'there'},</p>
           <p style="font-size:15px;color:#94A3B8;">We received a request to reset your password. Click the button below to choose a new one:</p>
           <div style="text-align:center;margin:28px 0;">
             <a href="${resetUrl}" style="display:inline-block;padding:12px 32px;background:#2563EB;color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Reset Password</a>
@@ -545,11 +546,12 @@ router.post('/invite', auth, requireRole('Admin'), async (req, res) => {
     const inviterName = inviter[0]?.name || 'Your teammate';
 
     const inviteUrl = `${process.env.CORS_ORIGIN || 'http://localhost:5173'}?invite=${token}`;
+    const escHtml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
     await transporter.sendMail({
       from: process.env.SMTP_FROM || process.env.SMTP_USER,
       to: email.toLowerCase().trim(),
-      subject: `CatalogAI — You've been invited to join ${storeName}`,
+      subject: `CatalogAI — You've been invited to join ${escHtml(storeName)}`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0F172A;border-radius:12px;color:#E2E8F0;">
           <div style="text-align:center;margin-bottom:24px;">
@@ -557,7 +559,7 @@ router.post('/invite', auth, requireRole('Admin'), async (req, res) => {
             <h2 style="margin:12px 0 0;font-size:20px;color:#F8FAFC;">CatalogAI</h2>
           </div>
           <p style="font-size:15px;color:#94A3B8;">Hi there,</p>
-          <p style="font-size:15px;color:#94A3B8;"><strong style="color:#F8FAFC;">${inviterName}</strong> has invited you to join <strong style="color:#F8FAFC;">${storeName}</strong> as an <strong style="color:#F8FAFC;">${role}</strong>.</p>
+          <p style="font-size:15px;color:#94A3B8;"><strong style="color:#F8FAFC;">${escHtml(inviterName)}</strong> has invited you to join <strong style="color:#F8FAFC;">${escHtml(storeName)}</strong> as an <strong style="color:#F8FAFC;">${escHtml(role)}</strong>.</p>
           <div style="text-align:center;margin:28px 0;">
             <a href="${inviteUrl}" style="display:inline-block;padding:12px 32px;background:#2563EB;color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Accept Invitation</a>
           </div>

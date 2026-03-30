@@ -52,13 +52,23 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
     if (!validFormats.includes(format)) return res.status(400).json({ error: 'Invalid export format' });
     if (!validPlatforms.includes(platform)) return res.status(400).json({ error: 'Invalid platform' });
 
-    // Fetch product data from DB
+    // Fetch product data from DB (verify store ownership via catalog_entries)
     let product;
     if (barcode) {
-      const [rows] = await db.query('SELECT * FROM products WHERE barcode = ?', [barcode]);
+      const [rows] = await db.query(
+        `SELECT p.* FROM products p
+         LEFT JOIN catalog_entries ce ON ce.product_id = p.id AND ce.store_id = ?
+         WHERE p.barcode = ? AND (ce.id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM catalog_entries WHERE product_id = p.id))`,
+        [req.user.store_id, barcode]
+      );
       product = rows[0];
     } else if (productId) {
-      const [rows] = await db.query('SELECT * FROM products WHERE id = ?', [productId]);
+      const [rows] = await db.query(
+        `SELECT p.* FROM products p
+         LEFT JOIN catalog_entries ce ON ce.product_id = p.id AND ce.store_id = ?
+         WHERE p.id = ? AND (ce.id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM catalog_entries WHERE product_id = p.id))`,
+        [req.user.store_id, productId]
+      );
       product = rows[0];
     }
 
@@ -199,7 +209,12 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
 });
 
 function generateCSV(product, desc, images, tags, price, weight, platform) {
-  const esc = v => `"${String(v || '').replace(/"/g, '""')}"`;
+  const esc = v => {
+    let s = String(v || '');
+    // Prevent CSV formula injection — prefix dangerous first characters
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    return `"${s.replace(/"/g, '""')}"`;
+  };
 
   if (platform === 'Shopify') {
     const headers = ['Handle','Title','Body (HTML)','Vendor','Type','Tags','Published','Option1 Name','Option1 Value','Variant SKU','Variant Grams','Variant Price','Variant Barcode','Image Src','Image Position','SEO Title','SEO Description'];
