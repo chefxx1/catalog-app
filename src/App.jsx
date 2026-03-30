@@ -2,6 +2,12 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, setOnUnauthorized, getCatalog, getStats, getSourcePerformance, getSearchHistory, searchProduct, getProductById, saveForLater, resolveConflict, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice, generateAIContent, identifyProduct, searchProductImages, exportProduct, getExportHistory, downloadExport, googleSignIn, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, deleteAllData, deleteAccount, clearSearchHistory, forgotPassword, resetPassword, logout, getTeamUsers, updateUserRole, removeTeamUser, sendInvite, getInviteInfo, acceptInvite, getPendingInvites, revokeInvite } from "./api";
 import { Html5Qrcode } from "html5-qrcode";
 
+// Safe JSON parse — returns fallback on malformed data
+const safeJsonParse = (val, fallback = null) => {
+  if (typeof val !== 'string') return val ?? fallback;
+  try { return JSON.parse(val); } catch { return fallback; }
+};
+
 // ============================================================
 // ICONS
 // ============================================================
@@ -271,7 +277,7 @@ const SearchStep = ({ onSearch }) => {
         searchProductImages(`${result.name} ${result.brand || ''}`).then(imgs => {
           setProductImages(imgs);
           setSelectedImages(new Set([0])); // auto-select first
-        }).catch(() => {}).finally(() => setSearchingImages(false));
+        }).catch(() => { toast.warning("Could not load product images"); }).finally(() => setSearchingImages(false));
       }
     } catch (err) {
       setError(err.message || "Image identification failed");
@@ -415,7 +421,7 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
   })) : [];
 
   const displayConflicts = dbConflicts.length > 0 ? dbConflicts.map(c => ({
-    id: c.id, field: c.field_name, values: typeof c.source_values === 'string' ? JSON.parse(c.source_values) : c.source_values, severity: "medium"
+    id: c.id, field: c.field_name, values: safeJsonParse(c.source_values, {}), severity: "medium"
   })) : [];
 
   // Parse real specs from source data or AI-identified attributes
@@ -456,7 +462,7 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
     category: product.ai_category_suggestion || product.category || realSpecs?.['Labels'] || "Uncategorized",
     weight: dbSources[0]?.weight || "",
     specs: specs,
-    seoTags: product.seo_tags ? (typeof product.seo_tags === 'string' ? JSON.parse(product.seo_tags) : product.seo_tags) : [],
+    seoTags: safeJsonParse(product.seo_tags, []),
     aiDescriptions: product.ai_description_professional ? [
       { tone: "Professional", text: product.ai_description_professional },
       { tone: "Friendly", text: product.ai_description_friendly || "AI description will be generated." },
@@ -510,7 +516,7 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
       setBrandVoices(voices);
       const def = voices.find(v => v.is_default) || voices[0] || null;
       setSelectedVoice(def);
-    }).catch(() => {});
+    }).catch(() => { toast.warning("Could not load brand voices"); });
   }, []);
 
   const handleRegenerate=async(voice)=>{
@@ -776,22 +782,22 @@ const ExportStep = ({ onComplete, productData, user }) => {
   const product = productData?.product || {};
   const productName = product.name || "Product";
 
-  useEffect(() => { getExportHistory().then(setHistory).catch(() => {}); }, [done]);
+  useEffect(() => { getExportHistory().then(setHistory).catch(() => { toast.warning("Could not load export history"); }); }, [done]);
 
   const handleExport=async()=>{
     setExporting(true); setExportError(null); setProgress(0); setShowPreview(false);
     const progressInterval = setInterval(() => setProgress(p => Math.min(p + 8, 90)), 100);
     try {
       const result = await exportProduct(fmt, plat, product.barcode, productData);
-      clearInterval(progressInterval);
       setProgress(100);
       setExportedFile(result);
       setTimeout(() => { setExporting(false); setDone(true); toast.success("Export complete!"); }, 400);
     } catch (err) {
-      clearInterval(progressInterval);
       setExporting(false);
       setExportError(err.message);
       toast.error("Export failed: " + err.message);
+    } finally {
+      clearInterval(progressInterval);
     }
   };
 
@@ -910,14 +916,14 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
 
   const reload = () => {
     Promise.all([
-      getStats().catch(err => { toast.error("Failed to load stats"); return {}; }),
-      getCatalog().catch(() => []),
+      getStats().catch(() => { toast.error("Failed to load stats"); return {}; }),
+      getCatalog().catch(() => { toast.error("Failed to load catalog"); return []; }),
       apiGetBrandVoices().catch(() => []),
     ]).then(([s, c, v]) => {
       setStats(s);
       setCatalog(c);
       setVoices(v.map(voice => {
-        const meta = voice.metadata ? (typeof voice.metadata === 'string' ? JSON.parse(voice.metadata) : voice.metadata) : {};
+        const meta = safeJsonParse(voice.metadata, {});
         return { id: voice.id, name: voice.name, tone: voice.tone || 'Professional', color: meta.color || '#3B82F6' };
       }));
       setLoading(false);
@@ -964,7 +970,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
       setShowDeleteDialog(null);
       toast.success("Entry deleted");
       // Refresh stats
-      getStats().then(s => setStats(s)).catch(() => {});
+      getStats().then(s => setStats(s)).catch(() => { toast.warning("Could not refresh stats"); });
     } catch (err) { toast.error(err.message); }
   };
 
@@ -1446,9 +1452,10 @@ const AuthPage = ({ onLogin, dark }) => {
   // Initialize Google Sign-In button (always works, no cooldown)
   useEffect(() => {
     if (mode !== "signin" || !googleBtnRef.current) return;
-    const interval = setInterval(() => {
+    let interval = setInterval(() => {
       if (window.google?.accounts?.id) {
         clearInterval(interval);
+        interval = null;
         window.google.accounts.id.initialize({
           client_id: '1000676280585-tkh1mrc4ldc9atpaqr5vsg89vqoe2ahg.apps.googleusercontent.com',
           callback: async (response) => {
@@ -1909,8 +1916,8 @@ const TeamManagement = ({ currentUserId }) => {
   const [pendingInvites, setPendingInvites] = useState([]);
 
   useEffect(() => {
-    getTeamUsers().then(d => { setTeamUsers(d.users || []); setTeamLoading(false); }).catch(() => setTeamLoading(false));
-    getPendingInvites().then(d => setPendingInvites((d.invites || []).filter(i => !i.accepted))).catch(() => {});
+    getTeamUsers().then(d => { setTeamUsers(d.users || []); setTeamLoading(false); }).catch(() => { setTeamLoading(false); toast.error("Failed to load team members"); });
+    getPendingInvites().then(d => setPendingInvites((d.invites || []).filter(i => !i.accepted))).catch(() => { toast.warning("Could not load pending invites"); });
   }, []);
 
   const handleSendInvite = async () => {
@@ -1920,7 +1927,7 @@ const TeamManagement = ({ currentUserId }) => {
       await sendInvite(invEmail.trim(), invRole);
       toast.success("Invitation sent!");
       setInvEmail(""); setShowInviteForm(false);
-      getPendingInvites().then(d => setPendingInvites((d.invites || []).filter(i => !i.accepted))).catch(() => {});
+      getPendingInvites().then(d => setPendingInvites((d.invites || []).filter(i => !i.accepted))).catch(() => { toast.warning("Could not refresh invites list"); });
     } catch (err) { toast.error(err.message); }
     setInvSending(false);
   };
@@ -2144,7 +2151,7 @@ const Settings = ({ user, onUserUpdate }) => {
       if (s.notif_new_source !== undefined) setNotifNewSource(!!s.notif_new_source);
       if (s.notif_price_conflict !== undefined) setNotifPriceConflict(!!s.notif_price_conflict);
       setSettingsLoaded(true);
-    }).catch(() => setSettingsLoaded(true));
+    }).catch(() => { setSettingsLoaded(true); toast.warning("Could not load settings"); });
   }, []);
 
   const handleProfileSave = async () => {
@@ -2413,11 +2420,11 @@ const BrandVoices = ({ user }) => {
   useEffect(() => {
     apiGetBrandVoices().then(dbVoices => {
       setVoices(dbVoices.map(v => {
-        const meta = v.metadata ? (typeof v.metadata === 'string' ? JSON.parse(v.metadata) : v.metadata) : {};
+        const meta = safeJsonParse(v.metadata, {});
         return { id: v.id, name: v.name, tone: v.tone || 'Professional', color: meta.color || '#3B82F6', audience: meta.audience || '', style: meta.style || '', includeKeywords: meta.includeKeywords || [], excludeKeywords: meta.excludeKeywords || [], description: v.description || '', isDefault: !!v.is_default };
       }));
       setVoicesLoading(false);
-    }).catch(() => setVoicesLoading(false));
+    }).catch(() => { setVoicesLoading(false); toast.error("Failed to load brand voices"); });
   }, []);
 
   // Editor state
@@ -2446,7 +2453,7 @@ const BrandVoices = ({ user }) => {
     try {
       if (isCreating) {
         const created = await apiCreateBrandVoice({ name: editorName, tone: editorTone, description: desc, is_default: false, metadata });
-        const meta = created.metadata ? (typeof created.metadata === 'string' ? JSON.parse(created.metadata) : created.metadata) : metadata;
+        const meta = safeJsonParse(created.metadata, metadata);
         setVoices(prev => [...prev, { id: created.id, name: created.name, tone: created.tone, color: meta.color || editorColor, audience: meta.audience || '', style: meta.style || '', includeKeywords: meta.includeKeywords || [], excludeKeywords: meta.excludeKeywords || [], description: created.description || desc, isDefault: !!created.is_default }]);
       } else {
         await apiUpdateBrandVoice(editingVoice.id, { name: editorName, tone: editorTone, description: desc, is_default: editingVoice.isDefault, metadata });

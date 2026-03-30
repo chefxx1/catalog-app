@@ -19,8 +19,14 @@ const headers = () => ({
   'Content-Type': 'application/json',
 });
 
-// Wrap fetch to always include credentials (sends httpOnly cookie)
-const apiFetch = (url, opts = {}) => fetch(url, { ...opts, credentials: 'include' });
+// Wrap fetch to always include credentials (sends httpOnly cookie) + 30s timeout
+const apiFetch = (url, opts = {}) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  return fetch(url, { ...opts, credentials: 'include', signal: controller.signal })
+    .then(res => { clearTimeout(timeout); return res; })
+    .catch(err => { clearTimeout(timeout); if (err.name === 'AbortError') throw new Error('Request timed out'); throw err; });
+};
 
 const handleResponse = async (res) => {
   if (res.status === 401 && onUnauthorized) {
@@ -112,7 +118,7 @@ export const resolveConflict = async (conflictId, chosenValue) => {
     headers: headers(),
     body: JSON.stringify({ chosen_value: chosenValue }),
   });
-  return res.json();
+  return handleResponse(res);
 };
 
 export const refreshProduct = async (barcode) => {
@@ -120,7 +126,7 @@ export const refreshProduct = async (barcode) => {
     method: 'POST',
     headers: headers(),
   });
-  return res.json();
+  return handleResponse(res);
 };
 
 // ── CATALOG ──
@@ -155,7 +161,7 @@ export const saveToCatalog = async (entry) => {
     headers: headers(),
     body: JSON.stringify(entry),
   });
-  return res.json();
+  return handleResponse(res);
 };
 
 export const updateCatalogEntry = async (id, fields) => {
@@ -216,17 +222,17 @@ export const clearSearchHistory = async () => {
 // ── ANALYTICS ──
 export const getStats = async () => {
   const res = await apiFetch(`${API_URL}/analytics/stats`, { headers: headers() });
-  return res.json();
+  return handleResponse(res);
 };
 
 export const getSourcePerformance = async () => {
   const res = await apiFetch(`${API_URL}/analytics/sources`, { headers: headers() });
-  return res.json();
+  return handleResponse(res);
 };
 
 export const getSearchHistory = async () => {
   const res = await apiFetch(`${API_URL}/analytics/searches`, { headers: headers() });
-  return res.json();
+  return handleResponse(res);
 };
 
 // ── AUTH SETTINGS ──
@@ -446,7 +452,7 @@ export const revokeInvite = async (inviteId) => {
 // ── HEALTH ──
 export const healthCheck = async () => {
   const res = await apiFetch(`${API_URL}/health`);
-  return res.json();
+  return handleResponse(res);
 };
 
 export const logout = async () => {
