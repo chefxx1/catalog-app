@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, setOnUnauthorized, getCatalog, getStats, getSourcePerformance, getSearchHistory, searchProduct, getProductById, saveForLater, resolveConflict, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice, generateAIContent, identifyProduct, searchProductImages, exportProduct, getExportHistory, downloadExport, googleSignIn, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, deleteAllData, deleteAccount, clearSearchHistory, forgotPassword, resetPassword, logout, getTeamUsers, updateUserRole, removeTeamUser, sendInvite, getInviteInfo, acceptInvite, getPendingInvites, revokeInvite } from "./api";
+import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, setOnUnauthorized, getCatalog, getStats, getSourcePerformance, getSearchHistory, searchProduct, getProductById, saveForLater, resolveConflict, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice, generateAIContent, identifyProduct, searchProductImages, exportProduct, getExportHistory, downloadExport, googleSignIn, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, deleteAllData, deleteAccount, clearSearchHistory, forgotPassword, resetPassword, logout, getTeamUsers, updateUserRole, removeTeamUser, sendInvite, getInviteInfo, acceptInvite, getPendingInvites, revokeInvite, getCompleteness, getQualitySuggestions } from "./api";
 import { Html5Qrcode } from "html5-qrcode";
 
 // Safe JSON parse — returns fallback on malformed data
@@ -84,9 +84,10 @@ const GlobalStyles = ({ dark }) => (
       `}
     }
     body, #root { font-family: 'Sora', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; transition: background 0.35s ease, color 0.35s ease; }
-    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; transition: background 0.2s; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
     .mono { font-family: 'DM Mono', monospace; }
 
     @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
@@ -136,13 +137,14 @@ const GlobalStyles = ({ dark }) => (
       .mobile-menu-btn { display:none !important; }
     }
 
-    .btn { display:inline-flex; align-items:center; gap:8px; padding:8px 18px; border-radius:8px; font-family:'Sora',sans-serif; font-weight:600; font-size:13px; cursor:pointer; border:none; transition:all 0.2s; white-space:nowrap; }
-    .btn:hover { transform:translateY(-1px); } .btn:active { transform:translateY(0); }
-    .btn-primary { background:var(--primary); color:white; } .btn-primary:hover { background:var(--primary-light); box-shadow:0 0 20px rgba(37,99,235,0.4); }
-    .btn-success { background:var(--success); color:white; } .btn-success:hover { background:var(--success-light); box-shadow:0 0 20px rgba(16,185,129,0.4); }
-    .btn-ghost { background:transparent; color:var(--text-muted); border:1px solid var(--border); } .btn-ghost:hover { background:var(--surface); color:var(--text); }
+    .btn { display:inline-flex; align-items:center; gap:8px; padding:8px 18px; border-radius:8px; font-family:'Sora',sans-serif; font-weight:600; font-size:13px; cursor:pointer; border:none; transition:all 0.2s ease; white-space:nowrap; }
+    .btn:hover { transform:translateY(-1px); } .btn:active { transform:translateY(0) scale(0.98); }
+    .btn-primary { background:var(--primary); color:white; } .btn-primary:hover { background:var(--primary-light); box-shadow:0 4px 16px rgba(37,99,235,0.35); }
+    .btn-success { background:var(--success); color:white; } .btn-success:hover { background:var(--success-light); box-shadow:0 4px 16px rgba(16,185,129,0.35); }
+    .btn-ghost { background:transparent; color:var(--text-muted); border:1px solid var(--border); } .btn-ghost:hover { background:var(--surface); color:var(--text); border-color:var(--primary); }
 
-    .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; box-shadow:var(--card-shadow); transition:background 0.35s, border-color 0.35s; }
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:20px; box-shadow:var(--card-shadow); transition:all 0.25s ease; }
+    .card:hover { border-color:var(--border-light); box-shadow:0 4px 20px rgba(0,0,0,0.08); transform:translateY(-1px); }
 
     .badge { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600; letter-spacing:0.02em; }
     .badge-success { background:rgba(16,185,129,0.15); color:var(--success-light); }
@@ -151,8 +153,9 @@ const GlobalStyles = ({ dark }) => (
     .badge-neutral { background:rgba(100,116,139,0.2); color:var(--text-muted); }
     .badge-ai { background:rgba(16,185,129,0.1); color:var(--success-light); border:1px solid rgba(16,185,129,0.3); }
 
-    .input { background:var(--input-bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-family:'Sora',sans-serif; font-size:14px; padding:10px 14px; outline:none; transition:all 0.2s; width:100%; }
-    .input:focus { border-color:var(--primary); box-shadow:0 0 0 3px rgba(37,99,235,0.15); }
+    .input { background:var(--input-bg); border:1px solid var(--border); border-radius:8px; color:var(--text); font-family:'Sora',sans-serif; font-size:14px; padding:10px 14px; outline:none; transition:all 0.2s ease; width:100%; }
+    .input:focus { border-color:var(--primary); box-shadow:0 0 0 3px rgba(37,99,235,0.12); }
+    .input:hover:not(:focus) { border-color:var(--text-dim); }
     .input::placeholder { color:var(--text-dim); }
     textarea.input { resize:vertical; min-height:80px; }
     select.input { appearance:none; background-image:url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2394A3B8' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 14px center; padding-right:36px; }
@@ -161,16 +164,22 @@ const GlobalStyles = ({ dark }) => (
     .progress-bar { height:4px; background:var(--surface-light); border-radius:2px; overflow:hidden; }
     .progress-fill { height:100%; border-radius:2px; transition:width 0.5s ease; }
 
-    .nav-item { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:8px; cursor:pointer; transition:all 0.2s; color:var(--text-muted); font-size:13px; font-weight:500; }
-    .nav-item:hover { background:var(--surface); color:var(--text); }
-    .nav-item.active { background:rgba(37,99,235,0.15); color:var(--primary-light); }
+    .section-label { font-size:11px; font-weight:600; color:var(--text-dim); letter-spacing:0.06em; text-transform:uppercase; }
+    h3 { font-size:15px; font-weight:700; color:var(--text); }
 
-    .export-card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px; cursor:pointer; transition:all 0.2s; position:relative; }
-    .export-card:hover { border-color:var(--primary); transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,0.15); }
-    .export-card.selected { border-color:var(--primary); background:rgba(37,99,235,0.1); }
+    .nav-item { display:flex; align-items:center; gap:11px; padding:9px 14px; border-radius:8px; cursor:pointer; transition:all 0.2s ease; color:var(--text-muted); font-size:13px; font-weight:500; position:relative; }
+    .nav-item:hover { background:var(--surface); color:var(--text); transform:translateX(2px); }
+    .nav-item.active { background:rgba(37,99,235,0.1); color:var(--primary-light); font-weight:600; }
+    .nav-item.active::before { content:''; position:absolute; left:0; top:6px; bottom:6px; width:3px; border-radius:0 3px 3px 0; background:var(--primary); transition:all 0.2s; }
+    .nav-label { font-size:10px; font-weight:700; letter-spacing:0.08em; color:var(--text-dim); padding:16px 14px 6px; text-transform:uppercase; }
 
-    .drop-zone { border:2px dashed var(--border); border-radius:12px; padding:32px; text-align:center; cursor:pointer; transition:all 0.2s; }
-    .drop-zone:hover, .drop-zone.dragging { border-color:var(--primary); background:rgba(37,99,235,0.05); }
+    .export-card { background:var(--surface); border:1.5px solid var(--border); border-radius:10px; padding:16px; cursor:pointer; transition:all 0.2s ease; position:relative; }
+    .export-card:hover { border-color:var(--primary); box-shadow:0 4px 16px rgba(37,99,235,0.12); }
+    .export-card.selected { border-color:var(--primary); background:rgba(37,99,235,0.08); box-shadow:0 0 0 3px rgba(37,99,235,0.1); }
+
+    .drop-zone { border:2px dashed var(--border); border-radius:12px; padding:32px; text-align:center; cursor:pointer; transition:all 0.25s ease; background:transparent; }
+    .drop-zone:hover { border-color:var(--primary); background:rgba(37,99,235,0.04); }
+    .drop-zone.dragging { border-color:var(--primary); background:rgba(37,99,235,0.08); border-style:solid; box-shadow:0 0 0 4px rgba(37,99,235,0.1); }
 
     .highlight-warning { background:rgba(245,158,11,0.08); border-left:3px solid var(--warning); }
     .description-card { border:1px solid var(--border); border-radius:10px; padding:14px; transition:all 0.2s; cursor:pointer; }
@@ -202,9 +211,11 @@ const SkeletonCard = () => <div className="card" style={{padding:20}}><Skeleton 
 const CopyButton = ({ text, size=12 }) => { const [copied,setCopied]=useState(false); return <button className="copy-btn" title="Copy" onClick={(e)=>{e.stopPropagation();navigator.clipboard.writeText(text);setCopied(true);setTimeout(()=>setCopied(false),1500);}} style={{color:copied?"#10B981":"var(--text-dim)"}}><Icon name={copied?"check":"copy"} size={size}/></button>; };
 
 const ThemeToggle = ({ dark, onToggle }) => (
-  <div onClick={onToggle} style={{ position:"relative", width:48, height:26, borderRadius:13, cursor:"pointer", border:"1px solid var(--border)", background: dark ? "var(--surface)" : "#E2E8F0", transition:"all 0.3s" }}>
-    <div style={{ position:"absolute", top:2, left: dark ? 24 : 2, width:20, height:20, borderRadius:"50%", background: dark ? "#334155" : "#FFFFFF", boxShadow:"0 1px 3px rgba(0,0,0,0.2)", transition:"all 0.3s cubic-bezier(0.68,-0.55,0.27,1.55)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <Icon name={dark ? "moon" : "sun"} size={12} color="#F59E0B" />
+  <div onClick={onToggle} style={{ position:"relative", width:48, height:26, borderRadius:13, cursor:"pointer", border:"1px solid var(--border)", background: dark ? "linear-gradient(135deg,#1E293B,#334155)" : "linear-gradient(135deg,#BFDBFE,#93C5FD)", transition:"all 0.35s ease", boxShadow: dark ? "inset 0 1px 4px rgba(0,0,0,0.3)" : "inset 0 1px 4px rgba(0,0,0,0.1)" }}>
+    <div style={{ position:"absolute", top:2, left: dark ? 24 : 2, width:20, height:20, borderRadius:"50%", background: dark ? "#475569" : "#FEF3C7", boxShadow: dark ? "0 0 6px rgba(251,191,36,0.3)" : "0 0 8px rgba(251,191,36,0.5)", transition:"all 0.35s cubic-bezier(0.68,-0.55,0.27,1.55)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div style={{ transition:"transform 0.35s ease", transform: dark ? "rotate(-30deg)" : "rotate(0deg)" }}>
+        <Icon name={dark ? "moon" : "sun"} size={12} color={dark ? "#94A3B8" : "#F59E0B"} />
+      </div>
     </div>
   </div>
 );
@@ -213,20 +224,30 @@ const ThemeToggle = ({ dark, onToggle }) => (
 // STEP INDICATOR
 // ============================================================
 const StepIndicator = ({ currentStep }) => {
-  const steps = ["Search","Review","Export"];
+  const steps = [
+    { label: "Search", icon: "search" },
+    { label: "Review", icon: "edit" },
+    { label: "Export", icon: "download" },
+  ];
   return (
-    <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:0,padding:"20px 0"}}>
-      {steps.map((step,i)=>(
-        <div key={i} style={{display:"flex",alignItems:"center"}}>
-          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-            <div style={{width:36,height:36,borderRadius:"50%",background:i<currentStep?"#10B981":i===currentStep?"#2563EB":"rgba(71,85,105,0.3)",border:`2px solid ${i<currentStep?"#10B981":i===currentStep?"#3B82F6":"var(--border)"}`,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.4s ease",boxShadow:i===currentStep?"0 0 16px rgba(37,99,235,0.5)":"none"}}>
-              {i<currentStep?<Icon name="check" size={16} color="white"/>:<span style={{fontSize:13,fontWeight:700,color:i===currentStep?"white":"var(--text-dim)"}}>{i+1}</span>}
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"16px 0"}}>
+      <div style={{display:"flex",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:4,gap:4}}>
+        {steps.map((step,i)=>{
+          const isActive = i === currentStep;
+          const isDone = i < currentStep;
+          return (
+            <div key={i} style={{
+              display:"flex",alignItems:"center",gap:7,padding:"8px 20px",borderRadius:9,
+              background:isActive?"var(--primary)":isDone?"rgba(16,185,129,0.12)":"transparent",
+              transition:"all 0.3s ease",cursor:"default",minWidth:100,justifyContent:"center"
+            }}>
+              {isDone && <Icon name="check" size={13} color="#10B981"/>}
+              {!isDone && <Icon name={step.icon} size={13} color={isActive?"white":"var(--text-dim)"}/>}
+              <span style={{fontSize:12,fontWeight:600,color:isActive?"white":isDone?"#10B981":"var(--text-dim)",letterSpacing:"0.02em"}}>{step.label}</span>
             </div>
-            <span style={{fontSize:11,fontWeight:600,color:i===currentStep?"#3B82F6":i<currentStep?"#10B981":"var(--text-dim)",letterSpacing:"0.05em"}}>{step.toUpperCase()}</span>
-          </div>
-          {i<2&&<div style={{width:80,height:2,background:i<currentStep?"#10B981":"var(--border)",margin:"0 4px",marginBottom:20,transition:"background 0.4s"}}/>}
-        </div>
-      ))}
+          );
+        })}
+      </div>
     </div>
   );
 };
@@ -380,7 +401,7 @@ const SearchStep = ({ onSearch }) => {
           <button className="btn btn-primary" style={{flex:1,justifyContent:"center",fontSize:15,padding:"12px 0"}} onClick={()=>handleSearch()} disabled={loading||identifying}><Icon name="search" size={16}/> {loading?"Searching...":"Search Product"}</button>
           <button className="btn btn-ghost" onClick={()=>fileRef.current?.click()}><Icon name="camera" size={16}/> Scan</button>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:12,color:"var(--text-dim)"}}><div style={{flex:1,height:1,background:"var(--border)"}}/><span style={{fontSize:12,fontWeight:600}}>OR UPLOAD IMAGE</span><div style={{flex:1,height:1,background:"var(--border)"}}/></div>
+        <div style={{display:"flex",alignItems:"center",gap:12,color:"var(--text-dim)"}}><div style={{flex:1,height:1,background:"var(--border)"}}/><span style={{fontSize:11,fontWeight:600,letterSpacing:"0.06em"}}>OR UPLOAD IMAGE</span><div style={{flex:1,height:1,background:"var(--border)"}}/></div>
         <div className={`drop-zone ${dragOver?"dragging":""}`} onClick={()=>fileRef.current?.click()} onDragOver={e=>{e.preventDefault();setDragOver(true);}} onDragLeave={()=>setDragOver(false)} onDrop={e=>{e.preventDefault();setDragOver(false);const f=e.dataTransfer.files[0];if(f)scanBarcodeFromFile(f);}}>
           <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(f)scanBarcodeFromFile(f);e.target.value="";}}/>
           <div style={{color:"var(--text-dim)",marginBottom:8}}><Icon name="upload" size={28} color={dragOver?"#3B82F6":"var(--text-dim)"}/></div>
@@ -388,9 +409,9 @@ const SearchStep = ({ onSearch }) => {
           <p style={{fontSize:12,color:"var(--text-dim)",marginTop:4}}>JPG, PNG up to 10MB</p>
         </div>
       </div>
-      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",justifyContent:"center"}}>
-        <span style={{fontSize:12,color:"var(--text-dim)"}}>Try demo:</span>
-        {["3017620422003","5449000000996","8076809513753"].map(c=><button key={c} className="btn btn-ghost mono" style={{fontSize:11,padding:"4px 12px"}} onClick={()=>{setUpc(c);setTimeout(()=>handleSearch(c),50);}}>{c}</button>)}
+      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
+        <span style={{fontSize:11,color:"var(--text-dim)",fontWeight:500}}>Quick try:</span>
+        {[{c:"3017620422003",l:"Nutella"},{c:"5449000000996",l:"Coca-Cola"},{c:"8076809513753",l:"Barilla"}].map(({c,l})=><button key={c} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"5px 12px",borderRadius:20,fontSize:11,fontWeight:600,background:"var(--hover-bg)",border:"1px solid var(--border-light)",cursor:"pointer",color:"var(--text-sec)",fontFamily:"'Sora',sans-serif",transition:"all 0.2s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--primary)";e.currentTarget.style.color="var(--primary)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border-light)";e.currentTarget.style.color="var(--text-sec)";}} onClick={()=>{setUpc(c);setTimeout(()=>handleSearch(c),50);}}><Icon name="barcode" size={10}/> {l}</button>)}
       </div>
       <div id="barcode-scanner-temp" style={{display:"none"}}/>
     </div>
@@ -560,8 +581,10 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
     <div className="animate-fadeIn" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,height:"calc(100vh - 200px)",minHeight:500}}>
       {/* LEFT */}
       <div style={{display:"flex",flexDirection:"column",overflow:"hidden",background:"var(--hover-bg)",borderRadius:12,border:"1px solid var(--border)"}}>
-        <div style={{display:"flex",borderBottom:"1px solid var(--border)",padding:"0 16px"}}>
-          {tabs.map(t=><button key={t} onClick={()=>setActiveTab(t)} style={{background:"none",border:"none",cursor:"pointer",padding:"12px 14px",fontSize:12,fontWeight:600,fontFamily:"'Sora',sans-serif",color:activeTab===t?"#3B82F6":"var(--text-dim)",borderBottom:activeTab===t?"2px solid #2563EB":"2px solid transparent",textTransform:"capitalize",letterSpacing:"0.04em",transition:"all 0.2s"}}>{t}</button>)}
+        <div style={{display:"flex",padding:"8px 12px",borderBottom:"1px solid var(--border)"}}>
+          <div style={{display:"flex",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:8,padding:3,gap:3}}>
+            {tabs.map(t=><button key={t} onClick={()=>setActiveTab(t)} style={{background:activeTab===t?"var(--primary)":"transparent",border:"none",cursor:"pointer",padding:"6px 14px",fontSize:11,fontWeight:600,fontFamily:"'Sora',sans-serif",color:activeTab===t?"white":"var(--text-dim)",borderRadius:6,textTransform:"capitalize",letterSpacing:"0.03em",transition:"all 0.2s"}}>{t}</button>)}
+          </div>
         </div>
         <div className="split-panel" style={{padding:16,display:"flex",flexDirection:"column",gap:12}}>
           {activeTab==="overview"&&<>
@@ -844,22 +867,35 @@ const ExportStep = ({ onComplete, productData, user }) => {
   );
 
   return (
-    <div className="animate-fadeIn" style={{maxWidth:600,margin:"0 auto",padding:"24px 20px",display:"flex",flexDirection:"column",gap:24}}>
-      <div><h2 style={{fontSize:22,fontWeight:700,marginBottom:4}}>Export Catalog</h2><p style={{color:"var(--text-muted)",fontSize:14}}>Choose your export format and destination platform</p></div>
-      {exportError&&<div style={{padding:"10px 14px",background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,fontSize:13,color:"#FCA5A5",display:"flex",gap:8,alignItems:"center"}}><Icon name="warning" size={14} color="#EF4444"/>{exportError}</div>}
-      <div><div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:10}}>EXPORT FORMAT</div>
-        <div style={{display:"flex",gap:10}}>{["CSV","JSON","XML"].map(f=><button key={f} onClick={()=>{setFmt(f);setShowPreview(false);}} className="mono" style={{flex:1,padding:14,borderRadius:10,border:`2px solid ${fmt===f?"#3B82F6":"var(--border)"}`,background:fmt===f?"rgba(37,99,235,0.1)":"var(--hover-bg)",color:fmt===f?"#60A5FA":"var(--text-muted)",fontSize:16,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}>{f}</button>)}</div>
+    <div className="animate-fadeIn" style={{maxWidth:600,margin:"0 auto",padding:"24px 20px",display:"flex",flexDirection:"column",gap:20}}>
+      <div>
+        <h2 style={{fontSize:22,fontWeight:700,marginBottom:4}}>Export Catalog</h2>
+        <p style={{color:"var(--text-muted)",fontSize:13}}>Choose your export format and destination platform</p>
       </div>
-      <div><div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:10}}>PLATFORM TEMPLATE</div>
+      {exportError&&<div style={{padding:"10px 14px",background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,fontSize:13,color:"#FCA5A5",display:"flex",gap:8,alignItems:"center"}}><Icon name="warning" size={14} color="#EF4444"/>{exportError}</div>}
+      <div>
+        <div style={{fontSize:11,fontWeight:600,color:"var(--text-dim)",letterSpacing:"0.06em",marginBottom:10}}>FORMAT</div>
+        <div style={{display:"flex",gap:8}}>{["CSV","JSON","XML"].map(f=>{
+          const icons = {CSV:"download",JSON:"code",XML:"code"};
+          return <button key={f} onClick={()=>{setFmt(f);setShowPreview(false);}} style={{flex:1,padding:"12px 8px",borderRadius:10,border:`1.5px solid ${fmt===f?"#3B82F6":"var(--border)"}`,background:fmt===f?"rgba(37,99,235,0.08)":"transparent",color:fmt===f?"#60A5FA":"var(--text-muted)",cursor:"pointer",transition:"all 0.2s",display:"flex",flexDirection:"column",alignItems:"center",gap:6,fontFamily:"'Sora',sans-serif"}}>
+            <Icon name={icons[f]} size={16} color={fmt===f?"#3B82F6":"var(--text-dim)"}/>
+            <span className="mono" style={{fontSize:14,fontWeight:700}}>{f}</span>
+          </button>;
+        })}</div>
+      </div>
+      <div>
+        <div style={{fontSize:11,fontWeight:600,color:"var(--text-dim)",letterSpacing:"0.06em",marginBottom:10}}>PLATFORM</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{platforms.map(pl=><div key={pl.name} className={`export-card ${plat===pl.name?"selected":""}`} onClick={()=>{setPlat(pl.name);setShowPreview(false);}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:10,height:10,borderRadius:"50%",background:pl.color}}/><span style={{fontSize:14,fontWeight:600}}>{pl.name}</span></div>
-          <div style={{fontSize:11,color:"var(--text-dim)",marginTop:4}}>{fmt} template optimized</div>
-          {plat===pl.name&&<div style={{position:"absolute",top:10,right:10}}><Icon name="check" size={14} color="#10B981"/></div>}
+          <div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:8,height:8,borderRadius:"50%",background:pl.color}}/><span style={{fontSize:13,fontWeight:600}}>{pl.name}</span></div>
+          <div style={{fontSize:11,color:"var(--text-dim)",marginTop:4}}>{fmt} optimized</div>
+          {plat===pl.name&&<div style={{position:"absolute",top:10,right:10}}><Icon name="check" size={13} color="#10B981"/></div>}
         </div>)}</div>
       </div>
-      <div style={{padding:16,background:"var(--hover-bg)",borderRadius:10,border:"1px solid var(--border)"}}>
-        <div style={{fontSize:12,fontWeight:700,color:"var(--text-dim)",marginBottom:10,letterSpacing:"0.06em"}}>EXPORT SUMMARY</div>
-        {[["Product",productName],["Format",fmt],["Platform",plat],["Barcode",product.barcode||"N/A"],["Description",product.ai_description_professional||product.edited_description?"AI-Generated":"Standard"],["Price",productData?.enriched?.price||"Not set"],["Images",String(productData?.enriched?.selectedImages?.length||0)+" selected"]].map(([k,v])=><div key={k} style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:13}}><span style={{color:"var(--text-dim)"}}>{k}</span><span className={k==="Format"?"mono":""} style={{color:"var(--text-sec)"}}>{v}</span></div>)}
+      <div style={{padding:14,background:"var(--hover-bg)",borderRadius:10,border:"1px solid var(--border)"}}>
+        <div style={{fontSize:11,fontWeight:600,color:"var(--text-dim)",marginBottom:8,letterSpacing:"0.06em"}}>SUMMARY</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px 16px"}}>
+          {[["Product",productName],["Format",fmt],["Platform",plat],["Barcode",product.barcode||"N/A"],["Description",(product.ai_description_professional||product.edited_description)?"AI-Generated":"Standard"],["Price",productData?.enriched?.price||"Not set"]].map(([k,v])=><div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0"}}><span style={{color:"var(--text-dim)"}}>{k}</span><span className={k==="Format"?"mono":""} style={{color:"var(--text-sec)",fontWeight:500}}>{v}</span></div>)}
+        </div>
       </div>
       {showPreview&&preview&&<div style={{maxHeight:250,overflow:"auto",background:"var(--hover-bg)",border:"1px solid var(--border)",borderRadius:10,padding:14}}>
         <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
@@ -896,7 +932,7 @@ const ExportStep = ({ onComplete, productData, user }) => {
 // ============================================================
 // DASHBOARD
 // ============================================================
-const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
+const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }) => {
   const [stats, setStats] = useState(null);
   const [catalog, setCatalog] = useState([]);
   const [voices, setVoices] = useState([]);
@@ -908,6 +944,9 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
   const [editDesc, setEditDesc] = useState("");
   const [selected, setSelected] = useState(new Set());
   const [showDeleteDialog, setShowDeleteDialog] = useState(null);
+  const [qualitySuggestions, setQualitySuggestions] = useState({});
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [completenessModal, setCompletenessModal] = useState(null);
   const [batchExporting, setBatchExporting] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [batchFmt, setBatchFmt] = useState("CSV");
@@ -972,6 +1011,16 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
       // Refresh stats
       getStats().then(s => setStats(s)).catch(() => { toast.warning("Could not refresh stats"); });
     } catch (err) { toast.error(err.message); }
+  };
+
+  const fetchSuggestions = async (productId) => {
+    if (qualitySuggestions[productId]) return;
+    setLoadingSuggestions(true);
+    try {
+      const suggestions = await getQualitySuggestions(productId);
+      setQualitySuggestions(prev => ({ ...prev, [productId]: suggestions }));
+    } catch (err) { toast.error(err.message); }
+    setLoadingSuggestions(false);
   };
 
   const toggleSelect = (id) => {
@@ -1048,44 +1097,65 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
     } else { toast.error("Batch export failed"); }
   };
 
-  const statCards = stats ? [
-    {label:"Total Products",value:String(stats.total_products||0),icon:"package",color:"#3B82F6"},
-    {label:"Exported",value:String(stats.published||0),icon:"check",color:"#10B981"},
-    {label:"Total Searches",value:String(stats.total_searches||0),icon:"search",color:"#8B5CF6"},
-    {label:"Cache Hit Rate",value:`${stats.cache_hit_rate||0}%`,icon:"zap",color:"#F59E0B"},
-  ] : [{label:"Total Products",value:"—",icon:"package",color:"#3B82F6"},{label:"Published",value:"—",icon:"check",color:"#10B981"},{label:"Total Searches",value:"—",icon:"search",color:"#8B5CF6"},{label:"Cache Hit Rate",value:"—",icon:"zap",color:"#F59E0B"}];
+  const tp = stats?.total_products || 0;
+  const ep = stats?.published || 0;
+  const needsAttention = catalog.filter(c => (c.completeness ?? 0) < 70).length;
 
   return (
     <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",gap:24}}>
-      <div className="stat-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
-        {statCards.map((s,i)=><div key={i} className="card" style={{position:"relative",overflow:"hidden"}}>
-          <div style={{position:"absolute",top:-12,right:-12,width:60,height:60,borderRadius:"50%",background:s.color+"15"}}/>
-          <div style={{marginBottom:8}}><Icon name={s.icon} size={20} color={s.color}/></div>
-          <div className="mono" style={{fontSize:26,fontWeight:800,color:s.color,minHeight:32}}>{loading?"—":s.value}</div>
-          <div style={{fontSize:12,color:"var(--text-dim)",marginTop:2}}>{s.label}</div>
-        </div>)}
-      </div>
-      <div className="card" style={{padding:0,overflow:"hidden"}}>
-        <div style={{padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid var(--border)"}}>
-          <div style={{display:"flex",alignItems:"center",gap:12}}><h3 style={{fontSize:16,fontWeight:700}}>Catalog Entries</h3><span className="badge badge-neutral">{catalog.length}</span></div>
-          <div style={{display:"flex",gap:10,alignItems:"center"}}>
-            <div style={{position:"relative"}}><div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)"}}><Icon name="search" size={13} color="var(--text-dim)"/></div><input className="input" placeholder="Search..." value={searchFilter} onChange={e=>setSearchFilter(e.target.value)} style={{paddingLeft:32,width:180,fontSize:13,padding:"7px 12px 7px 30px"}}/></div>
-            <button className="btn btn-primary" onClick={onNew}><Icon name="plus" size={14}/> New Product</button>
-          </div>
+      {/* Welcome + inline stats */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:16}}>
+        <div>
+          <h2 style={{fontSize:22,fontWeight:800,letterSpacing:"-0.02em",marginBottom:4}}>Welcome back{user?.name ? `, ${user.name.split(" ")[0]}` : ""}</h2>
+          <p style={{fontSize:13,color:"var(--text-dim)"}}>
+            {loading ? "Loading your catalog..." : tp === 0 ? "Start by adding your first product." : `${tp} product${tp!==1?"s":""} in catalog${needsAttention > 0 ? ` \u00b7 ${needsAttention} need${needsAttention!==1?"":"s"} attention` : ""}`}
+          </p>
         </div>
+        <button className="btn btn-primary" onClick={onNew}><Icon name="plus" size={14}/> New Product</button>
+      </div>
+
+      {/* Compact stats row */}
+      {!loading && stats && (
+        <div style={{display:"flex",gap:24,padding:"14px 0",borderTop:"1px solid var(--border-light)",borderBottom:"1px solid var(--border-light)",flexWrap:"wrap"}}>
+          {[
+            {label:"Products",value:tp,color:"#3B82F6"},
+            {label:"Exported",value:ep,color:"#10B981"},
+            {label:"Searches",value:stats.total_searches||0,color:"#8B5CF6"},
+            {label:"Cache Hit",value:`${stats.cache_hit_rate||0}%`,color:"#F59E0B"},
+          ].map((s,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"baseline",gap:8}}>
+              <span className="mono" style={{fontSize:20,fontWeight:800,color:s.color}}>{s.value}</span>
+              <span style={{fontSize:11,color:"var(--text-dim)",fontWeight:500}}>{s.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Catalog table */}
+      <div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <h3 style={{fontSize:15,fontWeight:700}}>Catalog</h3>
+            <span style={{fontSize:12,color:"var(--text-dim)"}}>{catalog.length} entries</span>
+          </div>
+          <div style={{position:"relative"}}><div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)"}}><Icon name="search" size={13} color="var(--text-dim)"/></div><input className="input" placeholder="Search..." value={searchFilter} onChange={e=>setSearchFilter(e.target.value)} style={{paddingLeft:32,width:200,fontSize:13,padding:"7px 12px 7px 30px",background:"transparent"}}/></div>
+        </div>
+        <div style={{border:"1px solid var(--border)",borderRadius:10,overflow:"hidden"}}>
         {loading ? (
-          <div style={{padding:"12px 0"}}>{[0,1,2,3].map(i=><div key={i} style={{display:"flex",alignItems:"center",gap:16,padding:"14px 20px",borderBottom:"1px solid var(--border-light)",opacity:1-i*0.15}}><div className="skeleton" style={{height:14,width:"30%",borderRadius:4}}/><div className="skeleton" style={{height:12,width:"18%",borderRadius:4}}/><div className="skeleton" style={{height:22,width:60,borderRadius:20}}/><div className="skeleton" style={{height:12,width:"12%",borderRadius:4}}/><div className="skeleton" style={{height:12,width:80,borderRadius:4}}/></div>)}</div>
+          <div style={{padding:"12px 0"}}>{[0,1,2,3].map(i=><div key={i} style={{display:"flex",alignItems:"center",gap:16,padding:"14px 20px",borderBottom:"1px solid var(--border-light)",opacity:1-i*0.15}}><div className="skeleton" style={{height:14,width:"25%",borderRadius:4}}/><div className="skeleton" style={{height:12,width:"14%",borderRadius:4}}/><div className="skeleton" style={{height:6,width:60,borderRadius:3}}/><div className="skeleton" style={{height:22,width:60,borderRadius:20}}/><div className="skeleton" style={{height:12,width:"10%",borderRadius:4}}/><div className="skeleton" style={{height:12,width:80,borderRadius:4}}/></div>)}</div>
         ) : catalog.length === 0 ? (
-          <div style={{padding:40,textAlign:"center"}}>
-            <Icon name="package" size={36} color="var(--text-dim)"/>
-            <h3 style={{marginTop:12,fontWeight:700,fontSize:15}}>No catalog entries yet</h3>
-            <p style={{color:"var(--text-dim)",fontSize:13,marginTop:6}}>Search for a product and save it to your catalog to see it here.</p>
-            <button className="btn btn-primary" style={{marginTop:16}} onClick={onNew}><Icon name="plus" size={14}/> Add First Product</button>
+          <div style={{padding:48,textAlign:"center"}}>
+            <div style={{width:64,height:64,borderRadius:16,background:"rgba(37,99,235,0.08)",border:"1px solid rgba(37,99,235,0.15)",display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:16}}>
+              <Icon name="package" size={28} color="var(--primary-light)"/>
+            </div>
+            <h3 style={{fontWeight:700,fontSize:16,marginBottom:6}}>No catalog entries yet</h3>
+            <p style={{color:"var(--text-dim)",fontSize:13,maxWidth:300,margin:"0 auto",lineHeight:1.5}}>Search for a product and save it to your catalog to see it here.</p>
+            <button className="btn btn-primary" style={{marginTop:20}} onClick={onNew}><Icon name="plus" size={14}/> Add First Product</button>
           </div>
         ) : (
           <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead><tr style={{borderBottom:"1px solid var(--border)"}}>
-              {["Product","Barcode","Status","Date","Actions"].map(h=><th key={h} style={{padding:"10px 16px",textAlign:"left",fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.06em"}}>{h.toUpperCase()}</th>)}
+            <thead><tr style={{borderBottom:"1px solid var(--border)",position:"sticky",top:0,background:"var(--surface)",zIndex:2}}>
+              {["Product","Barcode","Completeness","Status","Date","Actions"].map(h=><th key={h} style={{padding:"10px 16px",textAlign:"left",fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.06em"}}>{h.toUpperCase()}</th>)}
             </tr></thead>
             <tbody>{filteredCatalog.map((item,i)=>{
               const isSelected = selected.has(item.id);
@@ -1111,6 +1181,20 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
                 )}
               </td>
               <td style={{padding:"12px 16px"}}><span className="mono" style={{fontSize:12,color:"var(--text-muted)",display:"flex",alignItems:"center",gap:4}}>{item.barcode||"—"}{item.barcode&&<CopyButton text={item.barcode}/>}</span></td>
+              <td style={{padding:"12px 16px"}} onClick={e=>e.stopPropagation()}>
+                {(() => {
+                  const pct = item.completeness ?? 0;
+                  const color = pct === 100 ? "#10B981" : pct >= 70 ? "#3B82F6" : pct >= 40 ? "#F59E0B" : "#EF4444";
+                  return (
+                    <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setCompletenessModal(item)} title="View completeness details">
+                      <div style={{width:60,height:6,borderRadius:3,background:"var(--hover-bg)",overflow:"hidden"}}>
+                        <div style={{height:"100%",borderRadius:3,background:color,width:`${pct}%`,transition:"width 0.4s ease"}}/>
+                      </div>
+                      <span className="mono" style={{fontSize:11,fontWeight:700,color}}>{pct}%</span>
+                    </div>
+                  );
+                })()}
+              </td>
               <td style={{padding:"12px 16px"}}><span className={`badge ${sc[item.status]||"badge-neutral"}`}>{item.status||"Draft"}</span></td>
               <td style={{padding:"12px 16px"}}><span style={{fontSize:12,color:"var(--text-dim)"}}>{item.updated_at?new Date(item.updated_at).toLocaleDateString():""}</span></td>
               <td style={{padding:"12px 16px"}}><div style={{display:"flex",gap:6}} onClick={e=>e.stopPropagation()}>
@@ -1141,22 +1225,24 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
           </div>
         )}
       </div>
-      <div className="card">
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <div><h3 style={{fontSize:15,fontWeight:700}}>Brand Voice Profiles</h3><p style={{fontSize:12,color:"var(--text-dim)",marginTop:2}}>Saved tone & vocabulary presets for AI generation</p></div>
-          <button className="btn btn-ghost" style={{fontSize:12}} onClick={onViewVoices}><Icon name="plus" size={13}/> New Profile</button>
+      </div>
+
+      {/* Brand voices — compact row */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 0",borderTop:"1px solid var(--border-light)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:14}}>
+          <span style={{fontSize:13,fontWeight:600,color:"var(--text-dim)"}}>Brand Voices</span>
+          {voices.length > 0 ? (
+            <div style={{display:"flex",gap:8}}>
+              {voices.slice(0,4).map((pr,i)=>(
+                <span key={pr.id||i} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,background:"var(--hover-bg)",border:"1px solid var(--border-light)",cursor:"pointer",transition:"all 0.15s"}} onClick={onViewVoices}>
+                  <div style={{width:6,height:6,borderRadius:"50%",background:pr.color}}/>{pr.name}
+                </span>
+              ))}
+              {voices.length>4&&<span style={{fontSize:11,color:"var(--text-dim)",alignSelf:"center"}}>+{voices.length-4}</span>}
+            </div>
+          ) : <span style={{fontSize:12,color:"var(--text-dim)"}}>None yet</span>}
         </div>
-        {voices.length === 0 ? (
-          <div style={{padding:30,textAlign:"center"}}><Icon name="tag" size={28} color="var(--text-dim)"/><p style={{fontSize:13,color:"var(--text-dim)",marginTop:8}}>No brand voices yet.</p><button className="btn btn-primary" style={{marginTop:12,fontSize:12}} onClick={onViewVoices}><Icon name="plus" size={13}/> Create Voice Profile</button></div>
-        ) : (
-          <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(voices.length,3)},1fr)`,gap:10}}>
-            {voices.slice(0,3).map((pr,i)=><div key={pr.id||i} style={{padding:14,background:"var(--hover-bg)",borderRadius:8,border:"1px solid var(--border)",transition:"all 0.35s",cursor:"pointer"}} onClick={onViewVoices}>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}><div style={{width:8,height:8,borderRadius:"50%",background:pr.color}}/><span style={{fontWeight:700,fontSize:13}}>{pr.name}</span></div>
-              <div style={{fontSize:11,color:"var(--text-dim)"}}> Tone: {pr.tone}</div>
-            </div>)}
-            {voices.length>3&&<div style={{padding:14,display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:12,color:"var(--text-dim)"}}>+{voices.length-3} more</span></div>}
-          </div>
-        )}
+        <button className="btn btn-ghost" style={{fontSize:12,padding:"5px 12px"}} onClick={onViewVoices}><Icon name="plus" size={12}/> {voices.length > 0 ? "Manage" : "Create"}</button>
       </div>
       {showDeleteDialog && <ConfirmDialog title="Delete Catalog Entry" message="This will permanently remove this product from your catalog. This action cannot be undone."
         confirmLabel="Delete" confirmColor="#EF4444" onCancel={() => setShowDeleteDialog(null)} onConfirm={() => handleDelete(showDeleteDialog)} />}
@@ -1199,6 +1285,84 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct }) => {
           </div>
         </div>
       </div>}
+
+      {completenessModal && (() => {
+        const ci = completenessModal;
+        const pct = ci.completeness ?? 0;
+        const issues = ci.completeness_issues || [];
+        const pColor = pct === 100 ? "#10B981" : pct >= 70 ? "#3B82F6" : pct >= 40 ? "#F59E0B" : "#EF4444";
+        const aiTips = qualitySuggestions[ci.product_id];
+        return (
+          <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setCompletenessModal(null)}>
+            <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(4px)"}}/>
+            <div className="card animate-scaleIn" style={{position:"relative",width:420,maxWidth:"90vw",padding:28}} onClick={e=>e.stopPropagation()}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+                <h3 style={{fontSize:16,fontWeight:700}}>{ci.custom_name || ci.name || "Untitled"}</h3>
+                <button style={{background:"none",border:"none",cursor:"pointer",padding:4}} onClick={()=>setCompletenessModal(null)}><Icon name="x" size={16} color="var(--text-dim)"/></button>
+              </div>
+
+              <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:20}}>
+                <div style={{flex:1,height:8,borderRadius:4,background:"var(--hover-bg)",overflow:"hidden"}}>
+                  <div style={{height:"100%",borderRadius:4,background:pColor,width:`${pct}%`,transition:"width 0.4s ease"}}/>
+                </div>
+                <span className="mono" style={{fontSize:16,fontWeight:800,color:pColor}}>{pct}%</span>
+              </div>
+
+              {pct === 100 ? (
+                <div style={{textAlign:"center",padding:16}}>
+                  <Icon name="check" size={28} color="#10B981"/>
+                  <p style={{fontSize:14,fontWeight:600,color:"#10B981",marginTop:8}}>All fields complete!</p>
+                </div>
+              ) : (
+                <div style={{marginBottom:20}}>
+                  <h4 style={{fontSize:12,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.05em",marginBottom:10}}>MISSING FIELDS</h4>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {issues.map((issue, j) => (
+                      <div key={j} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"var(--hover-bg)",borderRadius:8}}>
+                        <Icon name="warning" size={14} color="#F59E0B"/>
+                        <span style={{fontSize:13,color:"var(--text)"}}>{issue}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {pct < 100 && (
+                <div style={{borderTop:"1px solid var(--border)",paddingTop:16}}>
+                  {!aiTips && !loadingSuggestions && (
+                    <button className="btn btn-ghost" style={{width:"100%",justifyContent:"center",gap:8,fontSize:13}} onClick={()=>fetchSuggestions(ci.product_id)}>
+                      <Icon name="sparkle" size={14} color="#8B5CF6"/> Get AI Tips
+                    </button>
+                  )}
+                  {loadingSuggestions && (
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,padding:12}}>
+                      <LoadingDots/><span style={{fontSize:13,color:"var(--text-dim)"}}>Analyzing...</span>
+                    </div>
+                  )}
+                  {aiTips && aiTips.length > 0 && (
+                    <div>
+                      <h4 style={{fontSize:12,fontWeight:700,color:"#8B5CF6",letterSpacing:"0.05em",marginBottom:10,display:"flex",alignItems:"center",gap:6}}>
+                        <Icon name="sparkle" size={12} color="#8B5CF6"/> AI SUGGESTIONS
+                      </h4>
+                      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                        {aiTips.map((s,j) => (
+                          <div key={j} style={{display:"flex",gap:10,alignItems:"flex-start",padding:"8px 12px",background:"var(--hover-bg)",borderRadius:8}}>
+                            <div style={{width:6,height:6,borderRadius:"50%",marginTop:6,flexShrink:0,background:s.priority==="high"?"#EF4444":s.priority==="medium"?"#F59E0B":"#3B82F6"}}/>
+                            <p style={{fontSize:12,color:"var(--text)",lineHeight:"1.5",margin:0}}>{s.suggestion}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {aiTips && aiTips.length === 0 && (
+                    <p style={{fontSize:13,color:"var(--text-dim)",textAlign:"center"}}>No additional suggestions.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
@@ -1210,6 +1374,7 @@ const Analytics = () => {
   const [stats, setStats] = useState(null);
   const [sources, setSources] = useState([]);
   const [history, setHistory] = useState([]);
+  const [completenessData, setCompletenessData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -1217,10 +1382,12 @@ const Analytics = () => {
       getStats().catch(() => ({})),
       getSourcePerformance().catch(() => ({ sources: [] })),
       getSearchHistory().catch(() => ({ history: [] })),
-    ]).then(([s, src, h]) => {
+      getCompleteness().catch(() => null),
+    ]).then(([s, src, h, comp]) => {
       setStats(s);
       setSources(src.sources || []);
       setHistory(h.history || []);
+      setCompletenessData(comp);
       setLoading(false);
     }).catch(() => { setLoading(false); toast.error("Failed to load analytics"); });
   }, []);
@@ -1228,26 +1395,80 @@ const Analytics = () => {
   const sourceColors = { "Amazon": "#FF9900", "Open Food Facts": "#10B981", "UPC Database": "#6366F1", "Alibaba": "#FF6A00", "Google": "#4285F4" };
 
   return (
-    <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",gap:20}}>
-      <div className="stat-grid" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14}}>
-        {[
-          {l:"Total Searches",v:loading?"—":String(stats?.total_searches||0),i:"search",color:"#3B82F6"},
-          {l:"Cache Hit Rate",v:loading?"—":`${stats?.cache_hit_rate||0}%`,i:"zap",color:"#10B981"},
-          {l:"Avg Response Time",v:loading?"—":`${stats?.avg_response_time||0}ms`,i:"clock",color:"#8B5CF6"},
-          {l:"Products in Catalog",v:loading?"—":String(stats?.total_products||0),i:"package",color:"#F59E0B"},
-        ].map((s,idx)=><div key={idx} className="card" style={{position:"relative",overflow:"hidden"}}>
-          <div style={{position:"absolute",top:-12,right:-12,width:60,height:60,borderRadius:"50%",background:s.color+"15"}}/>
-          <div style={{marginBottom:8}}><Icon name={s.i} size={18} color={s.color}/></div>
-          <div className="mono" style={{fontSize:26,fontWeight:800,color:s.color,minHeight:32}}>{s.v}</div>
-          <div style={{fontSize:12,color:"var(--text-dim)",marginTop:2}}>{s.l}</div>
-        </div>)}
-      </div>
+    <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",gap:24}}>
+      {!loading && stats && (
+        <div style={{display:"flex",gap:24,padding:"14px 0",borderBottom:"1px solid var(--border-light)",flexWrap:"wrap"}}>
+          {[
+            {l:"Searches",v:stats?.total_searches||0,color:"#3B82F6"},
+            {l:"Cache Hit",v:`${stats?.cache_hit_rate||0}%`,color:"#10B981"},
+            {l:"Avg Response",v:`${stats?.avg_response_time||0}ms`,color:"#8B5CF6"},
+            {l:"Products",v:stats?.total_products||0,color:"#F59E0B"},
+          ].map((s,idx)=>(
+            <div key={idx} style={{display:"flex",alignItems:"baseline",gap:8}}>
+              <span className="mono" style={{fontSize:20,fontWeight:800,color:s.color}}>{s.v}</span>
+              <span style={{fontSize:11,color:"var(--text-dim)",fontWeight:500}}>{s.l}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="analytics-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        {/* Completeness donut */}
+        {completenessData && completenessData.total > 0 && (() => {
+          const { total, average, complete, good, needsWork, poor } = completenessData;
+          const segments = [
+            { label: "Complete", value: complete, color: "#10B981" },
+            { label: "Good", value: good, color: "#3B82F6" },
+            { label: "Needs Work", value: needsWork, color: "#F59E0B" },
+            { label: "Poor", value: poor, color: "#EF4444" },
+          ].filter(s => s.value > 0);
+          const r = 46, cx = 54, cy = 54, stroke = 10;
+          const circumference = 2 * Math.PI * r;
+          let offset = 0;
+          return (
+            <div className="card" style={{padding:24,gridColumn:completenessData.total > 0 ? "auto" : "1 / -1"}}>
+              <h3 style={{fontWeight:700,marginBottom:18}}>Catalog Completeness</h3>
+              <div style={{display:"flex",alignItems:"center",gap:24}}>
+                <div style={{position:"relative",width:108,height:108,flexShrink:0}}>
+                  <svg width="108" height="108" viewBox="0 0 108 108">
+                    <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--border)" strokeWidth={stroke}/>
+                    {segments.map((seg, i) => {
+                      const pct = seg.value / total;
+                      const dash = pct * circumference;
+                      const el = <circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={seg.color} strokeWidth={stroke}
+                        strokeDasharray={`${dash} ${circumference - dash}`} strokeDashoffset={-offset}
+                        strokeLinecap="round" transform={`rotate(-90 ${cx} ${cy})`} style={{transition:"all 0.6s ease"}}/>;
+                      offset += dash;
+                      return el;
+                    })}
+                  </svg>
+                  <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+                    <span style={{fontSize:18,fontWeight:800,color:"var(--text)"}}>{average}%</span>
+                    <span style={{fontSize:9,color:"var(--text-dim)"}}>avg</span>
+                  </div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:6,flex:1}}>
+                  {[
+                    { label: "Complete", value: complete, color: "#10B981" },
+                    { label: "Good", value: good, color: "#3B82F6" },
+                    { label: "Needs Work", value: needsWork, color: "#F59E0B" },
+                    { label: "Poor", value: poor, color: "#EF4444" },
+                  ].map((row, i) => (
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:8}}>
+                      <div style={{width:8,height:8,borderRadius:"50%",background:row.color,flexShrink:0}}/>
+                      <span style={{fontSize:12,color:"var(--text-dim)",flex:1}}>{row.label}</span>
+                      <span className="mono" style={{fontSize:12,fontWeight:700}}>{row.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
         <div className="card" style={{padding:24}}>
           <h3 style={{fontWeight:700,marginBottom:20}}>Data Source Performance</h3>
           {loading ? <div style={{textAlign:"center",padding:20}}><LoadingDots/></div> :
-           sources.length === 0 ? <div style={{textAlign:"center",padding:30}}><Icon name="chart" size={28} color="var(--text-dim)"/><p style={{fontSize:13,color:"var(--text-dim)",marginTop:8}}>No source data yet. Search for products to see performance.</p></div> :
+           sources.length === 0 ? <div style={{textAlign:"center",padding:30}}><div style={{width:48,height:48,borderRadius:12,background:"rgba(37,99,235,0.08)",border:"1px solid rgba(37,99,235,0.15)",display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:10}}><Icon name="chart" size={22} color="var(--primary-light)"/></div><p style={{fontSize:13,color:"var(--text-dim)"}}>No source data yet</p></div> :
            sources.map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
             <div style={{width:120,fontSize:13,fontWeight:600}}>{s.source_name}</div>
             <div style={{flex:1}}><div className="progress-bar" style={{height:8}}><div className="progress-fill" style={{width:`${Math.round(s.avg_trust||0)}%`,background:sourceColors[s.source_name]||"#3B82F6"}}/></div></div>
@@ -1263,7 +1484,7 @@ const Analytics = () => {
             }}><Icon name="trash" size={12} color="#EF4444"/> Clear All</button>}
           </div>
           {loading ? <div style={{textAlign:"center",padding:20}}><LoadingDots/></div> :
-           history.length === 0 ? <div style={{textAlign:"center",padding:30}}><Icon name="search" size={28} color="var(--text-dim)"/><p style={{fontSize:13,color:"var(--text-dim)",marginTop:8}}>No searches yet. Try scanning a barcode!</p></div> :
+           history.length === 0 ? <div style={{textAlign:"center",padding:30}}><div style={{width:48,height:48,borderRadius:12,background:"rgba(16,185,129,0.08)",border:"1px solid rgba(16,185,129,0.15)",display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:10}}><Icon name="search" size={22} color="#10B981"/></div><p style={{fontSize:13,color:"var(--text-dim)"}}>No searches yet</p></div> :
           <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:300,overflowY:"auto"}}>
             {history.slice(0,15).map((h,i)=><div key={h.id||i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:"var(--hover-bg)",borderRadius:8}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -2183,34 +2404,25 @@ const Settings = ({ user, onUserUpdate }) => {
   const handleApiSave = () => { setApiSaved(true); setTimeout(() => setApiSaved(false), 2000); };
 
   return (
-    <div className="animate-fadeIn" style={{ maxWidth: 720, margin: "0 auto", display: "flex", flexDirection: "column", gap: 24 }}>
+    <div className="animate-fadeIn" style={{ maxWidth: 720, margin: "0 auto", display: "flex", flexDirection: "column", gap: 20 }}>
 
       {/* ── PROFILE ── */}
       <div className="card" style={{ padding: 24 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-          <Icon name="user" size={20} color="#3B82F6" />
-          <div>
-            <h3 style={{ fontWeight: 700, fontSize: 16 }}>Profile</h3>
-            <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>Manage your personal information</p>
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 20, marginBottom: 20 }}>
-          <div style={{ width: 64, height: 64, borderRadius: "50%", background: "linear-gradient(135deg,#2563EB,#8B5CF6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 700, color: "white", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
+          <div style={{ width: 52, height: 52, borderRadius: 14, background: "linear-gradient(135deg,#2563EB,#8B5CF6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, color: "white", flexShrink: 0 }}>
             {(profileName || "U")[0].toUpperCase()}
           </div>
-          <div>
+          <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, fontSize: 16 }}>{profileName || "User"}</div>
-            <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{profileEmail}</div>
-            <span className="badge badge-primary" style={{ marginTop: 4 }}>{user.role}</span>
+            <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>{profileEmail}</div>
           </div>
+          <span className="badge badge-primary">{user.role}</span>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           <InputField label="Full name" placeholder="Your name" icon="user" value={profileName} onChange={e => setProfileName(e.target.value)} />
           <InputField label="Email address" type="email" placeholder="you@example.com" icon="mail" value={profileEmail} onChange={e => setProfileEmail(e.target.value)} />
         </div>
-        <div style={{ marginTop: 16 }}>
-          {isAdmin && <InputField label="Store name" placeholder="My Store" icon="store" value={profileStore} onChange={e => setProfileStore(e.target.value)} />}
-        </div>
+        {isAdmin && <div style={{ marginTop: 14 }}><InputField label="Store name" placeholder="My Store" icon="store" value={profileStore} onChange={e => setProfileStore(e.target.value)} /></div>}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
           <button className="btn btn-primary" onClick={handleProfileSave}><Icon name="check" size={14} /> Save Profile</button>
           {profileSaved && <span style={{ fontSize: 12, color: "#10B981", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><Icon name="check" size={12} color="#10B981" /> Saved</span>}
@@ -2218,66 +2430,68 @@ const Settings = ({ user, onUserUpdate }) => {
         </div>
       </div>
 
-      {/* ── CHANGE PASSWORD ── */}
+      {/* ── SECURITY ── */}
       <div className="card" style={{ padding: 24 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-          <Icon name="shield" size={20} color="#8B5CF6" />
-          <div>
-            <h3 style={{ fontWeight: 700, fontSize: 16 }}>Change Password</h3>
-            <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>Update your account password</p>
-          </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+          <Icon name="shield" size={18} color="#8B5CF6" />
+          <span style={{ fontWeight: 700, fontSize: 15 }}>Security</span>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <InputField label="Current password" type={showCurrentPwd ? "text" : "password"} placeholder="Enter current password"
             value={currentPassword} onChange={e => setCurrentPassword(e.target.value)}
             rightEl={<span onClick={() => setShowCurrentPwd(p => !p)}><Icon name={showCurrentPwd ? "eyeOff" : "eye"} size={16} /></span>} />
-            <InputField label="New password" type={showNewPwd ? "text" : "password"} placeholder="Min. 8 characters"
-              value={newPassword} onChange={e => setNewPassword(e.target.value)}
-              rightEl={<span onClick={() => setShowNewPwd(p => !p)}><Icon name={showNewPwd ? "eyeOff" : "eye"} size={16} /></span>} />
-            <PasswordStrengthBar password={newPassword} />
-            <InputField label="Confirm new password" type={showConfirmPwd ? "text" : "password"} placeholder="Re-enter new password"
-              value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
-              rightEl={<span onClick={() => setShowConfirmPwd(p => !p)}><Icon name={showConfirmPwd ? "eyeOff" : "eye"} size={16} /></span>} />
-            {confirmPassword && newPassword !== confirmPassword && <p style={{ fontSize: 11, color: "#EF4444" }}>Passwords don't match</p>}
-            {confirmPassword && newPassword === confirmPassword && confirmPassword && <p style={{ fontSize: 11, color: "#10B981", display: "flex", alignItems: "center", gap: 4 }}><Icon name="check" size={11} color="#10B981" /> Passwords match</p>}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <div>
+              <InputField label="New password" type={showNewPwd ? "text" : "password"} placeholder="Min. 8 characters"
+                value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                rightEl={<span onClick={() => setShowNewPwd(p => !p)}><Icon name={showNewPwd ? "eyeOff" : "eye"} size={16} /></span>} />
+              <div style={{ marginTop: 6 }}><PasswordStrengthBar password={newPassword} /></div>
+            </div>
+            <div>
+              <InputField label="Confirm password" type={showConfirmPwd ? "text" : "password"} placeholder="Re-enter password"
+                value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+                rightEl={<span onClick={() => setShowConfirmPwd(p => !p)}><Icon name={showConfirmPwd ? "eyeOff" : "eye"} size={16} /></span>} />
+              {confirmPassword && newPassword !== confirmPassword && <p style={{ fontSize: 11, color: "#EF4444", marginTop: 6 }}>Passwords don't match</p>}
+              {confirmPassword && newPassword === confirmPassword && confirmPassword && <p style={{ fontSize: 11, color: "#10B981", display: "flex", alignItems: "center", gap: 4, marginTop: 6 }}><Icon name="check" size={11} color="#10B981" /> Match</p>}
+            </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
-            <button className="btn btn-primary" onClick={handlePasswordChange} disabled={!currentPassword || !newPassword || newPassword !== confirmPassword}><Icon name="check" size={14} /> Change Password</button>
-            {passwordChanged && <span style={{ fontSize: 12, color: "#10B981", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><Icon name="check" size={12} color="#10B981" /> Password updated</span>}
-            {passwordError && <span style={{ fontSize: 12, color: "#EF4444", fontWeight: 600 }}>{passwordError}</span>}
-          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
+          <button className="btn btn-primary" onClick={handlePasswordChange} disabled={!currentPassword || !newPassword || newPassword !== confirmPassword}><Icon name="check" size={14} /> Update Password</button>
+          {passwordChanged && <span style={{ fontSize: 12, color: "#10B981", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><Icon name="check" size={12} color="#10B981" /> Updated</span>}
+          {passwordError && <span style={{ fontSize: 12, color: "#EF4444", fontWeight: 600 }}>{passwordError}</span>}
+        </div>
       </div>
 
       {/* ── TEAM MANAGEMENT ── */}
       {isAdmin && <TeamManagement currentUserId={user.id} />}
 
-      {/* ── STORE SETTINGS ── */}
+      {/* ── STORE PREFERENCES (merged: Store + API + Notifications) ── */}
       {isAdmin && (
         <div className="card" style={{ padding: 24 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-            <Icon name="store" size={20} color="#10B981" />
-            <div>
-              <h3 style={{ fontWeight: 700, fontSize: 16 }}>Store Settings</h3>
-              <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>Configure default preferences for your store</p>
-            </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+            <Icon name="store" size={18} color="#10B981" />
+            <span style={{ fontWeight: 700, fontSize: 15 }}>Store Preferences</span>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+          {/* Store defaults */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>Default Currency</label>
-              <select className="input" value={currency} onChange={e => setCurrency(e.target.value)}>
+              <select className="input" value={currency} onChange={e => setCurrency(e.target.value)} style={{ maxWidth: 200 }}>
                 {["USD", "EUR", "GBP", "CAD", "AUD"].map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>Default Export Format</label>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", gap: 8, maxWidth: 320 }}>
                 {["CSV", "JSON", "XML"].map(f => (
                   <div key={f} onClick={() => setExportFormat(f)} style={{
-                    flex: 1, padding: "10px 8px", borderRadius: 8, cursor: "pointer", textAlign: "center",
-                    border: `2px solid ${exportFormat === f ? "#3B82F6" : "var(--border)"}`,
-                    background: exportFormat === f ? "rgba(37,99,235,0.12)" : "transparent", transition: "all 0.2s"
+                    flex: 1, padding: "8px 6px", borderRadius: 8, cursor: "pointer", textAlign: "center",
+                    border: `1.5px solid ${exportFormat === f ? "#3B82F6" : "var(--border)"}`,
+                    background: exportFormat === f ? "rgba(37,99,235,0.1)" : "transparent", transition: "all 0.2s"
                   }}>
-                    <div className="mono" style={{ fontSize: 13, fontWeight: 700, color: exportFormat === f ? "#3B82F6" : "var(--text-dim)" }}>{f}</div>
+                    <div className="mono" style={{ fontSize: 12, fontWeight: 700, color: exportFormat === f ? "#3B82F6" : "var(--text-dim)" }}>{f}</div>
                   </div>
                 ))}
               </div>
@@ -2287,98 +2501,88 @@ const Settings = ({ user, onUserUpdate }) => {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
                 {[{ n: "Shopify", c: "#96BF48" }, { n: "WooCommerce", c: "#9B5C8F" }, { n: "Magento", c: "#F46F25" }, { n: "BigCommerce", c: "#121118" }].map(p => (
                   <div key={p.n} onClick={() => setPlatform(p.n)} style={{
-                    padding: "10px 8px", borderRadius: 8, cursor: "pointer", textAlign: "center",
-                    border: `2px solid ${platform === p.n ? p.c : "var(--border)"}`,
-                    background: platform === p.n ? p.c + "18" : "transparent", transition: "all 0.2s"
+                    padding: "8px 6px", borderRadius: 8, cursor: "pointer", textAlign: "center",
+                    border: `1.5px solid ${platform === p.n ? p.c : "var(--border)"}`,
+                    background: platform === p.n ? p.c + "14" : "transparent", transition: "all 0.2s"
                   }}>
-                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: p.c, margin: "0 auto 6px" }} />
-                    <div style={{ fontSize: 11, fontWeight: 700, color: platform === p.n ? p.c : "var(--text-dim)" }}>{p.n}</div>
+                    <div style={{ width: 7, height: 7, borderRadius: "50%", background: p.c, margin: "0 auto 5px" }} />
+                    <div style={{ fontSize: 11, fontWeight: 600, color: platform === p.n ? p.c : "var(--text-dim)" }}>{p.n}</div>
                   </div>
                 ))}
               </div>
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16, paddingBottom: 20, borderBottom: "1px solid var(--border-light)" }}>
             <button className="btn btn-primary" onClick={handleSettingsSave}><Icon name="check" size={14} /> Save Settings</button>
             {settingsSaved && <span style={{ fontSize: 12, color: "#10B981", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><Icon name="check" size={12} color="#10B981" /> Saved</span>}
           </div>
-        </div>
-      )}
 
-      {/* ── API CONFIGURATION ── */}
-      {isAdmin && (
-        <div className="card" style={{ padding: 24 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-            <Icon name="key" size={20} color="#F59E0B" />
-            <div>
-              <h3 style={{ fontWeight: 700, fontSize: 16 }}>API Configuration</h3>
-              <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>Enter your API keys for data sources and AI services</p>
+          {/* API Keys */}
+          <div style={{ paddingTop: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+              <Icon name="key" size={16} color="#F59E0B" />
+              <span style={{ fontWeight: 600, fontSize: 13, color: "var(--text-sec)" }}>API Keys</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <InputField label="OpenAI API Key" type={showOpenai ? "text" : "password"} placeholder="sk-..." icon="key"
+                value={openaiKey} onChange={e => setOpenaiKey(e.target.value)} hint="platform.openai.com/api-keys"
+                rightEl={<span onClick={() => setShowOpenai(p => !p)}><Icon name={showOpenai ? "eyeOff" : "eye"} size={16} /></span>} />
+              <InputField label="Amazon Product API Key" type={showAmazon ? "text" : "password"} placeholder="Enter API key" icon="key"
+                value={amazonKey} onChange={e => setAmazonKey(e.target.value)} hint="Amazon Product Advertising API"
+                rightEl={<span onClick={() => setShowAmazon(p => !p)}><Icon name={showAmazon ? "eyeOff" : "eye"} size={16} /></span>} />
+              <InputField label="Google Custom Search API Key" type={showGoogle ? "text" : "password"} placeholder="Enter API key" icon="key"
+                value={googleKey} onChange={e => setGoogleKey(e.target.value)} hint="console.cloud.google.com/apis"
+                rightEl={<span onClick={() => setShowGoogle(p => !p)}><Icon name={showGoogle ? "eyeOff" : "eye"} size={16} /></span>} />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16, paddingBottom: 20, borderBottom: "1px solid var(--border-light)" }}>
+              <button className="btn btn-primary" onClick={handleApiSave}><Icon name="check" size={14} /> Save Keys</button>
+              {apiSaved && <span style={{ fontSize: 12, color: "#10B981", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><Icon name="check" size={12} color="#10B981" /> Saved</span>}
             </div>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <InputField label="OpenAI API Key" type={showOpenai ? "text" : "password"} placeholder="sk-..." icon="key"
-              value={openaiKey} onChange={e => setOpenaiKey(e.target.value)} hint="Get your key at platform.openai.com/api-keys"
-              rightEl={<span onClick={() => setShowOpenai(p => !p)}><Icon name={showOpenai ? "eyeOff" : "eye"} size={16} /></span>} />
-            <InputField label="Amazon Product API Key" type={showAmazon ? "text" : "password"} placeholder="Enter API key" icon="key"
-              value={amazonKey} onChange={e => setAmazonKey(e.target.value)} hint="From the Amazon Product Advertising API console"
-              rightEl={<span onClick={() => setShowAmazon(p => !p)}><Icon name={showAmazon ? "eyeOff" : "eye"} size={16} /></span>} />
-            <InputField label="Google Custom Search API Key" type={showGoogle ? "text" : "password"} placeholder="Enter API key" icon="key"
-              value={googleKey} onChange={e => setGoogleKey(e.target.value)} hint="From console.cloud.google.com/apis"
-              rightEl={<span onClick={() => setShowGoogle(p => !p)}><Icon name={showGoogle ? "eyeOff" : "eye"} size={16} /></span>} />
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16 }}>
-            <button className="btn btn-primary" onClick={handleApiSave}><Icon name="check" size={14} /> Save API Keys</button>
-            {apiSaved && <span style={{ fontSize: 12, color: "#10B981", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><Icon name="check" size={12} color="#10B981" /> Saved</span>}
-          </div>
-        </div>
-      )}
 
-      {/* ── NOTIFICATION PREFERENCES ── */}
-      {isAdmin && (
-        <div className="card" style={{ padding: 24 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-            <Icon name="bell" size={20} color="#6366F1" />
-            <div>
-              <h3 style={{ fontWeight: 700, fontSize: 16 }}>Notification Preferences</h3>
-              <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>Choose which notifications you'd like to receive</p>
+          {/* Notifications */}
+          <div style={{ paddingTop: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <Icon name="bell" size={16} color="#6366F1" />
+              <span style={{ fontWeight: 600, fontSize: 13, color: "var(--text-sec)" }}>Notifications</span>
             </div>
-          </div>
-          {[
-            { label: "Export completion emails", desc: "Get notified when a product export finishes", value: notifExport, toggle: () => setNotifExport(v => !v) },
-            { label: "Weekly analytics report", desc: "Receive a summary of your catalog activity", value: notifWeekly, toggle: () => setNotifWeekly(v => !v) },
-            { label: "New data source alerts", desc: "Be notified when new data sources become available", value: notifNewSource, toggle: () => setNotifNewSource(v => !v) },
-            { label: "Price conflict alerts", desc: "Get alerted when price conflicts are detected", value: notifPriceConflict, toggle: () => setNotifPriceConflict(v => !v) },
-          ].map((item, i, arr) => (
-            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0", borderBottom: i < arr.length - 1 ? "1px solid var(--border-light)" : "none" }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{item.label}</div>
-                <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>{item.desc}</div>
+            {[
+              { label: "Export completion emails", desc: "When a product export finishes", value: notifExport, toggle: () => setNotifExport(v => !v) },
+              { label: "Weekly analytics report", desc: "Summary of catalog activity", value: notifWeekly, toggle: () => setNotifWeekly(v => !v) },
+              { label: "New data source alerts", desc: "When new data sources are available", value: notifNewSource, toggle: () => setNotifNewSource(v => !v) },
+              { label: "Price conflict alerts", desc: "When price conflicts are detected", value: notifPriceConflict, toggle: () => setNotifPriceConflict(v => !v) },
+            ].map((item, i, arr) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: i < arr.length - 1 ? "1px solid var(--border-light)" : "none" }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{item.label}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 1 }}>{item.desc}</div>
+                </div>
+                <ToggleSwitch enabled={item.value} onToggle={item.toggle} />
               </div>
-              <ToggleSwitch enabled={item.value} onToggle={item.toggle} />
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
       {/* ── DANGER ZONE ── */}
       {isAdmin && (
-        <div className="card" style={{ padding: 24, border: "1px solid rgba(239,68,68,0.3)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-            <Icon name="warning" size={20} color="#EF4444" />
-            <div>
-              <h3 style={{ fontWeight: 700, fontSize: 16, color: "#EF4444" }}>Danger Zone</h3>
-              <p style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>Irreversible actions — proceed with caution</p>
+        <div style={{ padding: "20px 24px", borderRadius: 10, border: "1px solid rgba(239,68,68,0.25)", background: "rgba(239,68,68,0.04)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <Icon name="warning" size={16} color="#EF4444" />
+              <span style={{ fontWeight: 700, fontSize: 14, color: "#EF4444" }}>Danger Zone</span>
             </div>
-          </div>
-          <div style={{ display: "flex", gap: 12 }}>
-            <button className="btn" style={{ background: "transparent", border: "1px solid rgba(239,68,68,0.5)", color: "#EF4444" }}
-              onClick={() => setShowDeleteData(true)}>
-              <Icon name="trash" size={14} /> Delete All Catalog Data
-            </button>
-            <button className="btn" style={{ background: "#EF4444", color: "white" }}
-              onClick={() => setShowDeleteAccount(true)}>
-              <Icon name="trash" size={14} /> Delete Account
-            </button>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn" style={{ background: "transparent", border: "1px solid rgba(239,68,68,0.4)", color: "#EF4444", fontSize: 12, padding: "6px 14px" }}
+                onClick={() => setShowDeleteData(true)}>
+                Delete Data
+              </button>
+              <button className="btn" style={{ background: "#EF4444", color: "white", fontSize: 12, padding: "6px 14px" }}
+                onClick={() => setShowDeleteAccount(true)}>
+                Delete Account
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -2482,19 +2686,17 @@ const BrandVoices = ({ user }) => {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
         {/* Left: Form */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div className="card" style={{ padding: 20 }}>
-            <InputField label="Voice Name" placeholder="e.g. Main Store" icon="tag" value={editorName} onChange={e => setEditorName(e.target.value)} />
-          </div>
+        <div className="card" style={{ padding: 24, display: "flex", flexDirection: "column", gap: 18 }}>
+          <InputField label="Voice Name" placeholder="e.g. Main Store" icon="tag" value={editorName} onChange={e => setEditorName(e.target.value)} />
 
-          <div className="card" style={{ padding: 20 }}>
+          <div>
             <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, display: "block" }}>Tone</label>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 6 }}>
               {["Professional", "Friendly", "Luxury", "Custom"].map(t => (
                 <div key={t} onClick={() => setEditorTone(t)} style={{
-                  flex: 1, padding: "10px 8px", borderRadius: 8, cursor: "pointer", textAlign: "center",
-                  border: `2px solid ${editorTone === t ? "#3B82F6" : "var(--border)"}`,
-                  background: editorTone === t ? "rgba(37,99,235,0.12)" : "transparent", transition: "all 0.2s"
+                  flex: 1, padding: "8px 6px", borderRadius: 8, cursor: "pointer", textAlign: "center",
+                  border: `1.5px solid ${editorTone === t ? "#3B82F6" : "var(--border)"}`,
+                  background: editorTone === t ? "rgba(37,99,235,0.1)" : "transparent", transition: "all 0.2s"
                 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: editorTone === t ? "#3B82F6" : "var(--text-dim)" }}>{t}</div>
                 </div>
@@ -2502,31 +2704,30 @@ const BrandVoices = ({ user }) => {
             </div>
           </div>
 
-          <div className="card" style={{ padding: 20 }}>
-            <InputField label="Target Audience" placeholder="e.g. B2B buyers, 25-45 age range" icon="user" value={editorAudience} onChange={e => setEditorAudience(e.target.value)} />
-          </div>
+          <InputField label="Target Audience" placeholder="e.g. B2B buyers, 25-45 age range" icon="user" value={editorAudience} onChange={e => setEditorAudience(e.target.value)} />
 
-          <div className="card" style={{ padding: 20 }}>
+          <div>
             <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 5, display: "block" }}>Writing Style</label>
             <textarea className="input" placeholder="Describe the writing style, vocabulary, and tone..." value={editorStyle} onChange={e => setEditorStyle(e.target.value)} rows={4} style={{ resize: "vertical", minHeight: 80 }} />
           </div>
 
-          <div className="card" style={{ padding: 20 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 5, display: "block" }}>Keywords to Include</label>
-            <TagInput tags={editorInclude} onTagsChange={setEditorInclude} placeholder="Type and press Enter..." />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 5, display: "block" }}>Keywords to Include</label>
+              <TagInput tags={editorInclude} onTagsChange={setEditorInclude} placeholder="Type + Enter..." />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 5, display: "block" }}>Keywords to Avoid</label>
+              <TagInput tags={editorExclude} onTagsChange={setEditorExclude} placeholder="Type + Enter..." />
+            </div>
           </div>
 
-          <div className="card" style={{ padding: 20 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 5, display: "block" }}>Keywords to Avoid</label>
-            <TagInput tags={editorExclude} onTagsChange={setEditorExclude} placeholder="Type and press Enter..." />
-          </div>
-
-          <div className="card" style={{ padding: 20 }}>
+          <div>
             <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, display: "block" }}>Voice Color</label>
-            <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ display: "flex", gap: 8 }}>
               {["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899", "#6366F1", "#14B8A6"].map(c => (
                 <div key={c} onClick={() => setEditorColor(c)} style={{
-                  width: 28, height: 28, borderRadius: "50%", background: c, cursor: "pointer",
+                  width: 26, height: 26, borderRadius: "50%", background: c, cursor: "pointer",
                   border: editorColor === c ? "3px solid var(--text)" : "3px solid transparent", transition: "all 0.2s"
                 }} />
               ))}
@@ -2589,22 +2790,20 @@ const BrandVoices = ({ user }) => {
         {canEdit && <button className="btn btn-primary" onClick={openCreateNew}><Icon name="plus" size={14} /> New Voice</button>}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
         {voices.map((voice, i) => (
-          <div key={voice.id} className="card animate-slideUp" style={{ cursor: canEdit ? "pointer" : "default", animationDelay: `${i * 0.06}s`, position: "relative", overflow: "hidden" }}
+          <div key={voice.id} className="card animate-slideUp" style={{ cursor: canEdit ? "pointer" : "default", animationDelay: `${i * 0.06}s`, padding: 18, borderLeft: `3px solid ${voice.color}` }}
             onClick={() => canEdit && openEditor(voice)}>
-            <div style={{ position: "absolute", top: -12, right: -12, width: 60, height: 60, borderRadius: "50%", background: voice.color + "15" }} />
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-              <div style={{ width: 10, height: 10, borderRadius: "50%", background: voice.color, flexShrink: 0 }} />
-              <span style={{ fontWeight: 700, fontSize: 15 }}>{voice.name}</span>
-              {voice.isDefault && <span className="badge badge-success" style={{ fontSize: 10 }}>Default</span>}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <span style={{ fontWeight: 700, fontSize: 14 }}>{voice.name}</span>
+              {voice.isDefault && <span className="badge badge-success" style={{ fontSize: 10, padding: "2px 7px" }}>Default</span>}
             </div>
-            <span className="badge badge-primary" style={{ marginBottom: 8 }}>{voice.tone}</span>
-            <p style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 12 }}>{voice.description}</p>
+            <span className="badge badge-primary" style={{ marginBottom: 8, fontSize: 10, padding: "2px 8px" }}>{voice.tone}</span>
+            {voice.description && <p style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 10 }}>{voice.description}</p>}
             {canEdit && (
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                {!voice.isDefault && <button className="btn btn-ghost" style={{ fontSize: 11, padding: "4px 10px" }} onClick={e => { e.stopPropagation(); setDefault(voice.id); }}>Set Default</button>}
-                <button className="btn btn-ghost" style={{ fontSize: 11, padding: "4px 8px", marginLeft: "auto" }} onClick={e => { e.stopPropagation(); setShowDeleteDialog(voice.id); }}>
+              <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: "auto" }}>
+                {!voice.isDefault && <button className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 8px" }} onClick={e => { e.stopPropagation(); setDefault(voice.id); }}>Set Default</button>}
+                <button className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 6px", marginLeft: "auto" }} onClick={e => { e.stopPropagation(); setShowDeleteDialog(voice.id); }}>
                   <Icon name="trash" size={12} color="#EF4444" />
                 </button>
               </div>
@@ -2614,11 +2813,13 @@ const BrandVoices = ({ user }) => {
       </div>
 
       {voices.length === 0 && (
-        <div className="card" style={{ textAlign: "center", padding: 40 }}>
-          <Icon name="tag" size={40} color="var(--text-dim)" />
-          <h3 style={{ marginTop: 16, fontWeight: 700 }}>No Brand Voices</h3>
-          <p style={{ color: "var(--text-dim)", marginTop: 8, fontSize: 14 }}>Create your first voice profile to get started</p>
-          {canEdit && <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={openCreateNew}><Icon name="plus" size={14} /> Create Voice</button>}
+        <div className="card" style={{ textAlign: "center", padding: 48 }}>
+          <div style={{width:64,height:64,borderRadius:16,background:"rgba(139,92,246,0.08)",border:"1px solid rgba(139,92,246,0.15)",display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:16}}>
+            <Icon name="tag" size={28} color="#8B5CF6" />
+          </div>
+          <h3 style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>No Brand Voices</h3>
+          <p style={{ color: "var(--text-dim)", fontSize: 13, maxWidth: 300, margin: "0 auto", lineHeight: 1.5 }}>Create your first voice profile to customize AI-generated descriptions</p>
+          {canEdit && <button className="btn btn-primary" style={{ marginTop: 20 }} onClick={openCreateNew}><Icon name="plus" size={14} /> Create Voice</button>}
         </div>
       )}
 
@@ -2698,6 +2899,7 @@ export default function App() {
   const [view, setView] = useState("dashboard");
   const [step, setStep] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [productData, setProductData] = useState(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -2760,82 +2962,105 @@ export default function App() {
     <>
       <GlobalStyles dark={dark} />
       <ToastContainer />
-      <div className="animate-theme" key={dark ? "dark" : "light"} style={{ display: "flex", minHeight: "100vh", background: "var(--bg)", transition: "background 0.35s" }}>
+      <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg)", transition: "background 0.35s, color 0.35s" }}>
         {/* Mobile overlay */}
         <div className={`sidebar-overlay${sidebarOpen?" open":""}`} onClick={()=>setSidebarOpen(false)}/>
         {/* Sidebar */}
-        <div className={`sidebar${sidebarOpen?" open":""}`} style={{ width: 200, background: "var(--bg-sidebar)", borderRight: "1px solid var(--border-light)", padding: "20px 12px", display: "flex", flexDirection: "column", flexShrink: 0, transition: "background 0.35s, border-color 0.35s" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 12px", marginBottom: 28 }}>
-            <div style={{ width: 30, height: 30, borderRadius: 8, background: "linear-gradient(135deg,#2563EB,#10B981)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <Icon name="cpu" size={15} color="white" />
+        <div className={`sidebar${sidebarOpen?" open":""}`} style={{ width: sidebarCollapsed ? 68 : 230, background: "var(--bg-sidebar)", borderRight: "1px solid var(--border-light)", padding: "0", display: "flex", flexDirection: "column", flexShrink: 0, transition: "width 0.25s ease, background 0.35s, border-color 0.35s", overflow: "hidden" }}>
+          {/* Logo */}
+          <div style={{ padding: sidebarCollapsed ? "22px 0 18px" : "22px 20px 18px", borderBottom: "1px solid var(--border-light)", transition: "padding 0.25s" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: sidebarCollapsed ? "center" : "flex-start" }}>
+              <div style={{ width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg,#2563EB,#10B981)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: "pointer" }} onClick={() => setSidebarCollapsed(c => !c)} title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
+                <Icon name="cpu" size={16} color="white" />
+              </div>
+              {!sidebarCollapsed && <div>
+                <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-0.02em", display: "block", lineHeight: 1 }}>CatalogAI</span>
+                <span style={{ fontSize: 10, color: "var(--text-dim)", fontWeight: 500 }}>{user.store_name || "My Store"}</span>
+              </div>}
             </div>
-            <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-0.02em" }}>CatalogAI</span>
           </div>
 
-          <nav style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
-            {navItems.map(item => (
+          <nav style={{ display: "flex", flexDirection: "column", flex: 1, padding: sidebarCollapsed ? "8px 8px" : "8px 10px", overflowY: "auto", transition: "padding 0.25s" }}>
+            {!sidebarCollapsed && <div className="nav-label">Main</div>}
+            {navItems.slice(0, 3).map(item => (
               <div key={item.id} className={`nav-item ${view === item.id ? "active" : ""}`}
+                style={sidebarCollapsed ? { justifyContent: "center", padding: "10px 0" } : {}}
+                title={sidebarCollapsed ? item.label : undefined}
                 onClick={() => { setView(item.id); if (item.id === "catalog") setStep(0); setSidebarOpen(false); }}>
-                <Icon name={item.icon} size={15} /> {item.label}
+                <Icon name={item.icon} size={15} /> {!sidebarCollapsed && item.label}
+              </div>
+            ))}
+            {!sidebarCollapsed && <div className="nav-label">Workspace</div>}
+            {sidebarCollapsed && <div style={{ height: 1, background: "var(--border-light)", margin: "6px 4px" }} />}
+            {navItems.slice(3).map(item => (
+              <div key={item.id} className={`nav-item ${view === item.id ? "active" : ""}`}
+                style={sidebarCollapsed ? { justifyContent: "center", padding: "10px 0" } : {}}
+                title={sidebarCollapsed ? item.label : undefined}
+                onClick={() => { setView(item.id); if (item.id === "catalog") setStep(0); setSidebarOpen(false); }}>
+                <Icon name={item.icon} size={15} /> {!sidebarCollapsed && item.label}
               </div>
             ))}
           </nav>
 
-          {/* Theme Toggle */}
-          <div style={{ padding: "12px 14px", borderTop: "1px solid var(--border-light)", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted)" }}>{dark ? "Dark" : "Light"}</span>
-            <ThemeToggle dark={dark} onToggle={() => setDark(d => !d)} />
-          </div>
+          {/* Bottom section */}
+          <div style={{ padding: sidebarCollapsed ? "10px 8px" : "10px 10px", borderTop: "1px solid var(--border-light)", transition: "padding 0.25s" }}>
+            {!sidebarCollapsed && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 14px", marginBottom: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-dim)" }}>{dark ? "Dark" : "Light"} mode</span>
+                <ThemeToggle dark={dark} onToggle={() => setDark(d => !d)} />
+              </div>
+            )}
+            {sidebarCollapsed && (
+              <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+                <ThemeToggle dark={dark} onToggle={() => setDark(d => !d)} />
+              </div>
+            )}
 
-          {/* User info */}
-          <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: sidebarCollapsed ? "8px 0" : "10px 12px", borderRadius: 10, background: sidebarCollapsed ? "transparent" : "var(--hover-bg)", cursor: "pointer", transition: "all 0.2s", justifyContent: sidebarCollapsed ? "center" : "flex-start" }} onClick={() => setView("settings")} title={sidebarCollapsed ? user.name || user.email : undefined}>
               <div style={{
-                width: 28, height: 28, borderRadius: "50%",
+                width: 32, height: 32, borderRadius: "50%",
                 background: "linear-gradient(135deg,#2563EB,#8B5CF6)",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 11, fontWeight: 700, color: "white", flexShrink: 0
+                fontSize: 12, fontWeight: 700, color: "white", flexShrink: 0
               }}>
                 {(user.name || user.email || "U")[0].toUpperCase()}
               </div>
-              <div style={{ flex: 1, overflow: "hidden" }}>
-                <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {user.name || user.email.split("@")[0]}
+              {!sidebarCollapsed && <>
+                <div style={{ flex: 1, overflow: "hidden" }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {user.name || user.email.split("@")[0]}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--text-dim)" }}>{user.role}</div>
                 </div>
-                <div style={{ fontSize: 10, color: "#3B82F6" }}>{user.role}</div>
-              </div>
-            </div>
-            <div className="nav-item" onClick={handleLogout}>
-              <Icon name="logout" size={14} /> Sign Out
+                <button className="btn btn-ghost" style={{ padding: 4, border: "none" }} title="Sign Out" onClick={(e) => { e.stopPropagation(); handleLogout(); }}>
+                  <Icon name="logout" size={14} color="var(--text-dim)" />
+                </button>
+              </>}
             </div>
           </div>
         </div>
 
         {/* Main */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div style={{ background: "var(--glass)", backdropFilter: "blur(8px)", borderBottom: "1px solid var(--border-light)", padding: "14px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0, transition: "background 0.35s" }}>
+          <div style={{ borderBottom: "1px solid var(--border-light)", padding: "14px 32px", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0, transition: "border-color 0.35s" }}>
             <div style={{display:"flex",alignItems:"center",gap:12}}>
               <button className="mobile-menu-btn btn btn-ghost" style={{padding:6}} onClick={()=>setSidebarOpen(true)}><Icon name="menu" size={20}/></button>
               <div>
-                <h2 style={{ fontSize: 17, fontWeight: 700 }}>
-                  {view === "dashboard" ? "Merchant Dashboard" : view === "catalog" ? "New Catalog Entry" : view === "analytics" ? "Analytics" : view === "voices" ? "Brand Voice Profiles" : "Settings"}
+                <h2 style={{ fontSize: 18, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.2 }}>
+                  {view === "dashboard" ? "Dashboard" : view === "catalog" ? "New Entry" : view === "analytics" ? "Analytics" : view === "voices" ? "Brand Voices" : "Settings"}
                 </h2>
-                <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 1 }}>
-                  {new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-                </div>
+                <p style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>
+                  {view === "dashboard" ? "Overview & quick actions" : view === "catalog" ? "Search, review, and export products" : view === "analytics" ? "Performance metrics & insights" : view === "voices" ? "AI tone & vocabulary presets" : "Account & store configuration"}
+                </p>
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: 8 }}>
-                <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#10B981" }} className="animate-pulse" />
-                <span style={{ fontSize: 12, color: "#10B981", fontWeight: 600 }}>5 sources active</span>
-              </div>
-              <span className="badge badge-primary">{user.role}</span>
-            </div>
+            <span style={{ fontSize: 11, color: "var(--text-dim)", fontWeight: 500 }}>
+              {new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+            </span>
           </div>
 
-          <div className="main-content" style={{ flex: 1, overflow: "auto", padding: "20px 28px" }}>
-            {view === "dashboard" && <Dashboard onNew={() => { setStep(0); setProductData(null); setView("catalog"); }} onViewVoices={() => setView("voices")}
+          <div className="main-content" style={{ flex: 1, overflow: "auto", padding: "24px 32px" }}>
+            {view === "dashboard" && <Dashboard user={user} onNew={() => { setStep(0); setProductData(null); setView("catalog"); }} onViewVoices={() => setView("voices")}
               onViewProduct={async (productId, step) => {
                 try {
                   const data = await getProductById(productId);

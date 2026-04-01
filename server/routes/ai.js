@@ -175,6 +175,79 @@ Be as specific as possible. If you can identify the exact product model, include
   }
 });
 
+// POST /api/ai/quality-suggestions — AI-powered data quality tips for a product
+router.post('/quality-suggestions', auth, async (req, res) => {
+  try {
+    const { productId } = req.body;
+    if (!productId) return res.status(400).json({ error: 'Product ID is required' });
+
+    // Fetch the product + catalog entry data
+    const [products] = await db.query(
+      `SELECT p.*, ce.custom_name, ce.custom_description, ce.custom_price, ce.selected_images
+       FROM products p
+       JOIN catalog_entries ce ON ce.product_id = p.id
+       WHERE p.id = ? AND ce.store_id = ?
+       LIMIT 1`,
+      [productId, req.user.store_id]
+    );
+    if (products.length === 0) return res.status(404).json({ error: 'Product not found' });
+
+    const p = products[0];
+    const [images] = await db.query('SELECT COUNT(*) as count FROM product_images WHERE product_id = ?', [productId]);
+
+    const model = getModel();
+
+    const productSummary = [
+      `Name: ${p.custom_name || p.name || 'MISSING'}`,
+      `Brand: ${p.brand || 'MISSING'}`,
+      `Description: ${p.custom_description || p.description || 'MISSING'}`,
+      `Price: ${p.custom_price || 'MISSING'}`,
+      `Category: ${p.ai_category_suggestion || 'MISSING'}`,
+      `Image count: ${images[0].count}`,
+      `Has AI descriptions: ${p.ai_description_professional ? 'Yes' : 'No'}`,
+      `Has SEO tags: ${p.seo_tags && p.seo_tags !== '[]' ? 'Yes' : 'No'}`,
+    ].join('\n');
+
+    const prompt = `You are an e-commerce product data quality expert. Analyze this product listing and provide actionable suggestions to improve its completeness and quality for online selling.
+
+Product Data:
+${productSummary}
+
+Return a JSON array of suggestions (no markdown fences, just raw JSON). Each suggestion:
+{
+  "priority": "high" | "medium" | "low",
+  "field": "name" | "description" | "price" | "images" | "category" | "seo" | "general",
+  "suggestion": "Brief actionable suggestion (1 sentence)"
+}
+
+Rules:
+- Only suggest improvements for fields that are actually missing or weak
+- If a field is present and good, don't suggest anything for it
+- Max 6 suggestions, ordered by priority (high first)
+- Be specific and actionable, not generic
+- If the product data is excellent, return an empty array []`;
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
+
+    let suggestions;
+    try {
+      const jsonStr = text.replace(/^```json?\s*/i, '').replace(/```\s*$/, '').trim();
+      suggestions = JSON.parse(jsonStr);
+    } catch {
+      return res.status(500).json({ error: 'Failed to parse AI response' });
+    }
+
+    res.json({ suggestions: Array.isArray(suggestions) ? suggestions : [] });
+  } catch (err) {
+    console.error('AI quality suggestions error:', err.message);
+    if (err.message.includes('GEMINI_API_KEY')) {
+      return res.status(400).json({ error: 'AI API key not configured.' });
+    }
+    res.status(500).json({ error: 'Quality analysis failed: ' + err.message });
+  }
+});
+
 // POST /api/ai/search-images — find product images by name (Serper.dev)
 router.post('/search-images', auth, async (req, res) => {
   try {
