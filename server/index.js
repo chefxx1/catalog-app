@@ -25,7 +25,7 @@ app.use(cookieParser());
 app.use(express.json({ limit: '20mb' }));
 
 // Rate limiting per route group
-app.use('/api/auth', rateLimit({ max: 10, windowMs: 60000, message: 'Too many auth attempts, try again in a minute' }));
+app.use('/api/auth', rateLimit({ max: 40, windowMs: 60000, message: 'Too many requests, try again in a minute' }));
 app.use('/api/ai', rateLimit({ max: 10, windowMs: 60000, message: 'AI rate limit reached, try again in a minute' }));
 app.use('/api/products', rateLimit({ max: 30, windowMs: 60000 }));
 app.use('/api/export', rateLimit({ max: 30, windowMs: 60000 }));

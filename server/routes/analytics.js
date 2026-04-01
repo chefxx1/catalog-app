@@ -35,7 +35,7 @@ router.get('/sources', auth, async (req, res) => {
       `SELECT ps.source_name, COUNT(*) as total, AVG(ps.trust_score) as avg_trust
        FROM product_sources ps
        JOIN catalog_entries ce ON ce.product_id = ps.product_id
-       WHERE ce.store_id = ?
+       WHERE ce.store_id = ? AND ps.source_name IS NOT NULL AND ps.source_name != ''
        GROUP BY ps.source_name ORDER BY avg_trust DESC`,
       [req.user.store_id]
     );
@@ -76,6 +76,53 @@ router.post('/searches/cleanup', auth, requireRole('Admin'), async (req, res) =>
       [req.user.store_id]
     );
     res.json({ success: true, deleted: result.affectedRows });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Catalog completeness overview (for dashboard donut)
+router.get('/completeness', auth, async (req, res) => {
+  try {
+    const [entries] = await db.query(
+      `SELECT ce.custom_name, ce.custom_description, ce.custom_price, ce.selected_images,
+              p.name, p.description, p.ai_description_professional, p.ai_category_suggestion, p.seo_tags,
+              (SELECT COUNT(*) FROM product_images pi WHERE pi.product_id = p.id) AS image_count
+       FROM catalog_entries ce
+       JOIN products p ON ce.product_id = p.id
+       WHERE ce.store_id = ?`,
+      [req.user.store_id]
+    );
+
+    let complete = 0, good = 0, needsWork = 0, poor = 0;
+    let totalScore = 0;
+
+    for (const e of entries) {
+      let score = 0;
+      if (e.custom_name || e.name) score += 15;
+      if (e.custom_description || e.description || e.ai_description_professional) score += 20;
+      if (e.custom_price) score += 15;
+      const imgs = e.selected_images ? (typeof e.selected_images === 'string' ? JSON.parse(e.selected_images || '[]') : e.selected_images) : [];
+      if (e.image_count > 0 || imgs.length > 0) score += 20;
+      if (e.ai_category_suggestion) score += 15;
+      const tags = e.seo_tags ? (typeof e.seo_tags === 'string' ? JSON.parse(e.seo_tags || '[]') : e.seo_tags) : [];
+      if (tags.length > 0) score += 15;
+
+      totalScore += score;
+      if (score === 100) complete++;
+      else if (score >= 70) good++;
+      else if (score >= 40) needsWork++;
+      else poor++;
+    }
+
+    res.json({
+      total: entries.length,
+      average: entries.length > 0 ? Math.round(totalScore / entries.length) : 0,
+      complete,
+      good,
+      needsWork,
+      poor,
+    });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }

@@ -230,6 +230,11 @@ export const getSourcePerformance = async () => {
   return handleResponse(res);
 };
 
+export const getCompleteness = async () => {
+  const res = await apiFetch(`${API_URL}/analytics/completeness`, { headers: headers() });
+  return handleResponse(res);
+};
+
 export const getSearchHistory = async () => {
   const res = await apiFetch(`${API_URL}/analytics/searches`, { headers: headers() });
   return handleResponse(res);
@@ -337,6 +342,17 @@ export const identifyProduct = async (imageBase64) => {
   const data = await res.json();
   if (!res.ok) throw new Error(data.error);
   return data;
+};
+
+export const getQualitySuggestions = async (productId) => {
+  const res = await apiFetch(`${API_URL}/ai/quality-suggestions`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ productId }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data.suggestions;
 };
 
 export const searchProductImages = async (query) => {

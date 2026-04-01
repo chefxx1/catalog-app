@@ -498,18 +498,51 @@ router.post('/refresh/:barcode', auth, requireRole('Admin', 'Editor'), async (re
   }
 });
 
+// Compute completeness score for a catalog entry + product row
+function calcCompleteness(entry) {
+  let score = 0;
+  const issues = [];
+  // Name (15%)
+  if (entry.custom_name || entry.name) score += 15;
+  else issues.push('Missing product name');
+  // Description (20%)
+  if (entry.custom_description || entry.description || entry.ai_description_professional) score += 20;
+  else issues.push('Missing description');
+  // Price (15%)
+  if (entry.custom_price) score += 15;
+  else issues.push('No price set');
+  // Images (20%)
+  const imgs = entry.selected_images ? (typeof entry.selected_images === 'string' ? JSON.parse(entry.selected_images || '[]') : entry.selected_images) : [];
+  if (entry.image_count > 0 || imgs.length > 0) score += 20;
+  else issues.push('No product images');
+  // Category (15%)
+  if (entry.ai_category_suggestion) score += 15;
+  else issues.push('No category assigned');
+  // SEO tags (15%)
+  const tags = entry.seo_tags ? (typeof entry.seo_tags === 'string' ? JSON.parse(entry.seo_tags || '[]') : entry.seo_tags) : [];
+  if (tags.length > 0) score += 15;
+  else issues.push('No SEO tags');
+  return { score, issues };
+}
+
 // Get user's catalog entries
 router.get('/catalog', auth, async (req, res) => {
   try {
     const [entries] = await db.query(
-      `SELECT ce.*, p.barcode, p.name, p.brand, p.description
+      `SELECT ce.*, p.barcode, p.name, p.brand, p.description,
+              p.ai_description_professional, p.ai_category_suggestion, p.seo_tags,
+              (SELECT COUNT(*) FROM product_images pi WHERE pi.product_id = p.id) AS image_count
        FROM catalog_entries ce
        JOIN products p ON ce.product_id = p.id
        WHERE ce.store_id = ?
        ORDER BY ce.updated_at DESC`,
       [req.user.store_id]
     );
-    res.json({ entries });
+    const enriched = entries.map(e => {
+      const { score, issues } = calcCompleteness(e);
+      return { ...e, completeness: score, completeness_issues: issues };
+    });
+    res.json({ entries: enriched });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
