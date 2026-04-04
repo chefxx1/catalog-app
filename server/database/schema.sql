@@ -211,6 +211,54 @@ CREATE TABLE IF NOT EXISTS invitations (
   FOREIGN KEY (inviter_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Tags for catalog organization
+CREATE TABLE IF NOT EXISTS tags (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  store_id INT NOT NULL,
+  name VARCHAR(50) NOT NULL,
+  color VARCHAR(7) DEFAULT '#3B82F6',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE,
+  UNIQUE KEY unique_store_tag (store_id, name)
+);
+
+-- Junction: catalog entries <-> tags
+CREATE TABLE IF NOT EXISTS catalog_entry_tags (
+  catalog_entry_id INT NOT NULL,
+  tag_id INT NOT NULL,
+  PRIMARY KEY (catalog_entry_id, tag_id),
+  FOREIGN KEY (catalog_entry_id) REFERENCES catalog_entries(id) ON DELETE CASCADE,
+  FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+);
+
+-- Saved filter views
+CREATE TABLE IF NOT EXISTS saved_views (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  store_id INT NOT NULL,
+  user_id INT NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  filters JSON NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Activity log (tracks all actions for audit trail)
+CREATE TABLE IF NOT EXISTS activity_log (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  store_id INT NOT NULL,
+  user_id INT NOT NULL,
+  action VARCHAR(50) NOT NULL,
+  entity_type VARCHAR(30) NULL,
+  entity_id INT NULL,
+  entity_name VARCHAR(255) NULL,
+  details JSON NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_activity_store (store_id, created_at DESC)
+);
+
 -- ============================================================
 -- PERFORMANCE INDEXES
 -- ============================================================

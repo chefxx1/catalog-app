@@ -9,6 +9,7 @@ const analyticsRoutes = require('./routes/analytics');
 const brandVoiceRoutes = require('./routes/brandVoices');
 const aiRoutes = require('./routes/ai');
 const exportRoutes = require('./routes/export');
+const catalogRoutes = require('./routes/catalog');
 const db = require('./db');
 
 const rateLimit = require('./middleware/rateLimit');
@@ -37,6 +38,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/brand-voices', brandVoiceRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/export', exportRoutes);
+app.use('/api/catalog', catalogRoutes);
 
 // Health check
 app.get('/api/health', async (req, res) => {

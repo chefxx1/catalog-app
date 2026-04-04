@@ -3,6 +3,7 @@ const db = require('../db');
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
 const { sanitize } = require('../middleware/validate');
+const logActivity = require('../helpers/activity');
 
 const router = express.Router();
 
@@ -189,7 +190,7 @@ router.get('/search/:barcode', auth, async (req, res) => {
       });
     }
 
-    // Cache miss — try multiple barcode APIs
+    // Cache miss — try multiple barcode APIs in parallel
     const [offData, upcData] = await Promise.all([
       fetchFromOpenFoodFacts(barcode),
       fetchFromUPCitemdb(barcode),
@@ -467,6 +468,7 @@ router.post('/save-for-later', auth, requireRole('Admin', 'Editor'), async (req,
       );
     }
 
+    logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'saved', entity_type: 'product', entity_id: productId, entity_name: p.name });
     res.status(201).json({ success: true, productId });
   } catch (err) {
     console.error('Save for later error:', err.message);
@@ -584,6 +586,11 @@ router.patch('/catalog/:id', auth, requireRole('Admin', 'Editor'), async (req, r
     fields.push('updated_at = NOW()');
     values.push(req.params.id, req.user.store_id);
     await db.query(`UPDATE catalog_entries SET ${fields.join(', ')} WHERE id = ? AND store_id = ?`, values);
+    const changes = {};
+    if (status !== undefined) changes.status = status;
+    if (rawName !== undefined) changes.name = sanitize(rawName).slice(0, 200);
+    if (custom_price !== undefined) changes.price = custom_price;
+    logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'updated', entity_type: 'catalog_entry', entity_id: parseInt(req.params.id), entity_name: rawName || null, details: changes });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -594,9 +601,96 @@ router.patch('/catalog/:id', auth, requireRole('Admin', 'Editor'), async (req, r
 router.delete('/catalog/:id', auth, requireRole('Admin'), async (req, res) => {
   try {
     await db.query('DELETE FROM catalog_entries WHERE id = ? AND store_id = ?', [req.params.id, req.user.store_id]);
+    logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'deleted', entity_type: 'catalog_entry', entity_id: parseInt(req.params.id) });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── BULK IMPORT ──
+router.post('/bulk-import', auth, requireRole('Admin', 'Editor'), async (req, res) => {
+  try {
+    const { rows, mapping } = req.body;
+    if (!rows || !Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: 'No data to import' });
+    }
+    if (rows.length > 500) {
+      return res.status(400).json({ error: 'Maximum 500 rows per import' });
+    }
+
+    const results = { imported: 0, skipped: 0, failed: 0, errors: [] };
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        const name = (row[mapping.name] || '').trim();
+        const barcode = (row[mapping.barcode] || '').trim();
+        const description = mapping.description ? (row[mapping.description] || '').trim() : null;
+        const price = mapping.price ? parseFloat(String(row[mapping.price]).replace(/[^0-9.]/g, '')) || null : null;
+        const brand = mapping.brand ? (row[mapping.brand] || '').trim() : null;
+        const category = mapping.category ? (row[mapping.category] || '').trim() : null;
+
+        if (!name && !barcode) {
+          results.skipped++;
+          results.errors.push({ row: i + 1, error: 'Missing both name and barcode' });
+          continue;
+        }
+
+        // Find or create product
+        let productId;
+        if (barcode) {
+          const [existing] = await db.query('SELECT id FROM products WHERE barcode = ?', [barcode]);
+          if (existing.length > 0) {
+            productId = existing[0].id;
+          } else {
+            const [ins] = await db.query(
+              `INSERT INTO products (barcode, name, brand, description, ai_category_suggestion) VALUES (?, ?, ?, ?, ?)`,
+              [barcode, sanitize(name).slice(0, 255), brand ? sanitize(brand).slice(0, 255) : null, description ? sanitize(description).slice(0, 5000) : null, category ? sanitize(category).slice(0, 255) : null]
+            );
+            productId = ins.insertId;
+          }
+        } else {
+          // No barcode — generate a placeholder
+          const placeholder = `IMPORT-${Date.now()}-${i}`;
+          const [ins] = await db.query(
+            `INSERT INTO products (barcode, name, brand, description, ai_category_suggestion) VALUES (?, ?, ?, ?, ?)`,
+            [placeholder, sanitize(name).slice(0, 255), brand ? sanitize(brand).slice(0, 255) : null, description ? sanitize(description).slice(0, 5000) : null, category ? sanitize(category).slice(0, 255) : null]
+          );
+          productId = ins.insertId;
+        }
+
+        // Check if catalog entry already exists for this store
+        const [existingEntry] = await db.query(
+          'SELECT id FROM catalog_entries WHERE store_id = ? AND product_id = ?',
+          [req.user.store_id, productId]
+        );
+
+        if (existingEntry.length > 0) {
+          // Update existing
+          await db.query(
+            `UPDATE catalog_entries SET custom_name = COALESCE(?, custom_name), custom_description = COALESCE(?, custom_description), custom_price = COALESCE(?, custom_price), updated_at = NOW() WHERE id = ?`,
+            [name || null, description || null, price, existingEntry[0].id]
+          );
+        } else {
+          await db.query(
+            `INSERT INTO catalog_entries (store_id, user_id, product_id, status, custom_name, custom_description, custom_price) VALUES (?, ?, ?, 'Draft', ?, ?, ?)`,
+            [req.user.store_id, req.user.id, productId, sanitize(name).slice(0, 255) || null, description ? sanitize(description).slice(0, 5000) : null, price]
+          );
+        }
+
+        results.imported++;
+      } catch (err) {
+        results.failed++;
+        results.errors.push({ row: i + 1, error: err.message });
+      }
+    }
+
+    if (results.imported > 0) logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'imported', entity_type: 'bulk_import', details: { imported: results.imported, skipped: results.skipped, failed: results.failed } });
+    res.json(results);
+  } catch (err) {
+    console.error('Bulk import error:', err.message);
+    res.status(500).json({ error: 'Bulk import failed: ' + err.message });
   }
 });
 

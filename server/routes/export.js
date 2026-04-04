@@ -2,6 +2,7 @@ const express = require('express');
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
 const db = require('../db');
+const logActivity = require('../helpers/activity');
 
 const router = express.Router();
 
@@ -201,6 +202,7 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
       console.error('Failed to save export history:', saveErr.message);
     }
 
+    logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'exported', entity_type: 'export', entity_name: product.name, details: { format, platform, filename } });
     res.json({ content, contentType, filename });
   } catch (err) {
     console.error('Export error:', err.message);
