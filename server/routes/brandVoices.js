@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const auth = require('../middleware/auth');
-
+const logActivity = require('../helpers/activity');
 const requireRole = require('../middleware/requireRole');
 const { sanitize } = require('../middleware/validate');
 
@@ -41,6 +41,7 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
     );
 
     const [created] = await db.query('SELECT * FROM brand_voices WHERE id = ?', [result.insertId]);
+    logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'created', entity_type: 'brand_voice', entity_id: result.insertId, entity_name: name });
     res.status(201).json({ voice: created[0] });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -85,6 +86,7 @@ router.delete('/:id', auth, requireRole('Admin', 'Editor'), async (req, res) => 
     if (existing.length === 0) return res.status(404).json({ error: 'Voice not found' });
 
     await db.query('DELETE FROM brand_voices WHERE id = ? AND store_id = ?', [req.params.id, req.user.store_id]);
+    logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'deleted', entity_type: 'brand_voice', entity_id: parseInt(req.params.id), entity_name: existing[0].name });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });

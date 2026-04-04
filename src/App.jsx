@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, setOnUnauthorized, getCatalog, getStats, getSourcePerformance, getSearchHistory, searchProduct, getProductById, saveForLater, resolveConflict, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice, generateAIContent, identifyProduct, searchProductImages, exportProduct, getExportHistory, downloadExport, googleSignIn, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, deleteAllData, deleteAccount, clearSearchHistory, forgotPassword, resetPassword, logout, getTeamUsers, updateUserRole, removeTeamUser, sendInvite, getInviteInfo, acceptInvite, getPendingInvites, revokeInvite, getCompleteness, getQualitySuggestions } from "./api";
+import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, setOnUnauthorized, getCatalog, getStats, getSourcePerformance, getSearchHistory, searchProduct, getProductById, saveForLater, resolveConflict, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice, generateAIContent, identifyProduct, searchProductImages, exportProduct, getExportHistory, downloadExport, googleSignIn, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, deleteAllData, deleteAccount, clearSearchHistory, forgotPassword, resetPassword, logout, getTeamUsers, updateUserRole, removeTeamUser, sendInvite, getInviteInfo, acceptInvite, getPendingInvites, revokeInvite, getCompleteness, getQualitySuggestions, bulkImport, getTags, createTag, deleteTag, setEntryTags, getSavedViews, createSavedView, deleteSavedView, getActivity } from "./api";
 import { Html5Qrcode } from "html5-qrcode";
 
 // Safe JSON parse — returns fallback on malformed data
@@ -258,8 +258,8 @@ const StepIndicator = ({ currentStep }) => {
 const SearchStep = ({ onSearch }) => {
   const [upc,setUpc]=useState(""); const [loading,setLoading]=useState(false); const [loadingStep,setLoadingStep]=useState(0); const [dragOver,setDragOver]=useState(false); const fileRef=useRef(null);
   const [error,setError]=useState(null); const [notFound,setNotFound]=useState(false);
-  const msgs=["Querying Amazon Product API...","Checking Open Food Facts...","Scanning UPC Database...","Searching Alibaba...","Searching Google..."];
-  const sourceNames=[{name:"Amazon",icon:"package",trustScore:92,color:"#FF9900"},{name:"Open Food Facts",icon:"database",trustScore:75,color:"#10B981"},{name:"UPC Database",icon:"barcode",trustScore:88,color:"#6366F1"},{name:"Alibaba",icon:"package",trustScore:71,color:"#FF6A00"},{name:"Google Search",icon:"search",trustScore:65,color:"#4285F4"}];
+  const msgs=["Checking Open Food Facts...","Scanning UPC Database..."];
+  const sourceNames=[{name:"Open Food Facts",icon:"database",trustScore:75,color:"#10B981"},{name:"UPC Database",icon:"barcode",trustScore:80,color:"#6366F1"}];
   const handleSearch=(code)=>{const barcode=code||upc.trim();if(!barcode||loading)return;setError(null);setNotFound(false);setLoading(true);setLoadingStep(0);let s=0;const apiPromise=searchProduct(barcode);const iv=setInterval(()=>{s++;if(s>=msgs.length){clearInterval(iv);}else setLoadingStep(s);},800);apiPromise.then(data=>{clearInterval(iv);setLoadingStep(msgs.length-1);setTimeout(()=>{setLoading(false);if(!data.product){setNotFound(true);}else{onSearch(data);}},600);}).catch(err=>{clearInterval(iv);setLoading(false);setError(err.message||"Search failed");});};
   const [identifying, setIdentifying] = useState(false);
   const [identified, setIdentified] = useState(null);
@@ -790,6 +790,290 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
 };
 
 // ============================================================
+// BULK IMPORT
+// ============================================================
+const BulkImportView = ({ onDone, user }) => {
+  const canWrite = user?.role === "Admin" || user?.role === "Editor";
+  const [file, setFile] = useState(null);
+  const [parsedRows, setParsedRows] = useState([]);
+  const [headers, setHeaders] = useState([]);
+  const [mapping, setMapping] = useState({ name: "", barcode: "", description: "", price: "", brand: "", category: "" });
+  const [step, setStep] = useState(0); // 0=upload, 1=map, 2=preview, 3=importing, 4=done
+  const [results, setResults] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const fileRef = useRef(null);
+
+  const catalogFields = [
+    { key: "name", label: "Product Name", required: true },
+    { key: "barcode", label: "Barcode (UPC/EAN)", required: false },
+    { key: "description", label: "Description", required: false },
+    { key: "price", label: "Price", required: false },
+    { key: "brand", label: "Brand", required: false },
+    { key: "category", label: "Category", required: false },
+  ];
+
+  const parseCSV = (text) => {
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 2) return { headers: [], rows: [] };
+    // Detect delimiter
+    const firstLine = lines[0];
+    const delimiter = firstLine.includes("\t") ? "\t" : ",";
+    const parseLine = (line) => {
+      const result = [];
+      let current = "", inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') { inQuotes = !inQuotes; }
+        else if (ch === delimiter && !inQuotes) { result.push(current.trim()); current = ""; }
+        else { current += ch; }
+      }
+      result.push(current.trim());
+      return result;
+    };
+    const hdrs = parseLine(lines[0]);
+    const rows = lines.slice(1).map(parseLine).filter(r => r.some(c => c));
+    return { headers: hdrs, rows };
+  };
+
+  const handleFile = (f) => {
+    if (!f) return;
+    const ext = f.name.split('.').pop().toLowerCase();
+    if (!['csv', 'tsv', 'txt'].includes(ext)) {
+      toast.error("Please upload a CSV file");
+      return;
+    }
+    setFile(f);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const { headers: hdrs, rows } = parseCSV(e.target.result);
+      if (hdrs.length === 0 || rows.length === 0) {
+        toast.error("Could not parse file — check the format");
+        return;
+      }
+      setHeaders(hdrs);
+      setParsedRows(rows);
+      // Auto-map by matching header names
+      const autoMap = {};
+      const nameMatches = ["name", "product", "title", "product name", "product_name", "item"];
+      const barcodeMatches = ["barcode", "upc", "ean", "gtin", "isbn", "sku", "code"];
+      const descMatches = ["description", "desc", "details", "about"];
+      const priceMatches = ["price", "cost", "amount", "msrp", "retail"];
+      const brandMatches = ["brand", "manufacturer", "vendor", "maker"];
+      const catMatches = ["category", "type", "group", "department"];
+      hdrs.forEach((h, idx) => {
+        const hl = h.toLowerCase().trim();
+        if (!autoMap.name && nameMatches.some(m => hl.includes(m))) autoMap.name = String(idx);
+        if (!autoMap.barcode && barcodeMatches.some(m => hl.includes(m))) autoMap.barcode = String(idx);
+        if (!autoMap.description && descMatches.some(m => hl.includes(m))) autoMap.description = String(idx);
+        if (!autoMap.price && priceMatches.some(m => hl.includes(m))) autoMap.price = String(idx);
+        if (!autoMap.brand && brandMatches.some(m => hl.includes(m))) autoMap.brand = String(idx);
+        if (!autoMap.category && catMatches.some(m => hl.includes(m))) autoMap.category = String(idx);
+      });
+      setMapping(prev => ({ ...prev, ...autoMap }));
+      setStep(1);
+    };
+    reader.readAsText(f);
+  };
+
+  const validRows = parsedRows.filter(r => {
+    const name = mapping.name ? (r[parseInt(mapping.name)] || "").trim() : "";
+    const barcode = mapping.barcode ? (r[parseInt(mapping.barcode)] || "").trim() : "";
+    return name || barcode;
+  });
+
+  const handleImport = async () => {
+    setStep(3);
+    try {
+      const mappingIdx = {};
+      Object.entries(mapping).forEach(([field, colIdx]) => {
+        if (colIdx !== "") mappingIdx[field] = parseInt(colIdx);
+      });
+      const res = await bulkImport(parsedRows, mappingIdx);
+      setResults(res);
+      setStep(4);
+      if (res.imported > 0) toast.success(`${res.imported} product${res.imported > 1 ? "s" : ""} imported!`);
+    } catch (err) {
+      toast.error("Import failed: " + err.message);
+      setStep(2);
+    }
+  };
+
+  // Step 0: Upload
+  if (step === 0) return (
+    <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",alignItems:"center",gap:24,padding:"48px 20px"}}>
+      <div style={{textAlign:"center",maxWidth:480}}>
+        <div className="badge badge-primary" style={{marginBottom:16}}><Icon name="upload" size={11}/> Bulk Import</div>
+        <h2 style={{fontSize:28,fontWeight:800,marginBottom:10,lineHeight:1.15,letterSpacing:"-0.02em"}}>Import products from a file</h2>
+        <p style={{color:"var(--text-muted)",fontSize:14,lineHeight:1.6}}>Upload a CSV file with your product data. We'll map the columns and import everything into your catalog.</p>
+      </div>
+      <div className={`drop-zone ${dragOver?"dragging":""}`} style={{width:"100%",maxWidth:480,padding:40}}
+        onClick={()=>fileRef.current?.click()}
+        onDragOver={e=>{e.preventDefault();setDragOver(true);}} onDragLeave={()=>setDragOver(false)}
+        onDrop={e=>{e.preventDefault();setDragOver(false);handleFile(e.dataTransfer.files[0]);}}>
+        <input ref={fileRef} type="file" accept=".csv,.tsv,.txt" style={{display:"none"}} onChange={e=>{handleFile(e.target.files[0]);e.target.value="";}}/>
+        <div style={{marginBottom:12}}><Icon name="upload" size={32} color={dragOver?"#3B82F6":"var(--text-dim)"}/></div>
+        <p style={{fontWeight:600,color:dragOver?"#3B82F6":"var(--text-muted)",fontSize:15}}>Drop your CSV file here</p>
+        <p style={{fontSize:12,color:"var(--text-dim)",marginTop:6}}>or click to browse — CSV, TSV supported (max 500 rows)</p>
+      </div>
+    </div>
+  );
+
+  // Step 1: Column Mapping
+  if (step === 1) return (
+    <div className="animate-fadeIn" style={{maxWidth:600,margin:"0 auto",padding:"24px 20px",display:"flex",flexDirection:"column",gap:20}}>
+      <div>
+        <h2 style={{fontSize:22,fontWeight:700,marginBottom:4}}>Map Your Columns</h2>
+        <p style={{color:"var(--text-muted)",fontSize:13}}>
+          {file.name} — {parsedRows.length} rows, {headers.length} columns detected
+        </p>
+      </div>
+      <div className="card" style={{padding:20,display:"flex",flexDirection:"column",gap:14}}>
+        {catalogFields.map(f => (
+          <div key={f.key} style={{display:"flex",alignItems:"center",gap:12}}>
+            <div style={{width:140,fontSize:13,fontWeight:600}}>
+              {f.label} {f.required && <span style={{color:"#EF4444"}}>*</span>}
+            </div>
+            <Icon name="arrowLeft" size={12} color="var(--text-dim)" style={{transform:"rotate(180deg)"}}/>
+            <select className="input" style={{flex:1,fontSize:13,padding:"8px 12px"}}
+              value={mapping[f.key]} onChange={e => setMapping(prev => ({...prev, [f.key]: e.target.value}))}>
+              <option value="">— Skip —</option>
+              {headers.map((h, idx) => <option key={idx} value={String(idx)}>{h}</option>)}
+            </select>
+          </div>
+        ))}
+      </div>
+      {/* Preview first 3 rows */}
+      <div style={{padding:14,background:"var(--hover-bg)",borderRadius:10,border:"1px solid var(--border)"}}>
+        <div style={{fontSize:11,fontWeight:600,color:"var(--text-dim)",letterSpacing:"0.06em",marginBottom:8}}>PREVIEW (first 3 rows)</div>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <thead><tr>{catalogFields.filter(f => mapping[f.key] !== "").map(f => (
+              <th key={f.key} style={{padding:"6px 10px",textAlign:"left",color:"var(--text-dim)",fontWeight:600,borderBottom:"1px solid var(--border)",whiteSpace:"nowrap"}}>{f.label}</th>
+            ))}</tr></thead>
+            <tbody>{parsedRows.slice(0,3).map((row, i) => (
+              <tr key={i}>{catalogFields.filter(f => mapping[f.key] !== "").map(f => (
+                <td key={f.key} style={{padding:"6px 10px",color:"var(--text-sec)",borderBottom:"1px solid var(--border-light)",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row[parseInt(mapping[f.key])] || <span style={{color:"var(--text-dim)"}}>—</span>}</td>
+              ))}</tr>
+            ))}</tbody>
+          </table>
+        </div>
+      </div>
+      <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+        <button className="btn btn-ghost" onClick={()=>{setStep(0);setFile(null);setParsedRows([]);setHeaders([]);}}>Back</button>
+        <button className="btn btn-primary" onClick={()=>setStep(2)} disabled={!mapping.name && !mapping.barcode}>
+          <Icon name="check" size={14}/> Continue to Review
+        </button>
+      </div>
+    </div>
+  );
+
+  // Step 2: Validation Preview
+  if (step === 2) return (
+    <div className="animate-fadeIn" style={{maxWidth:700,margin:"0 auto",padding:"24px 20px",display:"flex",flexDirection:"column",gap:20}}>
+      <div>
+        <h2 style={{fontSize:22,fontWeight:700,marginBottom:4}}>Review Import</h2>
+        <p style={{color:"var(--text-muted)",fontSize:13}}>
+          {validRows.length} of {parsedRows.length} rows ready to import
+          {parsedRows.length - validRows.length > 0 && <span style={{color:"#F59E0B"}}> · {parsedRows.length - validRows.length} will be skipped (missing name & barcode)</span>}
+        </p>
+      </div>
+      <div style={{display:"flex",gap:12}}>
+        {[
+          {l:"Total Rows",v:parsedRows.length,color:"var(--text)"},
+          {l:"Ready",v:validRows.length,color:"#10B981"},
+          {l:"Will Skip",v:parsedRows.length-validRows.length,color:"#F59E0B"},
+        ].map((s,i) => (
+          <div key={i} style={{flex:1,padding:14,borderRadius:10,border:"1px solid var(--border)",textAlign:"center"}}>
+            <div className="mono" style={{fontSize:20,fontWeight:800,color:s.color}}>{s.v}</div>
+            <div style={{fontSize:11,color:"var(--text-dim)",marginTop:2}}>{s.l}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{border:"1px solid var(--border)",borderRadius:10,overflow:"hidden",maxHeight:300,overflowY:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead><tr style={{position:"sticky",top:0,background:"var(--surface)",zIndex:2}}>
+            <th style={{padding:"8px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.06em"}}>#</th>
+            {catalogFields.filter(f => mapping[f.key] !== "").map(f => (
+              <th key={f.key} style={{padding:"8px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.06em"}}>{f.label.toUpperCase()}</th>
+            ))}
+            <th style={{padding:"8px 12px",textAlign:"left",fontSize:11,fontWeight:700,color:"var(--text-dim)"}}>STATUS</th>
+          </tr></thead>
+          <tbody>{parsedRows.slice(0,50).map((row, i) => {
+            const name = mapping.name ? (row[parseInt(mapping.name)] || "").trim() : "";
+            const barcode = mapping.barcode ? (row[parseInt(mapping.barcode)] || "").trim() : "";
+            const isValid = name || barcode;
+            return (
+              <tr key={i} style={{borderBottom:"1px solid var(--border-light)",background:isValid?"transparent":"rgba(245,158,11,0.04)"}}>
+                <td style={{padding:"6px 12px",color:"var(--text-dim)"}}>{i+1}</td>
+                {catalogFields.filter(f => mapping[f.key] !== "").map(f => (
+                  <td key={f.key} style={{padding:"6px 12px",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:isValid?"var(--text-sec)":"var(--text-dim)"}}>{row[parseInt(mapping[f.key])] || "—"}</td>
+                ))}
+                <td style={{padding:"6px 12px"}}>
+                  {isValid ? <span className="badge badge-success" style={{fontSize:10,padding:"2px 7px"}}>Ready</span> : <span className="badge badge-warning" style={{fontSize:10,padding:"2px 7px"}}>Skip</span>}
+                </td>
+              </tr>
+            );
+          })}</tbody>
+        </table>
+        {parsedRows.length > 50 && <div style={{padding:10,textAlign:"center",fontSize:12,color:"var(--text-dim)"}}>Showing first 50 of {parsedRows.length} rows</div>}
+      </div>
+      <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+        <button className="btn btn-ghost" onClick={()=>setStep(1)}>Back</button>
+        <button className="btn btn-success" onClick={handleImport} disabled={validRows.length === 0 || !canWrite} title={!canWrite?"Viewers cannot import":""}><Icon name="download" size={14}/> Import {validRows.length} Product{validRows.length !== 1 ? "s" : ""}</button>
+      </div>
+    </div>
+  );
+
+  // Step 3: Importing
+  if (step === 3) return (
+    <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:24,padding:"80px 20px"}}>
+      <div style={{width:64,height:64,borderRadius:"50%",border:"3px solid var(--border)",borderTopColor:"var(--primary)",animation:"spin 0.8s linear infinite"}}/>
+      <div style={{textAlign:"center"}}>
+        <h2 style={{fontSize:20,fontWeight:700,marginBottom:6}}>Importing Products...</h2>
+        <p style={{color:"var(--text-muted)",fontSize:13}}>Processing {parsedRows.length} rows. This may take a moment.</p>
+      </div>
+    </div>
+  );
+
+  // Step 4: Done
+  return (
+    <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",alignItems:"center",gap:24,padding:"60px 20px",textAlign:"center"}}>
+      <div className="animate-scaleIn" style={{width:72,height:72,borderRadius:"50%",background:"rgba(16,185,129,0.12)",border:"2px solid #10B981",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <Icon name="check" size={32} color="#10B981"/>
+      </div>
+      <div>
+        <h2 style={{fontSize:24,fontWeight:800,marginBottom:6}}>Import Complete!</h2>
+        <p style={{color:"var(--text-muted)",fontSize:14}}>Your products have been added to the catalog.</p>
+      </div>
+      <div style={{display:"flex",gap:14}}>
+        {[
+          {l:"Imported",v:results?.imported||0,color:"#10B981"},
+          {l:"Skipped",v:results?.skipped||0,color:"#F59E0B"},
+          {l:"Failed",v:results?.failed||0,color:"#EF4444"},
+        ].map((s,i)=>(
+          <div key={i} style={{padding:"14px 24px",borderRadius:10,border:"1px solid var(--border)",textAlign:"center"}}>
+            <div className="mono" style={{fontSize:22,fontWeight:800,color:s.color}}>{s.v}</div>
+            <div style={{fontSize:11,color:"var(--text-dim)",marginTop:2}}>{s.l}</div>
+          </div>
+        ))}
+      </div>
+      {results?.errors?.length > 0 && results.errors.length <= 10 && (
+        <div style={{maxWidth:400,width:"100%",padding:14,background:"var(--hover-bg)",borderRadius:10,border:"1px solid var(--border)",textAlign:"left"}}>
+          <div style={{fontSize:11,fontWeight:600,color:"var(--text-dim)",letterSpacing:"0.06em",marginBottom:6}}>ISSUES</div>
+          {results.errors.slice(0,10).map((e,i)=>(
+            <div key={i} style={{fontSize:12,color:"var(--text-muted)",padding:"3px 0"}}>Row {e.row}: {e.error}</div>
+          ))}
+        </div>
+      )}
+      <div style={{display:"flex",gap:12}}>
+        <button className="btn btn-primary" onClick={onDone}><Icon name="grid" size={14}/> Go to Dashboard</button>
+        <button className="btn btn-ghost" onClick={()=>{setStep(0);setFile(null);setParsedRows([]);setHeaders([]);setResults(null);}}><Icon name="upload" size={14}/> Import More</button>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================
 // STEP 3: EXPORT
 // ============================================================
 const ExportStep = ({ onComplete, productData, user }) => {
@@ -953,18 +1237,41 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
   const [batchPlat, setBatchPlat] = useState("Shopify");
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
 
+  // ── Catalog Organization ──
+  const [tags, setTags] = useState([]);
+  const [entryTags, setEntryTags] = useState({}); // { entryId: [tagId, ...] }
+  const [savedViews, setSavedViews] = useState([]);
+  const [activeView, setActiveView] = useState(null);
+  const [filters, setFilters] = useState({ status: "", tag: "", minPrice: "", maxPrice: "", completeness: "" });
+  const [showFilters, setShowFilters] = useState(false);
+  const [showTagManager, setShowTagManager] = useState(false);
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagColor, setNewTagColor] = useState("#3B82F6");
+  const [tagEntryId, setTagEntryId] = useState(null); // which entry is having tags edited
+  const [changelogEntry, setChangelogEntry] = useState(null); // entry for changelog modal
+  const [changelog, setChangelog] = useState([]);
+  const [savingView, setSavingView] = useState(false);
+  const [newViewName, setNewViewName] = useState("");
+  const [visibleCols, setVisibleCols] = useState({ product: true, barcode: true, completeness: true, status: true, tags: true, date: true, actions: true });
+  const [showColPicker, setShowColPicker] = useState(false);
+  const canEdit = user.role === "Admin" || user.role === "Editor";
+
   const reload = () => {
     Promise.all([
       getStats().catch(() => { toast.error("Failed to load stats"); return {}; }),
       getCatalog().catch(() => { toast.error("Failed to load catalog"); return []; }),
       apiGetBrandVoices().catch(() => []),
-    ]).then(([s, c, v]) => {
+      getTags().catch(() => ({ tags: [] })),
+      getSavedViews().catch(() => ({ views: [] })),
+    ]).then(([s, c, v, t, sv]) => {
       setStats(s);
       setCatalog(c);
       setVoices(v.map(voice => {
         const meta = safeJsonParse(voice.metadata, {});
         return { id: voice.id, name: voice.name, tone: voice.tone || 'Professional', color: meta.color || '#3B82F6' };
       }));
+      setTags(t.tags || []);
+      setSavedViews(sv.views || []);
       setLoading(false);
     });
   };
@@ -973,9 +1280,75 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
 
   const sc={Published:"badge-success",Review:"badge-warning",Draft:"badge-neutral",Exported:"badge-primary"};
 
-  const filteredCatalog = catalog.filter(item =>
-    !searchFilter || (item.custom_name || item.name || "").toLowerCase().includes(searchFilter.toLowerCase()) || (item.barcode || "").includes(searchFilter)
-  );
+  const filteredCatalog = catalog.filter(item => {
+    // Text search
+    if (searchFilter && !(item.custom_name || item.name || "").toLowerCase().includes(searchFilter.toLowerCase()) && !(item.barcode || "").includes(searchFilter)) return false;
+    // Status filter
+    if (filters.status && (item.status || "Draft") !== filters.status) return false;
+    // Tag filter
+    if (filters.tag && !(entryTags[item.id] || []).includes(parseInt(filters.tag))) return false;
+    // Price filters
+    if (filters.minPrice && (parseFloat(item.custom_price) || 0) < parseFloat(filters.minPrice)) return false;
+    if (filters.maxPrice && (parseFloat(item.custom_price) || 0) > parseFloat(filters.maxPrice)) return false;
+    // Completeness filter
+    if (filters.completeness === "complete" && (item.completeness ?? 0) < 100) return false;
+    if (filters.completeness === "good" && ((item.completeness ?? 0) < 70 || (item.completeness ?? 0) >= 100)) return false;
+    if (filters.completeness === "needs-work" && ((item.completeness ?? 0) < 40 || (item.completeness ?? 0) >= 70)) return false;
+    if (filters.completeness === "poor" && (item.completeness ?? 0) >= 40) return false;
+    return true;
+  });
+
+  const activeFilterCount = Object.values(filters).filter(v => v).length;
+
+  const applyView = (view) => {
+    setFilters(view.filters);
+    setActiveView(view.id);
+    setShowFilters(true);
+  };
+
+  const handleCreateTag = async () => {
+    if (!newTagName.trim()) return;
+    try {
+      const tag = await createTag(newTagName.trim(), newTagColor);
+      setTags(prev => [...prev, tag]);
+      setNewTagName("");
+      toast.success("Tag created");
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleDeleteTag = async (id) => {
+    try {
+      await deleteTag(id);
+      setTags(prev => prev.filter(t => t.id !== id));
+      toast.success("Tag deleted");
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleSetEntryTags = async (entryId, tagIds) => {
+    try {
+      await setEntryTags(entryId, tagIds);
+      setEntryTags(prev => ({ ...prev, [entryId]: tagIds }));
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleSaveView = async () => {
+    if (!newViewName.trim()) return;
+    try {
+      const view = await createSavedView(newViewName.trim(), filters);
+      setSavedViews(prev => [view, ...prev]);
+      setNewViewName("");
+      setSavingView(false);
+      toast.success("View saved");
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleDeleteView = async (id) => {
+    try {
+      await deleteSavedView(id);
+      setSavedViews(prev => prev.filter(v => v.id !== id));
+      if (activeView === id) setActiveView(null);
+    } catch (err) { toast.error(err.message); }
+  };
 
   const startEdit = (item) => {
     setEditingId(item.id);
@@ -1133,13 +1506,76 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
 
       {/* Catalog table */}
       <div>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        {/* Saved Views */}
+        {savedViews.length > 0 && (
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+            <span style={{fontSize:11,color:"var(--text-dim)",fontWeight:500}}>Views:</span>
+            {savedViews.map(v => (
+              <button key={v.id} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"4px 10px",borderRadius:16,fontSize:11,fontWeight:600,border:`1px solid ${activeView===v.id?"var(--primary)":"var(--border-light)"}`,background:activeView===v.id?"rgba(37,99,235,0.08)":"transparent",color:activeView===v.id?"var(--primary-light)":"var(--text-muted)",cursor:"pointer",fontFamily:"'Sora',sans-serif",transition:"all 0.2s"}} onClick={()=>activeView===v.id?(setActiveView(null),setFilters({status:"",tag:"",minPrice:"",maxPrice:"",completeness:""})):applyView(v)}>
+                {v.name}
+                {activeView===v.id && <span onClick={e=>{e.stopPropagation();handleDeleteView(v.id);}} style={{marginLeft:2,cursor:"pointer"}}><Icon name="x" size={10}/></span>}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <h3 style={{fontSize:15,fontWeight:700}}>Catalog</h3>
-            <span style={{fontSize:12,color:"var(--text-dim)"}}>{catalog.length} entries</span>
+            <span style={{fontSize:12,color:"var(--text-dim)"}}>{filteredCatalog.length}{filteredCatalog.length !== catalog.length ? ` / ${catalog.length}` : ""} entries</span>
           </div>
-          <div style={{position:"relative"}}><div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)"}}><Icon name="search" size={13} color="var(--text-dim)"/></div><input className="input" placeholder="Search..." value={searchFilter} onChange={e=>setSearchFilter(e.target.value)} style={{paddingLeft:32,width:200,fontSize:13,padding:"7px 12px 7px 30px",background:"transparent"}}/></div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{position:"relative"}}><div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)"}}><Icon name="search" size={13} color="var(--text-dim)"/></div><input className="input" placeholder="Search..." value={searchFilter} onChange={e=>setSearchFilter(e.target.value)} style={{paddingLeft:32,width:180,fontSize:12,padding:"6px 10px 6px 30px",background:"transparent"}}/></div>
+            <button className="btn btn-ghost" style={{fontSize:11,padding:"6px 10px",position:"relative"}} onClick={()=>setShowFilters(f=>!f)}>
+              <Icon name="settings" size={12}/> Filter
+              {activeFilterCount > 0 && <span style={{position:"absolute",top:-4,right:-4,width:16,height:16,borderRadius:"50%",background:"var(--primary)",color:"white",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>{activeFilterCount}</span>}
+            </button>
+            {canEdit && <button className="btn btn-ghost" style={{fontSize:11,padding:"6px 10px"}} onClick={()=>setShowTagManager(true)}><Icon name="tag" size={12}/> Tags</button>}
+            <button className="btn btn-ghost" style={{fontSize:11,padding:"6px 10px"}} onClick={()=>setShowColPicker(p=>!p)}><Icon name="grid" size={12}/> Columns</button>
+          </div>
         </div>
+
+        {/* Filter Bar */}
+        {showFilters && (
+          <div className="animate-slideUp" style={{display:"flex",gap:8,alignItems:"center",marginBottom:12,padding:"10px 14px",background:"var(--hover-bg)",borderRadius:8,border:"1px solid var(--border-light)",flexWrap:"wrap"}}>
+            <select className="input" style={{width:"auto",fontSize:11,padding:"5px 28px 5px 8px",background:"transparent"}} value={filters.status} onChange={e=>setFilters(f=>({...f,status:e.target.value}))}>
+              <option value="">All Status</option>
+              {["Draft","Review","Published","Exported"].map(s=><option key={s} value={s}>{s}</option>)}
+            </select>
+            {tags.length > 0 && <select className="input" style={{width:"auto",fontSize:11,padding:"5px 28px 5px 8px",background:"transparent"}} value={filters.tag} onChange={e=>setFilters(f=>({...f,tag:e.target.value}))}>
+              <option value="">All Tags</option>
+              {tags.map(t=><option key={t.id} value={String(t.id)}>{t.name}</option>)}
+            </select>}
+            <select className="input" style={{width:"auto",fontSize:11,padding:"5px 28px 5px 8px",background:"transparent"}} value={filters.completeness} onChange={e=>setFilters(f=>({...f,completeness:e.target.value}))}>
+              <option value="">All Quality</option>
+              <option value="complete">Complete (100%)</option>
+              <option value="good">Good (70-99%)</option>
+              <option value="needs-work">Needs Work (40-69%)</option>
+              <option value="poor">Poor (&lt;40%)</option>
+            </select>
+            <input className="input" type="number" placeholder="Min $" value={filters.minPrice} onChange={e=>setFilters(f=>({...f,minPrice:e.target.value}))} style={{width:80,fontSize:11,padding:"5px 8px",background:"transparent"}}/>
+            <input className="input" type="number" placeholder="Max $" value={filters.maxPrice} onChange={e=>setFilters(f=>({...f,maxPrice:e.target.value}))} style={{width:80,fontSize:11,padding:"5px 8px",background:"transparent"}}/>
+            <div style={{marginLeft:"auto",display:"flex",gap:6}}>
+              {activeFilterCount > 0 && !savingView && <button style={{fontSize:11,fontWeight:600,color:"var(--primary-light)",background:"none",border:"none",cursor:"pointer",fontFamily:"'Sora',sans-serif"}} onClick={()=>setSavingView(true)}>Save View</button>}
+              {savingView && <>
+                <input className="input" placeholder="View name..." value={newViewName} onChange={e=>setNewViewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSaveView()} style={{width:120,fontSize:11,padding:"4px 8px",background:"transparent"}}/>
+                <button className="btn btn-primary" style={{fontSize:10,padding:"3px 8px"}} onClick={handleSaveView} disabled={!newViewName.trim()}>Save</button>
+                <button style={{fontSize:11,color:"var(--text-dim)",background:"none",border:"none",cursor:"pointer",fontFamily:"'Sora',sans-serif"}} onClick={()=>setSavingView(false)}>Cancel</button>
+              </>}
+              {activeFilterCount > 0 && <button style={{fontSize:11,fontWeight:600,color:"var(--text-dim)",background:"none",border:"none",cursor:"pointer",fontFamily:"'Sora',sans-serif"}} onClick={()=>{setFilters({status:"",tag:"",minPrice:"",maxPrice:"",completeness:""});setActiveView(null);}}>Clear</button>}
+            </div>
+          </div>
+        )}
+
+        {/* Column Picker */}
+        {showColPicker && (
+          <div className="animate-slideUp" style={{display:"flex",gap:8,marginBottom:12,padding:"8px 14px",background:"var(--hover-bg)",borderRadius:8,border:"1px solid var(--border-light)",flexWrap:"wrap",alignItems:"center"}}>
+            <span style={{fontSize:11,color:"var(--text-dim)",fontWeight:500}}>Show:</span>
+            {[{k:"product",l:"Product"},{k:"barcode",l:"Barcode"},{k:"completeness",l:"Quality"},{k:"status",l:"Status"},{k:"tags",l:"Tags"},{k:"date",l:"Date"},{k:"actions",l:"Actions"}].map(c=>(
+              <button key={c.k} onClick={()=>setVisibleCols(v=>({...v,[c.k]:!v[c.k]}))} style={{fontSize:11,padding:"3px 10px",borderRadius:12,border:`1px solid ${visibleCols[c.k]?"var(--primary)":"var(--border-light)"}`,background:visibleCols[c.k]?"rgba(37,99,235,0.08)":"transparent",color:visibleCols[c.k]?"var(--primary-light)":"var(--text-dim)",cursor:"pointer",fontFamily:"'Sora',sans-serif",fontWeight:600,transition:"all 0.15s"}}>{c.l}</button>
+            ))}
+          </div>
+        )}
         <div style={{border:"1px solid var(--border)",borderRadius:10,overflow:"hidden"}}>
         {loading ? (
           <div style={{padding:"12px 0"}}>{[0,1,2,3].map(i=><div key={i} style={{display:"flex",alignItems:"center",gap:16,padding:"14px 20px",borderBottom:"1px solid var(--border-light)",opacity:1-i*0.15}}><div className="skeleton" style={{height:14,width:"25%",borderRadius:4}}/><div className="skeleton" style={{height:12,width:"14%",borderRadius:4}}/><div className="skeleton" style={{height:6,width:60,borderRadius:3}}/><div className="skeleton" style={{height:22,width:60,borderRadius:20}}/><div className="skeleton" style={{height:12,width:"10%",borderRadius:4}}/><div className="skeleton" style={{height:12,width:80,borderRadius:4}}/></div>)}</div>
@@ -1155,12 +1591,14 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
         ) : (
           <table style={{width:"100%",borderCollapse:"collapse"}}>
             <thead><tr style={{borderBottom:"1px solid var(--border)",position:"sticky",top:0,background:"var(--surface)",zIndex:2}}>
-              {["Product","Barcode","Completeness","Status","Date","Actions"].map(h=><th key={h} style={{padding:"10px 16px",textAlign:"left",fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.06em"}}>{h.toUpperCase()}</th>)}
+              {[
+                {k:"product",l:"PRODUCT"},{k:"barcode",l:"BARCODE"},{k:"completeness",l:"QUALITY"},{k:"status",l:"STATUS"},{k:"tags",l:"TAGS"},{k:"date",l:"DATE"},{k:"actions",l:"ACTIONS"}
+              ].filter(h=>visibleCols[h.k]).map(h=><th key={h.k} style={{padding:"10px 16px",textAlign:"left",fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.06em"}}>{h.l}</th>)}
             </tr></thead>
             <tbody>{filteredCatalog.map((item,i)=>{
               const isSelected = selected.has(item.id);
               return <tr key={item.id||i} onClick={()=>toggleSelect(item.id)} style={{borderBottom:"1px solid var(--border-light)",transition:"all 0.15s",background:isSelected?"rgba(59,130,246,0.06)":"transparent",cursor:"pointer"}} onMouseEnter={e=>{if(!isSelected)e.currentTarget.style.background="var(--hover-bg)"}} onMouseLeave={e=>{if(!isSelected)e.currentTarget.style.background="transparent"}}>
-              <td style={{padding:"12px 16px",position:"relative"}}>
+              {visibleCols.product && <td style={{padding:"12px 16px",position:"relative"}}>
                 <div style={{position:"absolute",left:6,top:"50%",transform:"translateY(-50%)",width:18,height:18,borderRadius:5,border:isSelected?"2px solid #3B82F6":"2px solid var(--border)",background:isSelected?"#3B82F6":"transparent",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s",opacity:isSelected||selected.size>0?1:0}} className="row-check">
                   {isSelected && <Icon name="check" size={11} color="#fff"/>}
                 </div>
@@ -1179,9 +1617,9 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
                 ) : (
                   <span style={{marginLeft:20}}><span style={{fontSize:13,fontWeight:600}}>{item.custom_name||item.name||"Untitled"}</span>{item.brand&&<span style={{fontSize:11,color:"var(--text-dim)",marginLeft:8}}>{item.brand}</span>}{item.custom_price&&<span style={{fontSize:11,color:"#10B981",marginLeft:8}}>${item.custom_price}</span>}</span>
                 )}
-              </td>
-              <td style={{padding:"12px 16px"}}><span className="mono" style={{fontSize:12,color:"var(--text-muted)",display:"flex",alignItems:"center",gap:4}}>{item.barcode||"—"}{item.barcode&&<CopyButton text={item.barcode}/>}</span></td>
-              <td style={{padding:"12px 16px"}} onClick={e=>e.stopPropagation()}>
+              </td>}
+              {visibleCols.barcode && <td style={{padding:"12px 16px"}}><span className="mono" style={{fontSize:12,color:"var(--text-muted)",display:"flex",alignItems:"center",gap:4}}>{item.barcode||"—"}{item.barcode&&<CopyButton text={item.barcode}/>}</span></td>}
+              {visibleCols.completeness && <td style={{padding:"12px 16px"}} onClick={e=>e.stopPropagation()}>
                 {(() => {
                   const pct = item.completeness ?? 0;
                   const color = pct === 100 ? "#10B981" : pct >= 70 ? "#3B82F6" : pct >= 40 ? "#F59E0B" : "#EF4444";
@@ -1194,15 +1632,27 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
                     </div>
                   );
                 })()}
-              </td>
-              <td style={{padding:"12px 16px"}}><span className={`badge ${sc[item.status]||"badge-neutral"}`}>{item.status||"Draft"}</span></td>
-              <td style={{padding:"12px 16px"}}><span style={{fontSize:12,color:"var(--text-dim)"}}>{item.updated_at?new Date(item.updated_at).toLocaleDateString():""}</span></td>
-              <td style={{padding:"12px 16px"}}><div style={{display:"flex",gap:6}} onClick={e=>e.stopPropagation()}>
+              </td>}
+              {visibleCols.status && <td style={{padding:"12px 16px"}}><span className={`badge ${sc[item.status]||"badge-neutral"}`}>{item.status||"Draft"}</span></td>}
+              {visibleCols.tags && <td style={{padding:"12px 16px"}} onClick={e=>e.stopPropagation()}>
+                <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
+                  {(entryTags[item.id]||[]).map(tid=>{const t=tags.find(x=>x.id===tid);return t?<span key={tid} style={{padding:"1px 7px",borderRadius:10,fontSize:10,fontWeight:600,background:t.color+"18",color:t.color,border:`1px solid ${t.color}30`}}>{t.name}</span>:null;})}
+                  {canEdit && <button style={{width:18,height:18,borderRadius:"50%",border:"1px dashed var(--border)",background:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s",flexShrink:0}} title="Manage tags" onClick={()=>setTagEntryId(tagEntryId===item.id?null:item.id)}><Icon name="plus" size={9} color="var(--text-dim)"/></button>}
+                </div>
+                {tagEntryId===item.id && (
+                  <div className="animate-fadeIn" style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:6}}>
+                    {tags.map(t=>{const active=(entryTags[item.id]||[]).includes(t.id);return <button key={t.id} onClick={()=>{const current=entryTags[item.id]||[];const next=active?current.filter(x=>x!==t.id):[...current,t.id];handleSetEntryTags(item.id,next);}} style={{padding:"2px 8px",borderRadius:10,fontSize:10,fontWeight:600,border:`1px solid ${active?t.color:t.color+"40"}`,background:active?t.color+"20":"transparent",color:active?t.color:"var(--text-dim)",cursor:"pointer",fontFamily:"'Sora',sans-serif",transition:"all 0.15s"}}>{t.name}</button>;})}
+                  </div>
+                )}
+              </td>}
+              {visibleCols.date && <td style={{padding:"12px 16px"}}><span style={{fontSize:12,color:"var(--text-dim)"}}>{item.updated_at?new Date(item.updated_at).toLocaleDateString():""}</span></td>}
+              {visibleCols.actions && <td style={{padding:"12px 16px"}}><div style={{display:"flex",gap:6}} onClick={e=>e.stopPropagation()}>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="View" onClick={()=>onViewProduct(item.product_id,1)}><Icon name="eye" size={12}/></button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Edit" onClick={()=>startEdit(item)}><Icon name="edit" size={12}/></button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Export" onClick={()=>onExportProduct(item.product_id)}><Icon name="download" size={12}/></button>
+                <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="History" onClick={async()=>{setChangelogEntry(item);try{const r=await getActivity(20,"catalog_entry",item.id);setChangelog(r.activity||[]);}catch{setChangelog([]);}}}><Icon name="clock" size={12}/></button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11,color:"#EF4444"}} title="Delete" onClick={()=>setShowDeleteDialog(item.id)}><Icon name="trash" size={12} color="#EF4444"/></button>
-              </div></td>
+              </div></td>}
             </tr>})}</tbody>
           </table>
         )}
@@ -1246,6 +1696,80 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
       </div>
       {showDeleteDialog && <ConfirmDialog title="Delete Catalog Entry" message="This will permanently remove this product from your catalog. This action cannot be undone."
         confirmLabel="Delete" confirmColor="#EF4444" onCancel={() => setShowDeleteDialog(null)} onConfirm={() => handleDelete(showDeleteDialog)} />}
+
+      {/* Tag Manager Modal */}
+      {showTagManager && <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setShowTagManager(false)}>
+        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(4px)"}}/>
+        <div className="card animate-scaleIn" style={{position:"relative",width:400,maxWidth:"90vw",padding:24}} onClick={e=>e.stopPropagation()}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <h3 style={{fontSize:16,fontWeight:700}}>Manage Tags</h3>
+            <button style={{background:"none",border:"none",cursor:"pointer"}} onClick={()=>setShowTagManager(false)}><Icon name="x" size={16} color="var(--text-dim)"/></button>
+          </div>
+          <div style={{display:"flex",gap:8,marginBottom:16}}>
+            <input className="input" placeholder="New tag name..." value={newTagName} onChange={e=>setNewTagName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleCreateTag()} style={{fontSize:13,flex:1}}/>
+            <div style={{display:"flex",gap:4,alignItems:"center"}}>
+              {["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899"].map(c=>(
+                <div key={c} onClick={()=>setNewTagColor(c)} style={{width:20,height:20,borderRadius:"50%",background:c,cursor:"pointer",border:newTagColor===c?"2px solid var(--text)":"2px solid transparent",transition:"all 0.15s"}}/>
+              ))}
+            </div>
+            <button className="btn btn-primary" style={{padding:"6px 12px",fontSize:12}} onClick={handleCreateTag} disabled={!newTagName.trim()}>Add</button>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:250,overflowY:"auto"}}>
+            {tags.length === 0 && <p style={{fontSize:13,color:"var(--text-dim)",textAlign:"center",padding:20}}>No tags yet — create your first one above</p>}
+            {tags.map(t=>(
+              <div key={t.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:"var(--hover-bg)",borderRadius:8}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{width:10,height:10,borderRadius:"50%",background:t.color}}/>
+                  <span style={{fontSize:13,fontWeight:600}}>{t.name}</span>
+                  <span style={{fontSize:11,color:"var(--text-dim)"}}>{t.entry_count||0} items</span>
+                </div>
+                <button style={{background:"none",border:"none",cursor:"pointer"}} onClick={()=>handleDeleteTag(t.id)}><Icon name="trash" size={12} color="#EF4444"/></button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>}
+
+      {/* Changelog Modal */}
+      {changelogEntry && <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setChangelogEntry(null)}>
+        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(4px)"}}/>
+        <div className="card animate-scaleIn" style={{position:"relative",width:460,maxWidth:"90vw",padding:24,maxHeight:"80vh",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <div>
+              <h3 style={{fontSize:16,fontWeight:700}}>Product History</h3>
+              <p style={{fontSize:12,color:"var(--text-dim)",marginTop:2}}>{changelogEntry.custom_name||changelogEntry.name||"Untitled"}</p>
+            </div>
+            <button style={{background:"none",border:"none",cursor:"pointer"}} onClick={()=>setChangelogEntry(null)}><Icon name="x" size={16} color="var(--text-dim)"/></button>
+          </div>
+          <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:0}}>
+            {changelog.length === 0 ? (
+              <div style={{textAlign:"center",padding:30}}>
+                <Icon name="clock" size={24} color="var(--text-dim)"/>
+                <p style={{fontSize:13,color:"var(--text-dim)",marginTop:8}}>No history yet for this product</p>
+              </div>
+            ) : changelog.map((a,i) => (
+              <div key={a.id||i} style={{display:"flex",gap:12,padding:"10px 0",borderBottom:i<changelog.length-1?"1px solid var(--border-light)":"none"}}>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}>
+                  <div style={{width:8,height:8,borderRadius:"50%",background:({saved:"#3B82F6",created:"#10B981",updated:"#F59E0B",deleted:"#EF4444",exported:"#8B5CF6"})[a.action]||"#3B82F6"}}/>
+                  {i<changelog.length-1 && <div style={{width:1,flex:1,background:"var(--border-light)",marginTop:4}}/>}
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:12,color:"var(--text-sec)"}}>
+                    <span style={{fontWeight:600}}>{a.user_name}</span> {a.action}
+                    {a.details?.status && <span> status to <span style={{fontWeight:600}}>{a.details.status}</span></span>}
+                    {a.details?.name && <span> name to <span style={{fontWeight:600}}>{a.details.name}</span></span>}
+                    {a.details?.price && <span> price to <span style={{fontWeight:600}}>${a.details.price}</span></span>}
+                    {a.details?.format && <span> as {a.details.platform} {a.details.format}</span>}
+                  </div>
+                  <div style={{fontSize:10,color:"var(--text-dim)",marginTop:2}}>
+                    {new Date(a.created_at).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>}
 
       {showBatchModal && <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{if(!batchExporting)setShowBatchModal(false);}}>
         <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(4px)"}}/>
@@ -1375,6 +1899,7 @@ const Analytics = () => {
   const [sources, setSources] = useState([]);
   const [history, setHistory] = useState([]);
   const [completenessData, setCompletenessData] = useState(null);
+  const [activity, setActivity] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -1383,16 +1908,18 @@ const Analytics = () => {
       getSourcePerformance().catch(() => ({ sources: [] })),
       getSearchHistory().catch(() => ({ history: [] })),
       getCompleteness().catch(() => null),
-    ]).then(([s, src, h, comp]) => {
+      getActivity(15).catch(() => ({ activity: [] })),
+    ]).then(([s, src, h, comp, act]) => {
       setStats(s);
       setSources(src.sources || []);
       setHistory(h.history || []);
       setCompletenessData(comp);
+      setActivity(act.activity || []);
       setLoading(false);
     }).catch(() => { setLoading(false); toast.error("Failed to load analytics"); });
   }, []);
 
-  const sourceColors = { "Amazon": "#FF9900", "Open Food Facts": "#10B981", "UPC Database": "#6366F1", "Alibaba": "#FF6A00", "Google": "#4285F4" };
+  const sourceColors = { "Amazon": "#FF9900", "Open Food Facts": "#10B981", "UPC Database": "#6366F1", "Alibaba": "#FF6A00", "Google": "#4285F4", "Barcode Spider": "#F97316" };
 
   return (
     <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",gap:24}}>
@@ -1497,6 +2024,44 @@ const Analytics = () => {
                 <span style={{fontSize:11,color:"var(--text-dim)"}}>{new Date(h.created_at).toLocaleDateString()}</span>
               </div>
             </div>)}
+          </div>}
+        </div>
+
+        {/* Activity Feed */}
+        <div className="card" style={{padding:24}}>
+          <h3 style={{fontWeight:700,marginBottom:20}}>Recent Activity</h3>
+          {loading ? <div style={{textAlign:"center",padding:20}}><LoadingDots/></div> :
+           activity.length === 0 ? <div style={{textAlign:"center",padding:30}}><div style={{width:48,height:48,borderRadius:12,background:"rgba(139,92,246,0.08)",border:"1px solid rgba(139,92,246,0.15)",display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:10}}><Icon name="clock" size={22} color="#8B5CF6"/></div><p style={{fontSize:13,color:"var(--text-dim)"}}>No activity yet</p></div> :
+          <div style={{display:"flex",flexDirection:"column",gap:2,maxHeight:300,overflowY:"auto"}}>
+            {activity.slice(0,15).map((a,i) => {
+              const actionIcons = { saved: "package", created: "plus", updated: "edit", deleted: "trash", exported: "download", imported: "upload" };
+              const actionColors = { saved: "#3B82F6", created: "#10B981", updated: "#F59E0B", deleted: "#EF4444", exported: "#8B5CF6", imported: "#3B82F6" };
+              const entityLabels = { product: "product", catalog_entry: "entry", brand_voice: "voice", export: "", bulk_import: "", tag: "tag" };
+              const timeAgo = (date) => {
+                const s = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
+                if (s < 60) return "just now";
+                if (s < 3600) return `${Math.floor(s/60)}m ago`;
+                if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+                return `${Math.floor(s/86400)}d ago`;
+              };
+              return (
+                <div key={a.id||i} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:i<Math.min(activity.length,15)-1?"1px solid var(--border-light)":"none"}}>
+                  <div style={{width:22,height:22,borderRadius:6,background:(actionColors[a.action]||"#3B82F6")+"14",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    <Icon name={actionIcons[a.action]||"edit"} size={10} color={actionColors[a.action]||"#3B82F6"}/>
+                  </div>
+                  <div style={{flex:1,fontSize:12,color:"var(--text-sec)",lineHeight:1.4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    <span style={{fontWeight:600}}>{a.user_name||"User"}</span>
+                    {" "}{a.action}{" "}
+                    {a.entity_type === "bulk_import" ? (
+                      <span>{a.details?.imported||0} products</span>
+                    ) : (
+                      <>{entityLabels[a.entity_type]||a.entity_type}{a.entity_name ? <span style={{fontWeight:600}}> {a.entity_name}</span> : ""}</>
+                    )}
+                  </div>
+                  <span style={{fontSize:10,color:"var(--text-dim)",whiteSpace:"nowrap",flexShrink:0}}>{timeAgo(a.created_at)}</span>
+                </div>
+              );
+            })}
           </div>}
         </div>
       </div>
@@ -2898,6 +3463,7 @@ export default function App() {
   const [dark, setDark] = useState(true);
   const [view, setView] = useState("dashboard");
   const [step, setStep] = useState(0);
+  const [catalogMode, setCatalogMode] = useState("single"); // "single" or "bulk"
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -3080,10 +3646,26 @@ export default function App() {
             />}
             {view === "catalog" && (
               <div>
-                <StepIndicator currentStep={step} />
-                {step === 0 && <SearchStep onSearch={(data) => { setProductData(data); setStep(1); }} />}
-                {step === 1 && <ReviewStep onExport={(enrichedData) => { setProductData(enrichedData); setStep(2); }} onSave={() => { setStep(0); setProductData(null); setView("dashboard"); }} productData={productData} user={user} />}
-                {step === 2 && <ExportStep onComplete={() => { setStep(0); setView("dashboard"); }} productData={productData} user={user} />}
+                {/* Mode toggle — only show on step 0 (search) */}
+                {step === 0 && catalogMode === "single" && (
+                  <>
+                    <StepIndicator currentStep={step} />
+                    <SearchStep onSearch={(data) => { setProductData(data); setStep(1); }} />
+                    <div style={{display:"flex",justifyContent:"center",marginTop:16}}>
+                      <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>setCatalogMode("bulk")}><Icon name="upload" size={13}/> Bulk Import from CSV</button>
+                    </div>
+                  </>
+                )}
+                {step === 0 && catalogMode === "bulk" && (
+                  <>
+                    <div style={{display:"flex",justifyContent:"center",padding:"8px 0"}}>
+                      <button className="btn btn-ghost" style={{fontSize:12}} onClick={()=>setCatalogMode("single")}><Icon name="arrowLeft" size={13}/> Back to Single Search</button>
+                    </div>
+                    <BulkImportView user={user} onDone={() => { setCatalogMode("single"); setView("dashboard"); }} />
+                  </>
+                )}
+                {step === 1 && <><StepIndicator currentStep={step} /><ReviewStep onExport={(enrichedData) => { setProductData(enrichedData); setStep(2); }} onSave={() => { setStep(0); setProductData(null); setView("dashboard"); }} productData={productData} user={user} /></>}
+                {step === 2 && <><StepIndicator currentStep={step} /><ExportStep onComplete={() => { setStep(0); setView("dashboard"); }} productData={productData} user={user} /></>}
               </div>
             )}
             {view === "analytics" && <Analytics />}

@@ -465,6 +465,64 @@ export const revokeInvite = async (inviteId) => {
   return handleResponse(res);
 };
 
+// ── TAGS ──
+export const getTags = async () => {
+  const res = await apiFetch(`${API_URL}/catalog/tags`, { headers: headers() });
+  return handleResponse(res);
+};
+export const createTag = async (name, color) => {
+  const res = await apiFetch(`${API_URL}/catalog/tags`, { method: 'POST', headers: headers(), body: JSON.stringify({ name, color }) });
+  return handleResponse(res);
+};
+export const updateTag = async (id, data) => {
+  const res = await apiFetch(`${API_URL}/catalog/tags/${id}`, { method: 'PUT', headers: headers(), body: JSON.stringify(data) });
+  return handleResponse(res);
+};
+export const deleteTag = async (id) => {
+  const res = await apiFetch(`${API_URL}/catalog/tags/${id}`, { method: 'DELETE', headers: headers() });
+  return handleResponse(res);
+};
+export const setEntryTags = async (entryId, tagIds) => {
+  const res = await apiFetch(`${API_URL}/catalog/entries/${entryId}/tags`, { method: 'POST', headers: headers(), body: JSON.stringify({ tagIds }) });
+  return handleResponse(res);
+};
+export const getEntryTags = async (entryId) => {
+  const res = await apiFetch(`${API_URL}/catalog/entries/${entryId}/tags`, { headers: headers() });
+  return handleResponse(res);
+};
+
+// ── SAVED VIEWS ──
+export const getSavedViews = async () => {
+  const res = await apiFetch(`${API_URL}/catalog/views`, { headers: headers() });
+  return handleResponse(res);
+};
+export const createSavedView = async (name, filters) => {
+  const res = await apiFetch(`${API_URL}/catalog/views`, { method: 'POST', headers: headers(), body: JSON.stringify({ name, filters }) });
+  return handleResponse(res);
+};
+export const deleteSavedView = async (id) => {
+  const res = await apiFetch(`${API_URL}/catalog/views/${id}`, { method: 'DELETE', headers: headers() });
+  return handleResponse(res);
+};
+
+// ── ACTIVITY ──
+export const getActivity = async (limit = 30, entityType, entityId) => {
+  let url = `${API_URL}/catalog/activity?limit=${limit}`;
+  if (entityType) url += `&entity_type=${entityType}`;
+  if (entityId) url += `&entity_id=${entityId}`;
+  const res = await apiFetch(url, { headers: headers() });
+  return handleResponse(res);
+};
+
+// ── BULK IMPORT ──
+export const bulkImport = async (rows, mapping) => {
+  const res = await apiFetch(`${API_URL}/products/bulk-import`, {
+    method: 'POST', headers: headers(),
+    body: JSON.stringify({ rows, mapping }),
+  });
+  return handleResponse(res);
+};
+
 // ── HEALTH ──
 export const healthCheck = async () => {
   const res = await apiFetch(`${API_URL}/health`);
