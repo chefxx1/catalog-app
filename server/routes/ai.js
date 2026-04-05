@@ -18,10 +18,11 @@ function getModel() {
 // POST /api/ai/generate — generate descriptions, category, and SEO tags
 router.post('/generate', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
-    const { name, brand, category, description, specs, brandVoice, customInstructions: rawInstructions } = req.body;
+    const { name, brand, category, description, specs, brandVoice, customInstructions: rawInstructions, language } = req.body;
 
     if (!name) return res.status(400).json({ error: 'Product name is required' });
     const customInstructions = rawInstructions ? sanitize(rawInstructions).slice(0, 500) : null;
+    const langInstruction = language ? `\n\nIMPORTANT: Generate ALL content (descriptions, category, SEO tags, meta title, meta description) in ${language}. The output must be entirely in ${language}, not English. Also translate the product specifications/attributes into ${language} and return them in a "translatedSpecs" field as a key-value object.` : '';
 
     const model = getModel();
 
@@ -42,7 +43,7 @@ router.post('/generate', auth, requireRole('Admin', 'Editor'), async (req, res) 
     const prompt = `You are an expert e-commerce product copywriter. Given the following product information, generate marketing content.
 
 ${productInfo}
-${voiceContext}
+${voiceContext}${langInstruction}
 
 Return a JSON object with exactly this structure (no markdown, no code fences, just raw JSON):
 {
@@ -54,7 +55,9 @@ Return a JSON object with exactly this structure (no markdown, no code fences, j
   "category": "Suggested category path like: Main Category > Subcategory > Type",
   "seoTags": ["tag1", "tag2", "tag3", "tag4", "tag5", "tag6"],
   "metaTitle": "SEO-optimized title under 60 characters",
-  "metaDescription": "SEO-optimized meta description under 155 characters"
+  "metaDescription": "SEO-optimized meta description under 155 characters"${language ? `,
+  "translatedSpecs": { "key in target language": "value in target language" },
+  "translatedName": "Product name in target language"` : ''}
 }`;
 
     const result = await model.generateContent(prompt);
@@ -98,6 +101,8 @@ Return a JSON object with exactly this structure (no markdown, no code fences, j
       seoTags: parsed.seoTags || [],
       metaTitle: parsed.metaTitle || null,
       metaDescription: parsed.metaDescription || null,
+      translatedSpecs: parsed.translatedSpecs || null,
+      translatedName: parsed.translatedName || null,
     });
   } catch (err) {
     console.error('AI generate error:', err.message);
@@ -245,6 +250,190 @@ Rules:
       return res.status(400).json({ error: 'AI API key not configured.' });
     }
     res.status(500).json({ error: 'Quality analysis failed: ' + err.message });
+  }
+});
+
+// POST /api/ai/translate — generate product description in another language
+router.post('/translate', auth, requireRole('Admin', 'Editor'), async (req, res) => {
+  try {
+    const { name, brand, description, language } = req.body;
+    if (!name) return res.status(400).json({ error: 'Product name is required' });
+    if (!language) return res.status(400).json({ error: 'Language is required' });
+
+    const model = getModel();
+
+    const prompt = `You are an expert e-commerce translator and copywriter. Translate and adapt the following product information into ${language}. Don't just translate literally — adapt it to sound natural and compelling for ${language}-speaking customers.
+
+Product: ${name}
+${brand ? `Brand: ${brand}` : ''}
+${description ? `Description: ${description}` : ''}
+
+Return a JSON object (no markdown fences, just raw JSON):
+{
+  "name": "Product name in ${language}",
+  "description": "Product description in ${language} (2-3 compelling sentences)",
+  "metaTitle": "SEO title in ${language} (under 60 chars)",
+  "metaDescription": "SEO meta description in ${language} (under 155 chars)",
+  "seoTags": ["tag1", "tag2", "tag3", "tag4", "tag5", "tag6"]
+}
+
+All output must be in ${language}. Make it sound native, not translated.`;
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
+    let parsed;
+    try {
+      const jsonStr = text.replace(/^```json?\s*/i, '').replace(/```\s*$/, '').trim();
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      return res.status(500).json({ error: 'Failed to parse AI response' });
+    }
+    res.json({ language, ...parsed });
+  } catch (err) {
+    console.error('AI translate error:', err.message);
+    res.status(500).json({ error: 'Translation failed: ' + err.message });
+  }
+});
+
+// POST /api/ai/optimize-title — generate platform-optimized titles
+router.post('/optimize-title', auth, requireRole('Admin', 'Editor'), async (req, res) => {
+  try {
+    const { name, brand, category, description } = req.body;
+    if (!name) return res.status(400).json({ error: 'Product name is required' });
+
+    const model = getModel();
+
+    const prompt = `You are an e-commerce SEO expert. Generate optimized product titles for different platforms.
+
+Product: ${name}
+${brand ? `Brand: ${brand}` : ''}
+${category ? `Category: ${category}` : ''}
+${description ? `Description: ${description}` : ''}
+
+Return a JSON object (no markdown fences, just raw JSON):
+{
+  "shopify": "Shopify-optimized title (clear, brand-first, 70 chars max)",
+  "amazon": "Amazon-optimized title (keyword-rich, specific, 200 chars max, format: Brand + Model + Key Feature + Size/Color)",
+  "woocommerce": "WooCommerce title (clean, SEO-friendly, 60 chars max)",
+  "google": "Google Shopping title (specific, 150 chars max, include brand + product type + key attributes)",
+  "social": "Social media title (catchy, emoji-friendly, 50 chars max)"
+}
+
+IMPORTANT: Do NOT include the platform name in the title text. The title should be a clean product title optimized for that platform's algorithm, not mentioning the platform itself.`;
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
+    let parsed;
+    try {
+      const jsonStr = text.replace(/^```json?\s*/i, '').replace(/```\s*$/, '').trim();
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      return res.status(500).json({ error: 'Failed to parse AI response' });
+    }
+    res.json({ titles: parsed });
+  } catch (err) {
+    console.error('AI title optimizer error:', err.message);
+    res.status(500).json({ error: 'Title optimization failed: ' + err.message });
+  }
+});
+
+// POST /api/ai/extract-attributes — extract product attributes from image
+router.post('/extract-attributes', auth, requireRole('Admin', 'Editor'), async (req, res) => {
+  try {
+    const { image } = req.body;
+    if (!image) return res.status(400).json({ error: 'Image data is required' });
+
+    const model = getModel();
+
+    const prompt = `You are a product attribute extraction expert. Analyze this product image and extract visible attributes.
+
+Return a JSON object (no markdown fences, just raw JSON):
+{
+  "color": "Primary color(s) visible",
+  "material": "Material if identifiable (leather, cotton, metal, plastic, wood, etc.)",
+  "pattern": "Pattern if any (solid, striped, plaid, floral, etc.)",
+  "size": "Approximate size if determinable (small, medium, large, or dimensions)",
+  "shape": "Shape description (round, rectangular, slim, compact, etc.)",
+  "condition": "new",
+  "style": "Design style (modern, classic, vintage, minimalist, etc.)",
+  "additional": {
+    "key": "value for any other notable attributes"
+  }
+}
+
+Only include attributes you can actually see or confidently infer from the image. Set to null if not determinable.`;
+
+    const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
+    const mimeMatch = image.match(/^data:(image\/\w+);base64,/);
+    const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+
+    const result = await model.generateContent([
+      prompt,
+      { inlineData: { data: base64Data, mimeType } },
+    ]);
+    const text = result.response.text().trim();
+    let parsed;
+    try {
+      const jsonStr = text.replace(/^```json?\s*/i, '').replace(/```\s*$/, '').trim();
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      return res.status(500).json({ error: 'Failed to parse AI response' });
+    }
+    res.json({ attributes: parsed });
+  } catch (err) {
+    console.error('AI attribute extraction error:', err.message);
+    res.status(500).json({ error: 'Attribute extraction failed: ' + err.message });
+  }
+});
+
+// POST /api/ai/alt-text — generate SEO-friendly alt text for product images
+router.post('/alt-text', auth, requireRole('Admin', 'Editor'), async (req, res) => {
+  try {
+    const { images, productName, brand } = req.body;
+    if (!images || !Array.isArray(images) || images.length === 0) return res.status(400).json({ error: 'Images array is required' });
+
+    const model = getModel();
+
+    const prompt = `You are an SEO and accessibility expert. Generate alt text for ${images.length} product image(s).
+
+Product: ${productName || 'Unknown product'}
+${brand ? `Brand: ${brand}` : ''}
+
+Return a JSON array of strings (no markdown fences, just raw JSON). Each string is SEO-friendly alt text for the corresponding image:
+- Describe what's visible in the image
+- Include product name and brand if relevant
+- Keep each under 125 characters
+- Be specific and descriptive, not generic
+- Good for both screen readers and Google Image SEO
+
+Example: ["Sony WH-1000XM5 wireless headphones in black with premium ear cushions", "Side view of Sony WH-1000XM5 showing slim folding design"]`;
+
+    // If images have base64 data, send them to the model
+    const parts = [prompt];
+    const hasImageData = images.some(img => img.startsWith && img.startsWith('data:'));
+
+    if (hasImageData) {
+      images.slice(0, 4).forEach(img => {
+        const base64Data = img.replace(/^data:image\/\w+;base64,/, '');
+        const mimeMatch = img.match(/^data:(image\/\w+);base64,/);
+        const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+        parts.push({ inlineData: { data: base64Data, mimeType } });
+      });
+    }
+
+    const result = await model.generateContent(parts);
+    const text = result.response.text().trim();
+    let parsed;
+    try {
+      const jsonStr = text.replace(/^```json?\s*/i, '').replace(/```\s*$/, '').trim();
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      return res.status(500).json({ error: 'Failed to parse AI response' });
+    }
+    res.json({ altTexts: Array.isArray(parsed) ? parsed : [] });
+  } catch (err) {
+    console.error('AI alt-text error:', err.message);
+    res.status(500).json({ error: 'Alt text generation failed: ' + err.message });
   }
 });
 

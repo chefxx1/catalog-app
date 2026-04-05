@@ -505,6 +505,24 @@ export const deleteSavedView = async (id) => {
   return handleResponse(res);
 };
 
+// ── AI ENHANCEMENTS ──
+export const translateDescription = async (name, brand, description, language) => {
+  const res = await apiFetch(`${API_URL}/ai/translate`, { method: 'POST', headers: headers(), body: JSON.stringify({ name, brand, description, language }) });
+  return handleResponse(res);
+};
+export const optimizeTitle = async (name, brand, category, description) => {
+  const res = await apiFetch(`${API_URL}/ai/optimize-title`, { method: 'POST', headers: headers(), body: JSON.stringify({ name, brand, category, description }) });
+  return handleResponse(res);
+};
+export const extractAttributes = async (image) => {
+  const res = await apiFetch(`${API_URL}/ai/extract-attributes`, { method: 'POST', headers: headers(), body: JSON.stringify({ image }) });
+  return handleResponse(res);
+};
+export const generateAltText = async (images, productName, brand) => {
+  const res = await apiFetch(`${API_URL}/ai/alt-text`, { method: 'POST', headers: headers(), body: JSON.stringify({ images, productName, brand }) });
+  return handleResponse(res);
+};
+
 // ── ACTIVITY ──
 export const getActivity = async (limit = 30, entityType, entityId) => {
   let url = `${API_URL}/catalog/activity?limit=${limit}`;
