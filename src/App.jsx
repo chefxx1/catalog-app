@@ -137,14 +137,13 @@ const GlobalStyles = ({ dark }) => (
       .mobile-menu-btn { display:none !important; }
     }
 
-    .btn { display:inline-flex; align-items:center; gap:8px; padding:8px 18px; border-radius:8px; font-family:'Sora',sans-serif; font-weight:600; font-size:13px; cursor:pointer; border:none; transition:all 0.2s ease; white-space:nowrap; }
-    .btn:hover { transform:translateY(-1px); } .btn:active { transform:translateY(0) scale(0.98); }
-    .btn-primary { background:var(--primary); color:white; } .btn-primary:hover { background:var(--primary-light); box-shadow:0 4px 16px rgba(37,99,235,0.35); }
-    .btn-success { background:var(--success); color:white; } .btn-success:hover { background:var(--success-light); box-shadow:0 4px 16px rgba(16,185,129,0.35); }
-    .btn-ghost { background:transparent; color:var(--text-muted); border:1px solid var(--border); } .btn-ghost:hover { background:var(--surface); color:var(--text); border-color:var(--primary); }
+    .btn { display:inline-flex; align-items:center; gap:8px; padding:8px 18px; border-radius:8px; font-family:'Sora',sans-serif; font-weight:600; font-size:13px; cursor:pointer; border:none; transition:all 0.2s; white-space:nowrap; }
+    .btn:hover { transform:translateY(-1px); } .btn:active { transform:translateY(0); }
+    .btn-primary { background:var(--primary); color:white; } .btn-primary:hover { background:var(--primary-light); box-shadow:0 0 20px rgba(37,99,235,0.4); }
+    .btn-success { background:var(--success); color:white; } .btn-success:hover { background:var(--success-light); box-shadow:0 0 20px rgba(16,185,129,0.4); }
+    .btn-ghost { background:transparent; color:var(--text-muted); border:1px solid var(--border); } .btn-ghost:hover { background:var(--surface); color:var(--text); }
 
-    .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:20px; box-shadow:var(--card-shadow); transition:all 0.25s ease; }
-    .card:hover { border-color:var(--border-light); box-shadow:0 4px 20px rgba(0,0,0,0.08); transform:translateY(-1px); }
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:20px; box-shadow:var(--card-shadow); transition:background 0.35s, border-color 0.35s; }
 
     .badge { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600; letter-spacing:0.02em; }
     .badge-success { background:rgba(16,185,129,0.15); color:var(--success-light); }
@@ -167,8 +166,8 @@ const GlobalStyles = ({ dark }) => (
     .section-label { font-size:11px; font-weight:600; color:var(--text-dim); letter-spacing:0.06em; text-transform:uppercase; }
     h3 { font-size:15px; font-weight:700; color:var(--text); }
 
-    .nav-item { display:flex; align-items:center; gap:11px; padding:9px 14px; border-radius:8px; cursor:pointer; transition:all 0.2s ease; color:var(--text-muted); font-size:13px; font-weight:500; position:relative; }
-    .nav-item:hover { background:var(--surface); color:var(--text); transform:translateX(2px); }
+    .nav-item { display:flex; align-items:center; gap:11px; padding:9px 14px; border-radius:8px; cursor:pointer; transition:all 0.15s; color:var(--text-muted); font-size:13px; font-weight:500; position:relative; }
+    .nav-item:hover { background:var(--surface); color:var(--text); }
     .nav-item.active { background:rgba(37,99,235,0.1); color:var(--primary-light); font-weight:600; }
     .nav-item.active::before { content:''; position:absolute; left:0; top:6px; bottom:6px; width:3px; border-radius:0 3px 3px 0; background:var(--primary); transition:all 0.2s; }
     .nav-label { font-size:10px; font-weight:700; letter-spacing:0.08em; color:var(--text-dim); padding:16px 14px 6px; text-transform:uppercase; }
@@ -515,6 +514,11 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
   const [zoomLevel, setZoomLevel] = useState(1);
   const [zoomPos, setZoomPos] = useState({x:50,y:50});
 
+  // Phase 18 — AI Language
+  const [selectedLang, setSelectedLang] = useState("English");
+  const [translatedSpecs, setTranslatedSpecs] = useState(null);
+  const [translatedName, setTranslatedName] = useState(null);
+
   // Lightbox keyboard controls
   useEffect(() => {
     if (lightbox === null) return;
@@ -540,8 +544,9 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
     }).catch(() => { toast.warning("Could not load brand voices"); });
   }, []);
 
-  const handleRegenerate=async(voice)=>{
+  const handleRegenerate=async(voice, lang)=>{
     const bv = voice || selectedVoice;
+    const useLang = lang || selectedLang;
     setRegenerating(true); setAiError(null);
     try {
       const result = await generateAIContent({
@@ -551,6 +556,7 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
         description: product.description || '',
         specs: p.specs || null,
         barcode: product.barcode || p.upc,
+        language: useLang !== "English" ? useLang : undefined,
         ...(useCustom && customPrompt.trim() ? { customInstructions: customPrompt.trim() } : bv?.metadata ? { brandVoice: { tone: bv.metadata.tone, audience: bv.metadata.audience, style: bv.metadata.style, includeKeywords: bv.metadata.keywords || [], excludeKeywords: bv.metadata.excludeKeywords || [] } } : {}),
       });
       const newDescs = [
@@ -565,6 +571,8 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
       if (result.metaTitle) setMetaTitle(result.metaTitle);
       if (result.metaDescription) setMetaDescription(result.metaDescription);
       if (result.category) setAiCategory(result.category);
+      setTranslatedSpecs(result.translatedSpecs || null);
+      setTranslatedName(result.translatedName || null);
     } catch (err) {
       setAiError(err.message);
       toast.error("AI generation failed: " + (err.message || "Unknown error"));
@@ -607,10 +615,13 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
                 <input className="input" value={editPrice} onChange={e=>setEditPrice(e.target.value)} placeholder="e.g. 29.99" style={{fontSize:12,flex:1,padding:"4px 8px",background:"transparent",border:"1px solid var(--border)",borderRadius:4}}/>
               </div>
             </div>
-            {p.specs&&Object.keys(p.specs).length>0&&<div style={{display:"flex",flexDirection:"column",gap:4}}>
-              <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em"}}>SPECIFICATIONS</div>
+            {(translatedSpecs || (p.specs&&Object.keys(p.specs).length>0))&&<div style={{display:"flex",flexDirection:"column",gap:4}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em"}}>SPECIFICATIONS</div>
+                {translatedSpecs && selectedLang !== "English" && <span className="badge badge-primary" style={{fontSize:9,padding:"1px 6px"}}>{selectedLang}</span>}
+              </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>
-                {Object.entries(p.specs).map(([k,v])=><div key={k} style={{padding:"6px 10px",background:"var(--hover-bg)",borderRadius:6}}>
+                {Object.entries(translatedSpecs || p.specs).map(([k,v])=><div key={k} style={{padding:"6px 10px",background:"var(--hover-bg)",borderRadius:6}}>
                   <div style={{fontSize:10,color:"var(--text-dim)",marginBottom:1}}>{k}</div>
                   <div className="mono" style={{fontSize:12,color:"var(--text-sec)"}}>{v}</div>
                 </div>)}
@@ -668,9 +679,19 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
 
       {/* RIGHT */}
       <div style={{display:"flex",flexDirection:"column",overflow:"hidden",background:"var(--hover-bg)",borderRadius:12,border:"1px solid var(--border)"}}>
-        <div style={{padding:"14px 16px",borderBottom:"1px solid var(--border)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div style={{display:"flex",alignItems:"center",gap:8}}><Icon name="sparkle" size={16} color="#10B981"/><span style={{fontWeight:700,fontSize:14}}>AI-Generated Content</span><span className="badge badge-ai">AI</span></div>
-          <button className="btn btn-ghost" style={{fontSize:11,padding:"4px 12px"}} onClick={()=>handleRegenerate()} disabled={regenerating}><Icon name="refresh" size={12}/> {regenerating?"Generating...":"Regenerate"}</button>
+        <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",display:"flex",flexDirection:"column",gap:8}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}><Icon name="sparkle" size={16} color="#10B981"/><span style={{fontWeight:700,fontSize:14}}>AI-Generated Content</span><span className="badge badge-ai">AI</span></div>
+            <button className="btn btn-ghost" style={{fontSize:11,padding:"4px 12px"}} onClick={()=>handleRegenerate()} disabled={regenerating}><Icon name="refresh" size={12}/> {regenerating?"Generating...":"Regenerate"}</button>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:10,color:"var(--text-dim)",fontWeight:600}}>Language:</span>
+            <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+              {["English","Arabic","French","Spanish","German","Chinese","Turkish","Portuguese"].map(lang=>(
+                <button key={lang} onClick={()=>{setSelectedLang(lang);if(lang!==selectedLang&&!regenerating)handleRegenerate(null,lang);}} style={{fontSize:10,padding:"2px 8px",borderRadius:12,border:`1px solid ${selectedLang===lang?"var(--primary)":"var(--border-light)"}`,background:selectedLang===lang?"rgba(37,99,235,0.08)":"transparent",color:selectedLang===lang?"var(--primary-light)":"var(--text-dim)",cursor:"pointer",fontFamily:"'Sora',sans-serif",fontWeight:600,transition:"all 0.15s"}}>{lang}</button>
+              ))}
+            </div>
+          </div>
         </div>
         <div className="split-panel" style={{padding:16,display:"flex",flexDirection:"column",gap:14}}>
           {aiError&&<div style={{padding:"8px 12px",background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:8,fontSize:12,color:"#F87171",display:"flex",alignItems:"center",gap:6}}><Icon name="warning" size={14} color="#EF4444"/>{aiError}</div>}
@@ -700,6 +721,7 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
           <div><div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:8,display:"flex",alignItems:"center",gap:8}}>FINAL DESCRIPTION <span className="badge badge-ai">Editable</span><CopyButton text={editedDesc}/></div>
             <textarea className="input" value={editedDesc} onChange={e=>setEditedDesc(e.target.value)} rows={5} style={{lineHeight:1.6}}/>
           </div>
+
           <div style={{padding:12,background:"var(--hover-bg)",borderRadius:8,border:"1px solid var(--border)"}}>
             <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.06em",marginBottom:8}}>PRE-PUBLISH CHECKLIST</div>
             {[{t:"AI description generated",ok:hasRealAI||aiDescs!==p.aiDescriptions},{t:"Pricing verified across sources",ok:Object.keys(resolvedConflicts).length>0},{t:"Product images selected",ok:images.filter(i=>i.selected).length>0},{t:"SEO tags generated",ok:hasRealAI||seoTags!==p.seoTags}].map((item,i)=><div key={i} style={{display:"flex",gap:8,alignItems:"center",fontSize:12,marginBottom:4,color:item.ok?"var(--text-muted)":"#F87171"}}><Icon name={item.ok?"check":"x"} size={12} color={item.ok?"#10B981":"#EF4444"}/> {item.t}</div>)}
@@ -1252,7 +1274,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
   const [changelog, setChangelog] = useState([]);
   const [savingView, setSavingView] = useState(false);
   const [newViewName, setNewViewName] = useState("");
-  const [visibleCols, setVisibleCols] = useState({ product: true, barcode: true, completeness: true, status: true, tags: true, date: true, actions: true });
+  const [visibleCols, setVisibleCols] = useState({ product: true, barcode: true, completeness: true, status: true, tags: false, date: true, actions: true });
   const [showColPicker, setShowColPicker] = useState(false);
   const canEdit = user.role === "Admin" || user.role === "Editor";
 
@@ -1475,7 +1497,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
   const needsAttention = catalog.filter(c => (c.completeness ?? 0) < 70).length;
 
   return (
-    <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",gap:24}}>
+    <div style={{display:"flex",flexDirection:"column",gap:24,opacity:loading?0:1,transition:"opacity 0.4s ease"}}>
       {/* Welcome + inline stats */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:16}}>
         <div>
@@ -1530,7 +1552,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
               <Icon name="settings" size={12}/> Filter
               {activeFilterCount > 0 && <span style={{position:"absolute",top:-4,right:-4,width:16,height:16,borderRadius:"50%",background:"var(--primary)",color:"white",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>{activeFilterCount}</span>}
             </button>
-            {canEdit && <button className="btn btn-ghost" style={{fontSize:11,padding:"6px 10px"}} onClick={()=>setShowTagManager(true)}><Icon name="tag" size={12}/> Tags</button>}
+            {canEdit && visibleCols.tags && <button className="btn btn-ghost" style={{fontSize:11,padding:"6px 10px"}} onClick={()=>setShowTagManager(true)}><Icon name="tag" size={12}/> Tags</button>}
             <button className="btn btn-ghost" style={{fontSize:11,padding:"6px 10px"}} onClick={()=>setShowColPicker(p=>!p)}><Icon name="grid" size={12}/> Columns</button>
           </div>
         </div>
@@ -1650,7 +1672,6 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="View" onClick={()=>onViewProduct(item.product_id,1)}><Icon name="eye" size={12}/></button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Edit" onClick={()=>startEdit(item)}><Icon name="edit" size={12}/></button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Export" onClick={()=>onExportProduct(item.product_id)}><Icon name="download" size={12}/></button>
-                <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="History" onClick={async()=>{setChangelogEntry(item);try{const r=await getActivity(20,"catalog_entry",item.id);setChangelog(r.activity||[]);}catch{setChangelog([]);}}}><Icon name="clock" size={12}/></button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11,color:"#EF4444"}} title="Delete" onClick={()=>setShowDeleteDialog(item.id)}><Icon name="trash" size={12} color="#EF4444"/></button>
               </div></td>}
             </tr>})}</tbody>
@@ -1922,7 +1943,8 @@ const Analytics = () => {
   const sourceColors = { "Amazon": "#FF9900", "Open Food Facts": "#10B981", "UPC Database": "#6366F1", "Alibaba": "#FF6A00", "Google": "#4285F4", "Barcode Spider": "#F97316" };
 
   return (
-    <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",gap:24}}>
+    <div style={{display:"flex",flexDirection:"column",gap:24,opacity:loading?0:1,transition:"opacity 0.4s ease"}}>
+      {loading && <div style={{display:"flex",flexDirection:"column",gap:16,padding:"14px 0"}}><div className="skeleton" style={{height:20,width:"60%"}}/><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}><div className="skeleton-card"/><div className="skeleton-card"/><div className="skeleton-card"/><div className="skeleton-card"/></div></div>}
       {!loading && stats && (
         <div style={{display:"flex",gap:24,padding:"14px 0",borderBottom:"1px solid var(--border-light)",flexWrap:"wrap"}}>
           {[
