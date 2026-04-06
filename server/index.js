@@ -61,7 +61,40 @@ async function purgeExpiredCache() {
 }
 setInterval(purgeExpiredCache, 24 * 60 * 60 * 1000);
 
+// Auto-migrate: ensure all tables exist on startup
+async function autoMigrate() {
+  try {
+    await db.query(`CREATE TABLE IF NOT EXISTS stores (
+      id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS tags (
+      id INT AUTO_INCREMENT PRIMARY KEY, store_id INT NOT NULL, name VARCHAR(50) NOT NULL, color VARCHAR(7) DEFAULT '#3B82F6', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE, UNIQUE KEY unique_store_tag (store_id, name)
+    )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS catalog_entry_tags (
+      catalog_entry_id INT NOT NULL, tag_id INT NOT NULL, PRIMARY KEY (catalog_entry_id, tag_id),
+      FOREIGN KEY (catalog_entry_id) REFERENCES catalog_entries(id) ON DELETE CASCADE, FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+    )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS saved_views (
+      id INT AUTO_INCREMENT PRIMARY KEY, store_id INT NOT NULL, user_id INT NOT NULL, name VARCHAR(100) NOT NULL, filters JSON NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE, FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS activity_log (
+      id INT AUTO_INCREMENT PRIMARY KEY, store_id INT NOT NULL, user_id INT NOT NULL, action VARCHAR(50) NOT NULL, entity_type VARCHAR(30) NULL, entity_id INT NULL, entity_name VARCHAR(255) NULL, details JSON NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE, FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS price_history (
+      id INT AUTO_INCREMENT PRIMARY KEY, store_id INT NOT NULL, product_id INT NOT NULL, source_name VARCHAR(100) NOT NULL, price DECIMAL(10,2) NOT NULL, currency VARCHAR(10) DEFAULT 'USD', recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE, FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+    )`);
+    console.log('Auto-migrate: all tables verified');
+  } catch (err) {
+    console.error('Auto-migrate error:', err.message);
+  }
+}
+
 app.listen(PORT, () => {
   console.log(`CatalogAI API running on http://localhost:${PORT}`);
-  purgeExpiredCache(); // Run once on startup
+  autoMigrate();
+  purgeExpiredCache();
 });
