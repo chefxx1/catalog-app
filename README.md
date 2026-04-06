@@ -37,7 +37,9 @@ npm install
 5. Create a database called `catalogai`
 6. Click on `catalogai`, then click the **Import** tab
 7. Browse and select `server/database/schema.sql` from the project
-8. Click **Go** — this creates all 11 tables
+8. Click **Go** — this creates all the tables
+
+> **Note:** The server also auto-creates any missing tables on startup, so if you pull new updates you don't need to re-import the schema.
 
 ### 3. Create the environment file
 Create a file called `.env` inside the `server/` folder:
@@ -45,7 +47,7 @@ Create a file called `.env` inside the `server/` folder:
 ```
 DB_HOST=localhost
 DB_USER=root
-DB_PASSWORD=
+DB_PASS=
 DB_NAME=catalogai
 DB_PORT=3306
 
@@ -55,59 +57,68 @@ JWT_EXPIRES_IN=30d
 PORT=3000
 ```
 
+**Optional API keys** (features work without these but are limited):
+```
+GEMINI_API_KEY=your_key_here        # AI descriptions, image identification
+SERPER_API_KEY=your_key_here        # Product image search
+GOOGLE_CLIENT_ID=your_key_here      # Google OAuth sign-in
+EMAIL_USER=your_email@gmail.com     # Password reset emails
+EMAIL_PASS=your_app_password        # Gmail app password
+```
+
 ### 4. Run the app
 Open **two terminals**:
 
-**Terminal 1 — Frontend:**
-```bash
-npm run dev
-```
-
-**Terminal 2 — Backend:**
+**Terminal 1 — Backend:**
 ```bash
 npm run server
 ```
 
+**Terminal 2 — Frontend:**
+```bash
+npm run dev
+```
+
 ### 5. Open in browser
-Go to http://localhost:5173
-
-**Demo login:** `demo@catalogai.com` / `demo1234`
-
-Or sign up for a new account.
+Go to http://localhost:5173 and sign up for a new account.
 
 ## Project Structure
 
 ```
 catalog-app/
-├── index.html              # Main HTML page
-├── package.json            # Dependencies and scripts
-├── vite.config.js          # Vite dev server config
+├── src/                        # Frontend
+│   ├── App.jsx                 # All components, pages, styles
+│   ├── api.js                  # API helpers (40+ functions)
+│   └── main.jsx                # React entry point
 │
-├── src/                    # Frontend
-│   ├── main.jsx            # React entry point
-│   ├── App.jsx             # All components, pages, and styles
-│   ├── api.js              # API helper + JWT token management
-│   └── index.css           # CSS reset
-│
-├── server/                 # Backend
-│   ├── index.js            # Express server entry point
-│   ├── db.js               # MySQL connection pool
-│   ├── .env                # Database credentials (not in git)
+├── server/                     # Backend
+│   ├── index.js                # Express server + auto-migrate
+│   ├── db.js                   # MySQL connection pool
+│   ├── .env                    # Credentials (not in git)
+│   ├── helpers/
+│   │   └── activity.js         # Activity logging helper
 │   ├── middleware/
-│   │   └── auth.js         # JWT authentication middleware
+│   │   ├── auth.js             # JWT authentication
+│   │   ├── requireRole.js      # Role-based access control
+│   │   ├── rateLimit.js        # Rate limiting
+│   │   └── validate.js         # Input validation + XSS sanitize
 │   ├── routes/
-│   │   ├── auth.js         # Sign in, sign up, profile, settings
-│   │   ├── products.js     # Search, cache, conflicts, catalog
-│   │   ├── analytics.js    # Stats, source performance, history
-│   │   └── brandVoices.js  # Brand voice CRUD with ownership
+│   │   ├── auth.js             # Auth, profile, team, invites
+│   │   ├── products.js         # Search, catalog, bulk import
+│   │   ├── analytics.js        # Stats, source performance
+│   │   ├── brandVoices.js      # Brand voice CRUD
+│   │   ├── ai.js               # AI descriptions, translation, image ID
+│   │   ├── export.js           # Export, Shopify sync, Google feed, price monitoring
+│   │   └── catalog.js          # Tags, saved views, activity feed
 │   └── database/
-│       └── schema.sql      # MySQL table definitions (11 tables)
+│       └── schema.sql          # MySQL table definitions
 │
 └── docs/
-    └── PROJECT_SCOPE.md    # Full project scope document
+    └── PROJECT_SCOPE.md        # Full project scope
 ```
 
 ## Team
 - chefxx1 — Project Lead
 - plgammer331 — Developer
 - Afif-Tamim — Developer
+- aaisraa99ww-debug — Developer
