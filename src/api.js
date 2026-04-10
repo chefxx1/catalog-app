@@ -541,6 +541,24 @@ export const bulkImport = async (rows, mapping) => {
   return handleResponse(res);
 };
 
+// ── INTEGRATIONS ──
+export const getGoogleMerchantFeed = async () => {
+  const res = await apiFetch(`${API_URL}/export/google-merchant-feed`, { headers: headers() });
+  return handleResponse(res);
+};
+export const shopifySync = async (shopifyDomain, clientId, clientSecret, productIds) => {
+  const res = await apiFetch(`${API_URL}/export/shopify-sync`, { method: 'POST', headers: headers(), body: JSON.stringify({ shopifyDomain, clientId, clientSecret, productIds }) });
+  return handleResponse(res);
+};
+export const getPriceHistory = async (productId) => {
+  const res = await apiFetch(`${API_URL}/export/price-history/${productId}`, { headers: headers() });
+  return handleResponse(res);
+};
+export const getPriceAlerts = async () => {
+  const res = await apiFetch(`${API_URL}/export/price-alerts`, { headers: headers() });
+  return handleResponse(res);
+};
+
 // ── HEALTH ──
 export const healthCheck = async () => {
   const res = await apiFetch(`${API_URL}/health`);

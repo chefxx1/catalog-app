@@ -259,6 +259,20 @@ CREATE TABLE IF NOT EXISTS activity_log (
   INDEX idx_activity_store (store_id, created_at DESC)
 );
 
+-- Price history (tracks price changes over time)
+CREATE TABLE IF NOT EXISTS price_history (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  store_id INT NOT NULL,
+  product_id INT NOT NULL,
+  source_name VARCHAR(100) NOT NULL,
+  price DECIMAL(10,2) NOT NULL,
+  currency VARCHAR(10) DEFAULT 'USD',
+  recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  INDEX idx_price_history (store_id, product_id, recorded_at DESC)
+);
+
 -- ============================================================
 -- PERFORMANCE INDEXES
 -- ============================================================

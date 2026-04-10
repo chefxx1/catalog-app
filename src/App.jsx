@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, setOnUnauthorized, getCatalog, getStats, getSourcePerformance, getSearchHistory, searchProduct, getProductById, saveForLater, resolveConflict, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice, generateAIContent, identifyProduct, searchProductImages, exportProduct, getExportHistory, downloadExport, googleSignIn, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, deleteAllData, deleteAccount, clearSearchHistory, forgotPassword, resetPassword, logout, getTeamUsers, updateUserRole, removeTeamUser, sendInvite, getInviteInfo, acceptInvite, getPendingInvites, revokeInvite, getCompleteness, getQualitySuggestions, bulkImport, getTags, createTag, deleteTag, setEntryTags, getSavedViews, createSavedView, deleteSavedView, getActivity } from "./api";
+import { signIn as apiSignIn, signUp as apiSignUp, getMe, setToken, setOnUnauthorized, getCatalog, getStats, getSourcePerformance, getSearchHistory, searchProduct, getProductById, saveForLater, resolveConflict, changePassword as apiChangePassword, updateProfile as apiUpdateProfile, getSettings as apiGetSettings, updateSettings as apiUpdateSettings, getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrandVoice, updateBrandVoice as apiUpdateBrandVoice, deleteBrandVoice as apiDeleteBrandVoice, generateAIContent, identifyProduct, searchProductImages, exportProduct, getExportHistory, downloadExport, googleSignIn, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, deleteAllData, deleteAccount, clearSearchHistory, forgotPassword, resetPassword, logout, getTeamUsers, updateUserRole, removeTeamUser, sendInvite, getInviteInfo, acceptInvite, getPendingInvites, revokeInvite, getCompleteness, getQualitySuggestions, bulkImport, getTags, createTag, deleteTag, setEntryTags, getSavedViews, createSavedView, deleteSavedView, getActivity, getGoogleMerchantFeed, shopifySync, getPriceAlerts } from "./api";
 import { Html5Qrcode } from "html5-qrcode";
 
 // Safe JSON parse — returns fallback on malformed data
@@ -70,17 +70,17 @@ const GlobalStyles = ({ dark }) => (
       --success: #10B981; --success-light: #34D399; --warning: #F59E0B; --warning-light: #FCD34D;
       --danger: #EF4444; --danger-light: #FCA5A5;
       ${dark ? `
-      --bg: #0F172A; --bg-sidebar: #080F1A; --surface: #1E293B; --surface-light: #334155;
-      --border: rgba(71,85,105,0.6); --border-light: rgba(71,85,105,0.3);
-      --text: #F8FAFC; --text-sec: #E2E8F0; --text-muted: #94A3B8; --text-dim: #64748B;
-      --input-bg: rgba(15,23,42,0.8); --hover-bg: rgba(30,41,59,0.5);
-      --glass: rgba(8,15,26,0.8); --card-shadow: none;
+      --bg: #09090B; --bg-sidebar: #09090B; --surface: #131316; --surface-light: #1C1C21;
+      --border: rgba(255,255,255,0.08); --border-light: rgba(255,255,255,0.05);
+      --text: #F5F5F5; --text-sec: #D4D4D4; --text-muted: #A3A3A3; --text-dim: #737373;
+      --input-bg: #0C0C0E; --hover-bg: rgba(255,255,255,0.04);
+      --glass: rgba(9,9,11,0.85); --card-shadow: none;
       ` : `
-      --bg: #F1F5F9; --bg-sidebar: #FFFFFF; --surface: #FFFFFF; --surface-light: #F1F5F9;
-      --border: rgba(203,213,225,0.8); --border-light: rgba(226,232,240,0.6);
-      --text: #0F172A; --text-sec: #1E293B; --text-muted: #64748B; --text-dim: #94A3B8;
-      --input-bg: #FFFFFF; --hover-bg: rgba(241,245,249,0.8);
-      --glass: rgba(255,255,255,0.9); --card-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      --bg: #F5F5F4; --bg-sidebar: #FFFFFF; --surface: #FFFFFF; --surface-light: #F5F5F4;
+      --border: rgba(0,0,0,0.12); --border-light: rgba(0,0,0,0.06);
+      --text: #171717; --text-sec: #262626; --text-muted: #525252; --text-dim: #737373;
+      --input-bg: #FFFFFF; --hover-bg: rgba(0,0,0,0.03);
+      --glass: rgba(255,255,255,0.95); --card-shadow: 0 1px 3px rgba(0,0,0,0.08);
       `}
     }
     body, #root { font-family: 'Sora', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; transition: background 0.35s ease, color 0.35s ease; }
@@ -210,8 +210,8 @@ const SkeletonCard = () => <div className="card" style={{padding:20}}><Skeleton 
 const CopyButton = ({ text, size=12 }) => { const [copied,setCopied]=useState(false); return <button className="copy-btn" title="Copy" onClick={(e)=>{e.stopPropagation();navigator.clipboard.writeText(text);setCopied(true);setTimeout(()=>setCopied(false),1500);}} style={{color:copied?"#10B981":"var(--text-dim)"}}><Icon name={copied?"check":"copy"} size={size}/></button>; };
 
 const ThemeToggle = ({ dark, onToggle }) => (
-  <div onClick={onToggle} style={{ position:"relative", width:48, height:26, borderRadius:13, cursor:"pointer", border:"1px solid var(--border)", background: dark ? "linear-gradient(135deg,#1E293B,#334155)" : "linear-gradient(135deg,#BFDBFE,#93C5FD)", transition:"all 0.35s ease", boxShadow: dark ? "inset 0 1px 4px rgba(0,0,0,0.3)" : "inset 0 1px 4px rgba(0,0,0,0.1)" }}>
-    <div style={{ position:"absolute", top:2, left: dark ? 24 : 2, width:20, height:20, borderRadius:"50%", background: dark ? "#475569" : "#FEF3C7", boxShadow: dark ? "0 0 6px rgba(251,191,36,0.3)" : "0 0 8px rgba(251,191,36,0.5)", transition:"all 0.35s cubic-bezier(0.68,-0.55,0.27,1.55)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+  <div onClick={onToggle} style={{ position:"relative", width:48, height:26, borderRadius:13, cursor:"pointer", border:"1px solid var(--border)", background: dark ? "linear-gradient(135deg,#131316,#1C1C21)" : "linear-gradient(135deg,#BFDBFE,#93C5FD)", transition:"all 0.35s ease", boxShadow: dark ? "inset 0 1px 4px rgba(0,0,0,0.5)" : "inset 0 1px 4px rgba(0,0,0,0.1)" }}>
+    <div style={{ position:"absolute", top:2, left: dark ? 24 : 2, width:20, height:20, borderRadius:"50%", background: dark ? "#2A2A2E" : "#FEF3C7", boxShadow: dark ? "0 0 6px rgba(251,191,36,0.3)" : "0 0 8px rgba(251,191,36,0.5)", transition:"all 0.35s cubic-bezier(0.68,-0.55,0.27,1.55)", display:"flex", alignItems:"center", justifyContent:"center" }}>
       <div style={{ transition:"transform 0.35s ease", transform: dark ? "rotate(-30deg)" : "rotate(0deg)" }}>
         <Icon name={dark ? "moon" : "sun"} size={12} color={dark ? "#94A3B8" : "#F59E0B"} />
       </div>
@@ -1107,7 +1107,7 @@ const ExportStep = ({ onComplete, productData, user }) => {
   const [showPreview, setShowPreview] = useState(false);
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
-  const platforms=[{name:"Shopify",color:"#96BF48"},{name:"WooCommerce",color:"#7F54B3"},{name:"Magento",color:"#EE672F"},{name:"BigCommerce",color:"#34313F"}];
+  const platforms=[{name:"Shopify",color:"#96BF48"},{name:"WooCommerce",color:"#7F54B3"},{name:"Magento",color:"#EE672F"},{name:"BigCommerce",color:"#34313F"},{name:"Google Shopping",color:"#4285F4"}];
   const product = productData?.product || {};
   const productName = product.name || "Product";
 
@@ -1117,7 +1117,14 @@ const ExportStep = ({ onComplete, productData, user }) => {
     setExporting(true); setExportError(null); setProgress(0); setShowPreview(false);
     const progressInterval = setInterval(() => setProgress(p => Math.min(p + 8, 90)), 100);
     try {
-      const result = await exportProduct(fmt, plat, product.barcode, productData);
+      let result;
+      if (plat === "Google Shopping") {
+        const r = await getGoogleMerchantFeed();
+        if (r.productCount === 0) { throw new Error("No published products to export"); }
+        result = { content: r.content, filename: r.filename, contentType: "application/xml" };
+      } else {
+        result = await exportProduct(fmt, plat, product.barcode, productData);
+      }
       setProgress(100);
       setExportedFile(result);
       setTimeout(() => { setExporting(false); setDone(true); toast.success("Export complete!"); }, 400);
@@ -1191,9 +1198,9 @@ const ExportStep = ({ onComplete, productData, user }) => {
       </div>
       <div>
         <div style={{fontSize:11,fontWeight:600,color:"var(--text-dim)",letterSpacing:"0.06em",marginBottom:10}}>PLATFORM</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{platforms.map(pl=><div key={pl.name} className={`export-card ${plat===pl.name?"selected":""}`} onClick={()=>{setPlat(pl.name);setShowPreview(false);}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{platforms.map(pl=><div key={pl.name} className={`export-card ${plat===pl.name?"selected":""}`} onClick={()=>{setPlat(pl.name); if(pl.name==="Google Shopping") setFmt("XML"); setShowPreview(false);}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:8,height:8,borderRadius:"50%",background:pl.color}}/><span style={{fontSize:13,fontWeight:600}}>{pl.name}</span></div>
-          <div style={{fontSize:11,color:"var(--text-dim)",marginTop:4}}>{fmt} optimized</div>
+          <div style={{fontSize:11,color:"var(--text-dim)",marginTop:4}}>{pl.name==="Google Shopping"?"Product feed XML":fmt+" optimized"}</div>
           {plat===pl.name&&<div style={{position:"absolute",top:10,right:10}}><Icon name="check" size={13} color="#10B981"/></div>}
         </div>)}</div>
       </div>
@@ -1806,8 +1813,8 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
           <div style={{marginBottom:24}}>
             <label style={{fontSize:12,fontWeight:600,color:"var(--text-dim)",marginBottom:8,display:"block",letterSpacing:"0.04em"}}>PLATFORM</label>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{[
-              {name:"Shopify",color:"#96BF48"},{name:"WooCommerce",color:"#7F54B3"},{name:"Magento",color:"#EE672F"},{name:"BigCommerce",color:"#34313F"}
-            ].map(p=><button key={p.name} onClick={()=>setBatchPlat(p.name)} style={{padding:12,borderRadius:8,border:`2px solid ${batchPlat===p.name?p.color:"var(--border)"}`,background:batchPlat===p.name?p.color+"18":"var(--hover-bg)",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:8}}>
+              {name:"Shopify",color:"#96BF48"},{name:"WooCommerce",color:"#7F54B3"},{name:"Magento",color:"#EE672F"},{name:"BigCommerce",color:"#34313F"},{name:"Google Shopping",color:"#4285F4"}
+            ].map(p=><button key={p.name} onClick={()=>{setBatchPlat(p.name); if(p.name==="Google Shopping") setBatchFmt("XML");}} style={{padding:12,borderRadius:8,border:`2px solid ${batchPlat===p.name?p.color:"var(--border)"}`,background:batchPlat===p.name?p.color+"18":"var(--hover-bg)",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:8}}>
               <div style={{width:10,height:10,borderRadius:"50%",background:p.color}}/>
               <span style={{fontSize:13,fontWeight:600,color:batchPlat===p.name?"var(--text)":"var(--text-muted)"}}>{p.name}</span>
             </button>)}</div>
@@ -1921,6 +1928,7 @@ const Analytics = () => {
   const [history, setHistory] = useState([]);
   const [completenessData, setCompletenessData] = useState(null);
   const [activity, setActivity] = useState([]);
+  const [priceAlerts, setPriceAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -1930,12 +1938,14 @@ const Analytics = () => {
       getSearchHistory().catch(() => ({ history: [] })),
       getCompleteness().catch(() => null),
       getActivity(15).catch(() => ({ activity: [] })),
-    ]).then(([s, src, h, comp, act]) => {
+      getPriceAlerts().catch(() => ({ alerts: [] })),
+    ]).then(([s, src, h, comp, act, pa]) => {
       setStats(s);
       setSources(src.sources || []);
       setHistory(h.history || []);
       setCompletenessData(comp);
       setActivity(act.activity || []);
+      setPriceAlerts(pa.alerts || []);
       setLoading(false);
     }).catch(() => { setLoading(false); toast.error("Failed to load analytics"); });
   }, []);
@@ -2087,6 +2097,37 @@ const Analytics = () => {
           </div>}
         </div>
       </div>
+
+      {/* Price Alerts */}
+      {priceAlerts.length > 0 && (
+        <div className="card" style={{padding:24}}>
+          <h3 style={{fontWeight:700,marginBottom:16}}>Price Alerts</h3>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {priceAlerts.map((a,i) => {
+              const diff = a.current_price - a.previous_price;
+              const isUp = diff > 0;
+              return (
+                <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:"var(--hover-bg)",borderRadius:8}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{fontSize:14,color:isUp?"#EF4444":"#10B981",fontWeight:700}}>{isUp?"↑":"↓"}</span>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:600}}>{a.name}</div>
+                      <div style={{fontSize:11,color:"var(--text-dim)"}}>{a.source_name}</div>
+                    </div>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span className="mono" style={{fontSize:12,color:"var(--text-dim)",textDecoration:"line-through"}}>${parseFloat(a.previous_price).toFixed(2)}</span>
+                      <span className="mono" style={{fontSize:13,fontWeight:700,color:isUp?"#EF4444":"#10B981"}}>${parseFloat(a.current_price).toFixed(2)}</span>
+                    </div>
+                    <span style={{fontSize:10,color:isUp?"#EF4444":"#10B981",fontWeight:600}}>{isUp?"+":""}${diff.toFixed(2)} ({isUp?"+":""}{((diff/a.previous_price)*100).toFixed(1)}%)</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -2691,7 +2732,7 @@ const AuthPage = ({ onLogin, dark }) => {
             { icon: "zap", text: "5 data sources", color: "#F59E0B" },
             { icon: "sparkle", text: "AI-powered", color: "#10B981" },
           ].map((f, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 12px", background: "rgba(30,41,59,0.6)", border: "1px solid rgba(71,85,105,0.3)", borderRadius: 20 }}>
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 12px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 20 }}>
               <Icon name={f.icon} size={11} color={f.color} />
               <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{f.text}</span>
             </div>
@@ -3152,6 +3193,43 @@ const Settings = ({ user, onUserUpdate }) => {
         </div>
       )}
 
+      {/* ── INTEGRATIONS ── */}
+      {isAdmin && (
+        <div className="card" style={{ padding: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+            <Icon name="upload" size={18} color="#F59E0B" />
+            <span style={{ fontWeight: 700, fontSize: 15 }}>Integrations</span>
+          </div>
+
+          {/* Shopify Sync */}
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Shopify Live Sync</div>
+            <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2, marginBottom: 10 }}>Push published products directly to your Shopify store</div>
+            <div style={{ display: "flex", gap: 10, marginBottom: 6 }}>
+              <input className="input" placeholder="your-store.myshopify.com" style={{ flex: 1, fontSize: 12, padding: "7px 10px" }} id="shopify-domain" />
+            </div>
+            <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+              <input className="input" placeholder="Client ID" style={{ flex: 1, fontSize: 12, padding: "7px 10px" }} id="shopify-client-id" />
+              <input className="input" type="password" placeholder="Client Secret" style={{ flex: 1, fontSize: 12, padding: "7px 10px" }} id="shopify-client-secret" />
+            </div>
+            <button className="btn btn-primary" style={{ fontSize: 11, padding: "6px 14px" }} onClick={async () => {
+              const domain = document.getElementById("shopify-domain").value.trim();
+              const clientId = document.getElementById("shopify-client-id").value.trim();
+              const clientSecret = document.getElementById("shopify-client-secret").value.trim();
+              if (!domain || !clientId || !clientSecret) { toast.warning("Enter Shopify domain, Client ID, and Client Secret"); return; }
+              try {
+                const r = await shopifySync(domain, clientId, clientSecret);
+                const parts = [`${r.synced} synced`];
+                if (r.skipped > 0) parts.push(`${r.skipped} already on Shopify`);
+                if (r.failed > 0) parts.push(`${r.failed} failed`);
+                if (r.synced > 0) toast.success(`Shopify sync: ${parts.join(", ")}`);
+                else toast.info(`Shopify sync: ${parts.join(", ")}`);
+              } catch (err) { toast.error("Shopify sync: " + err.message); }
+            }}><Icon name="upload" size={12} /> Sync to Shopify</button>
+          </div>
+        </div>
+      )}
+
       {/* ── DANGER ZONE ── */}
       {isAdmin && (
         <div style={{ padding: "20px 24px", borderRadius: 10, border: "1px solid rgba(239,68,68,0.25)", background: "rgba(239,68,68,0.04)" }}>
@@ -3426,7 +3504,7 @@ export class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:"#0F172A",color:"#E2E8F0",fontFamily:"'Sora',sans-serif"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:"#09090B",color:"#D4D4D4",fontFamily:"'Sora',sans-serif"}}>
           <div style={{textAlign:"center",maxWidth:440,padding:40}}>
             <div style={{width:56,height:56,borderRadius:14,background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:20}}>
               <Icon name="warning" size={28} color="#EF4444"/>

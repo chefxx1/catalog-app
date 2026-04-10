@@ -252,6 +252,18 @@ router.get('/search/:barcode', auth, async (req, res) => {
       );
     }
 
+    // Record price history for sources with prices
+    for (const src of allSources) {
+      if (src.price) {
+        try {
+          await db.query(
+            'INSERT INTO price_history (store_id, product_id, source_name, price, currency) VALUES (?, ?, ?, ?, ?)',
+            [req.user.store_id, productId, src.source_name, src.price, src.currency || 'USD']
+          );
+        } catch {}
+      }
+    }
+
     // Save all images (deduplicated)
     const seenUrls = new Set();
     let imgOrder = 0;

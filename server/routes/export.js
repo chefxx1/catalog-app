@@ -352,4 +352,260 @@ function generateXML(product, desc, images, tags, price, weight, platform) {
 </products>`;
 }
 
+// ── GOOGLE MERCHANT CENTER FEED ──
+router.get('/google-merchant-feed', auth, requireRole('Admin', 'Editor'), async (req, res) => {
+  try {
+    const [entries] = await db.query(
+      `SELECT ce.*, p.barcode, p.name, p.brand, p.description,
+              p.ai_description_professional, p.ai_category_suggestion, p.seo_tags
+       FROM catalog_entries ce
+       JOIN products p ON ce.product_id = p.id
+       WHERE ce.store_id = ? AND (ce.status = 'Published' OR ce.status = 'Exported')
+       ORDER BY ce.updated_at DESC`,
+      [req.user.store_id]
+    );
+
+    // Get images for each product
+    const productIds = entries.map(e => e.product_id);
+    let imageMap = {};
+    if (productIds.length > 0) {
+      const [images] = await db.query(
+        `SELECT product_id, image_url FROM product_images WHERE product_id IN (?) ORDER BY sort_order LIMIT 1000`,
+        [productIds]
+      );
+      images.forEach(img => {
+        if (!imageMap[img.product_id]) imageMap[img.product_id] = [];
+        imageMap[img.product_id].push(img.image_url);
+      });
+    }
+
+    // Get store info
+    const [stores] = await db.query('SELECT name FROM stores WHERE id = ?', [req.user.store_id]);
+    const storeName = stores[0]?.name || 'My Store';
+
+    const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    const items = entries.map(e => {
+      const title = esc(e.custom_name || e.name || 'Product');
+      const desc = esc((e.ai_description_professional || e.custom_description || e.description || '').slice(0, 5000));
+      const price = e.custom_price ? `${parseFloat(e.custom_price).toFixed(2)} USD` : '';
+      const category = esc(e.ai_category_suggestion || '');
+      const barcode = e.barcode || '';
+      const brand = esc(e.brand || '');
+      const imgs = imageMap[e.product_id] || [];
+      const mainImage = imgs[0] || '';
+      const additionalImages = imgs.slice(1, 10).map(url => `      <g:additional_image_link>${esc(url)}</g:additional_image_link>`).join('\n');
+
+      return `    <item>
+      <g:id>${e.product_id}</g:id>
+      <g:title>${title}</g:title>
+      <g:description>${desc}</g:description>
+      <g:link>https://store.example.com/product/${e.product_id}</g:link>
+      ${mainImage ? `<g:image_link>${esc(mainImage)}</g:image_link>` : ''}
+${additionalImages}
+      <g:availability>in_stock</g:availability>
+      ${price ? `<g:price>${price}</g:price>` : ''}
+      ${brand ? `<g:brand>${brand}</g:brand>` : ''}
+      ${barcode ? `<g:gtin>${esc(barcode)}</g:gtin>` : ''}
+      ${category ? `<g:google_product_category>${category}</g:google_product_category>` : ''}
+      <g:condition>new</g:condition>
+    </item>`;
+    }).join('\n');
+
+    const feed = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">
+  <channel>
+    <title>${esc(storeName)} Product Feed</title>
+    <link>https://store.example.com</link>
+    <description>Google Merchant Center product feed</description>
+${items}
+  </channel>
+</rss>`;
+
+    logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'exported', entity_type: 'google_merchant', details: { products: entries.length } });
+
+    res.json({ content: feed, filename: `google-merchant-feed-${Date.now()}.xml`, contentType: 'application/xml', productCount: entries.length });
+  } catch (err) {
+    console.error('Google Merchant feed error:', err.message);
+    res.status(500).json({ error: 'Feed generation failed: ' + err.message });
+  }
+});
+
+// ── SHOPIFY SYNC ──
+
+// Exchange client credentials for a short-lived access token
+async function getShopifyToken(shop, clientId, clientSecret) {
+  const response = await fetch(`https://${shop}.myshopify.com/admin/oauth/access_token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'client_credentials', client_id: clientId, client_secret: clientSecret }),
+  });
+  if (!response.ok) {
+    const err = await response.text().catch(() => '');
+    throw new Error(`Shopify auth failed (${response.status}): ${err}`);
+  }
+  const { access_token } = await response.json();
+  return access_token;
+}
+
+router.post('/shopify-sync', auth, requireRole('Admin', 'Editor'), async (req, res) => {
+  try {
+    const { shopifyDomain, clientId, clientSecret, productIds } = req.body;
+    if (!shopifyDomain || !clientId || !clientSecret) return res.status(400).json({ error: 'Shopify domain, Client ID, and Client Secret are required' });
+
+    // Extract shop name from domain
+    const shop = shopifyDomain.replace(/^https?:\/\//, '').replace(/\.myshopify\.com.*$/, '').replace(/\/$/, '');
+    // Get access token via client credentials
+    const accessToken = await getShopifyToken(shop, clientId, clientSecret);
+
+    // Fetch catalog entries to sync
+    let query = `SELECT ce.*, p.barcode, p.name, p.brand, p.description,
+                        p.ai_description_professional, p.ai_category_suggestion
+                 FROM catalog_entries ce
+                 JOIN products p ON ce.product_id = p.id
+                 WHERE ce.store_id = ?`;
+    const params = [req.user.store_id];
+
+    if (productIds && Array.isArray(productIds) && productIds.length > 0) {
+      query += ' AND ce.id IN (?)';
+      params.push(productIds);
+    } else {
+      query += " AND ce.status IN ('Review', 'Published', 'Exported')";
+    }
+
+    const [entries] = await db.query(query, params);
+
+    // Get images
+    const pids = entries.map(e => e.product_id);
+    let imageMap = {};
+    if (pids.length > 0) {
+      const [images] = await db.query('SELECT product_id, image_url FROM product_images WHERE product_id IN (?) ORDER BY sort_order', [pids]);
+      images.forEach(img => { if (!imageMap[img.product_id]) imageMap[img.product_id] = []; imageMap[img.product_id].push(img.image_url); });
+    }
+
+    const domain = `${shop}.myshopify.com`;
+    const results = { synced: 0, failed: 0, skipped: 0, errors: [] };
+
+    // Fetch existing Shopify products to detect duplicates (by title)
+    const existingTitles = new Set();
+    try {
+      let pageUrl = `https://${domain}/admin/api/2025-01/products.json?limit=250&fields=id,title`;
+      while (pageUrl) {
+        const listRes = await fetch(pageUrl, { headers: { 'X-Shopify-Access-Token': accessToken } });
+        if (!listRes.ok) break;
+        const { products } = await listRes.json();
+        products.forEach(p => existingTitles.add(p.title.toLowerCase().trim()));
+        // Check for pagination
+        const link = listRes.headers.get('link');
+        const next = link && link.match(/<([^>]+)>;\s*rel="next"/);
+        pageUrl = next ? next[1] : null;
+      }
+    } catch (e) { console.log('[Shopify Sync] Could not fetch existing products:', e.message); }
+
+    for (const entry of entries) {
+      try {
+        const title = entry.custom_name || entry.name;
+
+        // Skip duplicates
+        if (existingTitles.has(title.toLowerCase().trim())) {
+          results.skipped++;
+          continue;
+        }
+
+        const desc = entry.ai_description_professional || entry.custom_description || entry.description || '';
+        const imgs = (imageMap[entry.product_id] || []).map(url => ({ src: url }));
+        const price = entry.custom_price ? parseFloat(entry.custom_price).toFixed(2) : '0.00';
+
+        const productData = {
+          product: {
+            title,
+            body_html: `<p>${desc}</p>`,
+            vendor: entry.brand || '',
+            product_type: entry.ai_category_suggestion || '',
+            variants: [{ price, barcode: entry.barcode || '', inventory_management: 'shopify' }],
+            images: imgs.slice(0, 10),
+          }
+        };
+
+        const response = await fetch(`https://${domain}/admin/api/2025-01/products.json`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': accessToken },
+          body: JSON.stringify(productData),
+        });
+
+        if (response.ok) {
+          results.synced++;
+          existingTitles.add(title.toLowerCase().trim());
+          await db.query("UPDATE catalog_entries SET status = 'Exported', updated_at = NOW() WHERE id = ?", [entry.id]);
+        } else {
+          const err = await response.json().catch(() => ({}));
+          results.failed++;
+          results.errors.push({ product: title, error: err.errors ? JSON.stringify(err.errors) : `HTTP ${response.status}` });
+        }
+      } catch (err) {
+        results.failed++;
+        results.errors.push({ product: entry.custom_name || entry.name, error: err.message });
+      }
+    }
+
+    logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'exported', entity_type: 'shopify_sync', details: { synced: results.synced, failed: results.failed } });
+
+    res.json(results);
+  } catch (err) {
+    console.error('Shopify sync error:', err.message);
+    res.status(500).json({ error: 'Shopify sync failed: ' + err.message });
+  }
+});
+
+// ── PRICE MONITORING ──
+
+// Get price history for a product
+router.get('/price-history/:productId', auth, async (req, res) => {
+  try {
+    const [history] = await db.query(
+      `SELECT source_name, price, currency, recorded_at
+       FROM price_history
+       WHERE product_id = ? AND store_id = ?
+       ORDER BY recorded_at DESC LIMIT 50`,
+      [req.params.productId, req.user.store_id]
+    );
+    res.json({ history });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get price alerts — products where price changed since last check
+router.get('/price-alerts', auth, async (req, res) => {
+  try {
+    const [alerts] = await db.query(
+      `SELECT ph1.product_id, p.name, p.barcode, ph1.source_name,
+              ph1.price AS current_price, ph2.price AS previous_price,
+              ph1.currency, ph1.recorded_at
+       FROM price_history ph1
+       JOIN products p ON p.id = ph1.product_id
+       JOIN price_history ph2 ON ph2.product_id = ph1.product_id
+         AND ph2.source_name = ph1.source_name
+         AND ph2.recorded_at < ph1.recorded_at
+       WHERE ph1.store_id = ?
+         AND ph1.recorded_at = (
+           SELECT MAX(recorded_at) FROM price_history
+           WHERE product_id = ph1.product_id AND source_name = ph1.source_name AND store_id = ?
+         )
+         AND ph2.recorded_at = (
+           SELECT MAX(recorded_at) FROM price_history
+           WHERE product_id = ph1.product_id AND source_name = ph1.source_name AND store_id = ?
+             AND recorded_at < ph1.recorded_at
+         )
+         AND ph1.price != ph2.price
+       ORDER BY ph1.recorded_at DESC
+       LIMIT 20`,
+      [req.user.store_id, req.user.store_id, req.user.store_id]
+    );
+    res.json({ alerts });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;
