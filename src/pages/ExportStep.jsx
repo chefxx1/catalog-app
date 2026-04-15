@@ -98,9 +98,15 @@ const ExportStep = ({ onComplete, productData, user }) => {
         <div style={{fontSize:11,fontWeight:600,color:"var(--text-dim)",letterSpacing:"0.06em",marginBottom:10}}>FORMAT</div>
         <div style={{display:"flex",gap:8}}>{["CSV","JSON","XML"].map(f=>{
           const icons = {CSV:"download",JSON:"code",XML:"code"};
-          return <button key={f} onClick={()=>{setFmt(f);setShowPreview(false);}} style={{flex:1,padding:"12px 8px",borderRadius:10,border:`1.5px solid ${fmt===f?"#3B82F6":"var(--border)"}`,background:fmt===f?"rgba(37,99,235,0.08)":"transparent",color:fmt===f?"#60A5FA":"var(--text-muted)",cursor:"pointer",transition:"all 0.2s",display:"flex",flexDirection:"column",alignItems:"center",gap:6,fontFamily:"'Sora',sans-serif"}}>
-            <Icon name={icons[f]} size={16} color={fmt===f?"#3B82F6":"var(--text-dim)"}/>
-            <span className="mono" style={{fontSize:14,fontWeight:700}}>{f}</span>
+          const active = fmt===f;
+          return <button key={f} onClick={()=>{setFmt(f);setShowPreview(false);}} style={{flex:1,padding:"14px 8px",borderRadius:10,
+            border:active?"none":"1.5px solid var(--border)",
+            background:active?"linear-gradient(135deg,#2563EB,#7C3AED)":"transparent",
+            color:active?"white":"var(--text-muted)",
+            boxShadow:active?"0 0 16px rgba(124,58,237,0.25)":"none",
+            cursor:"pointer",transition:"all 0.2s",display:"flex",flexDirection:"column",alignItems:"center",gap:6,fontFamily:"'Sora',sans-serif"}}>
+            <Icon name={icons[f]} size={16} color={active?"white":"var(--text-dim)"}/>
+            <span className="mono" style={{fontSize:14,fontWeight:800}}>{f}</span>
           </button>;
         })}</div>
       </div>

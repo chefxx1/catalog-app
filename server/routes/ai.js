@@ -8,11 +8,35 @@ const { sanitize } = require('../middleware/validate');
 
 const router = express.Router();
 
-function getModel() {
+function getModel(modelName = 'gemini-2.5-flash') {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('GEMINI_API_KEY not configured');
   const genAI = new GoogleGenerativeAI(key);
-  return genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+  return genAI.getGenerativeModel({ model: modelName });
+}
+
+// Retry wrapper: tries primary model with exponential backoff, then falls back to secondary models on 503/overload
+async function generateWithRetry(generateFn, { maxRetries = 2 } = {}) {
+  const fallbackModels = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'];
+  let lastErr;
+  for (const modelName of fallbackModels) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const model = getModel(modelName);
+        return await generateFn(model);
+      } catch (err) {
+        lastErr = err;
+        const msg = err.message || '';
+        const isOverload = msg.includes('503') || msg.includes('overloaded') || msg.includes('high demand') || msg.includes('Service Unavailable');
+        if (!isOverload) throw err; // not a retryable error
+        if (attempt < maxRetries) {
+          await new Promise(r => setTimeout(r, (attempt + 1) * 800));
+        }
+      }
+    }
+    // Exhausted retries for this model — fall through to next fallback
+  }
+  throw lastErr || new Error('All model fallbacks failed');
 }
 
 // POST /api/ai/generate — generate descriptions, category, and SEO tags
@@ -23,8 +47,6 @@ router.post('/generate', auth, requireRole('Admin', 'Editor'), async (req, res) 
     if (!name) return res.status(400).json({ error: 'Product name is required' });
     const customInstructions = rawInstructions ? sanitize(rawInstructions).slice(0, 500) : null;
     const langInstruction = language ? `\n\nIMPORTANT: Generate ALL content (descriptions, category, SEO tags, meta title, meta description) in ${language}. The output must be entirely in ${language}, not English. Also translate the product specifications/attributes into ${language} and return them in a "translatedSpecs" field as a key-value object.` : '';
-
-    const model = getModel();
 
     // Build product context
     const productInfo = [
@@ -60,7 +82,7 @@ Return a JSON object with exactly this structure (no markdown, no code fences, j
   "translatedName": "Product name in target language"` : ''}
 }`;
 
-    const result = await model.generateContent(prompt);
+    const result = await generateWithRetry(m => m.generateContent(prompt));
     const text = result.response.text().trim();
 
     // Parse JSON from response (handle possible markdown fences)
@@ -434,6 +456,109 @@ Example: ["Sony WH-1000XM5 wireless headphones in black with premium ear cushion
   } catch (err) {
     console.error('AI alt-text error:', err.message);
     res.status(500).json({ error: 'Alt text generation failed: ' + err.message });
+  }
+});
+
+// Shared helper: call Gemini image model with an image + prompt, return data URL
+async function generateImageEdit(imageUrl, prompt) {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new Error('GEMINI_API_KEY not configured');
+
+  const imgResponse = await fetch(imageUrl);
+  if (!imgResponse.ok) throw new Error('Failed to fetch source image');
+  const imgBuffer = Buffer.from(await imgResponse.arrayBuffer());
+  const base64Image = imgBuffer.toString('base64');
+  const contentType = imgResponse.headers.get('content-type') || 'image/jpeg';
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${key}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { inlineData: { mimeType: contentType, data: base64Image } },
+            { text: prompt }
+          ]
+        }],
+        generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
+      })
+    }
+  );
+
+  const result = await response.json();
+  if (!response.ok) {
+    console.error('Gemini image edit error:', JSON.stringify(result));
+    throw new Error(result.error?.message || 'Image edit failed');
+  }
+
+  const imagePart = result.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+  if (!imagePart) throw new Error('AI did not return an image');
+
+  return `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`;
+}
+
+// POST /api/ai/recolor — recolor a product image
+router.post('/recolor', auth, requireRole('Admin', 'Editor'), async (req, res) => {
+  try {
+    const { imageUrl, color, productName } = req.body;
+    if (!imageUrl) return res.status(400).json({ error: 'Image URL is required' });
+    if (!color) return res.status(400).json({ error: 'Target color is required' });
+
+    const prompt = `Change the color of this ${productName || 'product'} to ${color}. Keep everything else exactly the same — same angle, same background, same product shape and details. Only change the color to ${color}.`;
+    const image = await generateImageEdit(imageUrl, prompt);
+    res.json({ image, color });
+  } catch (err) {
+    console.error('AI recolor error:', err.message);
+    res.status(500).json({ error: 'Image recoloring failed: ' + err.message });
+  }
+});
+
+// POST /api/ai/studio — AI studio: background removal, extra angles, lifestyle scenes
+router.post('/studio', auth, requireRole('Admin', 'Editor'), async (req, res) => {
+  try {
+    const { imageUrl, mode, productName } = req.body;
+    if (!imageUrl) return res.status(400).json({ error: 'Image URL is required' });
+    if (!mode) return res.status(400).json({ error: 'Mode is required' });
+
+    const name = productName || 'product';
+    let prompt;
+
+    switch (mode) {
+      case 'remove-bg':
+        prompt = `Remove the background from this ${name} image completely. Keep the product exactly as is — same colors, same angle, same lighting, same details. Replace the background with pure solid white (#FFFFFF). The output should be a clean, professional e-commerce catalog image with the ${name} centered on a pure white background.`;
+        break;
+      case 'angle-back':
+        prompt = `Generate a back view of this ${name}. Show what the product looks like from behind while keeping the exact same product — same colors, same materials, same design, same lighting and background. The output should look like a photo of the same product taken from the back.`;
+        break;
+      case 'angle-side':
+        prompt = `Generate a side/profile view of this ${name}. Show what the product looks like from the side while keeping the exact same product — same colors, same materials, same design, same lighting and background. The output should look like a photo of the same product taken from the side at a 90 degree angle.`;
+        break;
+      case 'angle-top':
+        prompt = `Generate a top-down view of this ${name}. Show what the product looks like from directly above while keeping the exact same product — same colors, same materials, same design. The output should look like a flat-lay photo of the same product taken from above.`;
+        break;
+      case 'angle-45':
+        prompt = `Generate a 3/4 angle view of this ${name}. Show the product rotated about 45 degrees while keeping the exact same product — same colors, same materials, same design, same lighting. The output should look like a photo of the same product at a slight angle showing more depth and dimension.`;
+        break;
+      case 'lifestyle':
+        prompt = `Place this ${name} in a realistic lifestyle scene. Keep the product itself exactly the same — same colors, design, materials, and details. Show it in a natural context where someone would actually use it (e.g. on a wooden kitchen counter for food items, on a modern desk for electronics, in a styled living room for furniture, worn by a person for clothing). Make it look like a professional lifestyle marketing photo. The product should be the clear focal point.`;
+        break;
+      case 'studio':
+        prompt = `Place this ${name} in a clean professional product studio setting. Keep the product exactly the same — same colors, design, materials, shape, and details. Put it on a clean seamless background (soft gradient from white to light gray) with professional studio lighting, subtle shadows, and a premium commercial look. The output should look like a high-end e-commerce product photo.`;
+        break;
+      case 'enhance':
+        prompt = `Enhance and upscale this ${name} image. Sharpen details, improve clarity, fix any blurriness or noise, and improve colors and lighting. Keep the product and background exactly the same — do not change anything about the composition, angle, or subject. Just improve the visual quality as if it were shot with a better camera.`;
+        break;
+      default:
+        return res.status(400).json({ error: 'Invalid mode' });
+    }
+
+    const image = await generateImageEdit(imageUrl, prompt);
+    res.json({ image, mode });
+  } catch (err) {
+    console.error('AI studio error:', err.message);
+    res.status(500).json({ error: 'AI studio failed: ' + err.message });
   }
 });
 

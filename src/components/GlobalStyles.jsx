@@ -47,11 +47,21 @@ const GlobalStyles = ({ dark }) => (
     .animate-slideUp { animation: slideUp 0.4s ease-out both; }
     .animate-pulse { animation: pulse 2s infinite; }
     .animate-spin { animation: spin 1s linear infinite; }
+    .spinner-gradient { width: 32px; height: 32px; border-radius: 50%; position: relative; }
+    .spinner-gradient::before { content: ''; position: absolute; inset: 0; border-radius: 50%; padding: 2.5px; background: conic-gradient(from 0deg, transparent, #3B82F6, #8B5CF6, #10B981, transparent); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: spin 1s linear infinite; }
+    .spinner-gradient.sm { width: 18px; height: 18px; }
+    .spinner-gradient.sm::before { padding: 2px; }
+    .spinner-gradient.lg { width: 48px; height: 48px; }
+    .spinner-gradient.lg::before { padding: 3px; }
     .animate-float { animation: float 3s ease-in-out infinite; }
     .animate-glow { animation: glow 2s ease-in-out infinite; }
     .animate-scaleIn { animation: scaleIn 0.35s ease-out both; }
     .animate-theme { animation: themeSwitch 0.4s ease-out; }
     tr:hover .row-check { opacity:1 !important; }
+    .catalog-row { transition:background 0.15s; }
+    .catalog-row > td:first-child { box-shadow:inset 3px 0 0 transparent; transition:box-shadow 0.2s; }
+    .catalog-row:hover > td:first-child,
+    .catalog-row.selected > td:first-child { box-shadow:inset 3px 0 0 #8B5CF6; }
 
     .skeleton { background: linear-gradient(90deg, var(--surface) 25%, var(--surface-light) 50%, var(--surface) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 4px; display:block; }
     .skeleton-text { height:14px; margin-bottom:6px; }

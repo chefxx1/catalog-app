@@ -39,13 +39,13 @@ const Analytics = () => {
       {!loading && stats && (
         <div style={{display:"flex",gap:24,padding:"14px 0",borderBottom:"1px solid var(--border-light)",flexWrap:"wrap"}}>
           {[
-            {l:"Searches",v:stats?.total_searches||0,color:"#3B82F6"},
-            {l:"Cache Hit",v:`${stats?.cache_hit_rate||0}%`,color:"#10B981"},
-            {l:"Avg Response",v:`${stats?.avg_response_time||0}ms`,color:"#8B5CF6"},
-            {l:"Products",v:stats?.total_products||0,color:"#F59E0B"},
+            {l:"Searches",v:stats?.total_searches||0,grad:"linear-gradient(135deg,#3B82F6,#8B5CF6)"},
+            {l:"Cache Hit",v:`${stats?.cache_hit_rate||0}%`,grad:"linear-gradient(135deg,#10B981,#3B82F6)"},
+            {l:"Avg Response",v:`${stats?.avg_response_time||0}ms`,grad:"linear-gradient(135deg,#8B5CF6,#EC4899)"},
+            {l:"Products",v:stats?.total_products||0,grad:"linear-gradient(135deg,#F59E0B,#EF4444)"},
           ].map((s,idx)=>(
             <div key={idx} style={{display:"flex",alignItems:"baseline",gap:8}}>
-              <span className="mono" style={{fontSize:20,fontWeight:800,color:s.color}}>{s.v}</span>
+              <span className="mono" style={{fontSize:20,fontWeight:800,background:s.grad,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>{s.v}</span>
               <span style={{fontSize:11,color:"var(--text-dim)",fontWeight:500}}>{s.l}</span>
             </div>
           ))}
@@ -109,11 +109,17 @@ const Analytics = () => {
           <h3 style={{fontWeight:700,marginBottom:20}}>Data Source Performance</h3>
           {loading ? <div style={{textAlign:"center",padding:20}}><LoadingDots/></div> :
            sources.length === 0 ? <div style={{textAlign:"center",padding:30}}><div style={{width:48,height:48,borderRadius:12,background:"rgba(37,99,235,0.08)",border:"1px solid rgba(37,99,235,0.15)",display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:10}}><Icon name="chart" size={22} color="var(--primary-light)"/></div><p style={{fontSize:13,color:"var(--text-dim)"}}>No source data yet</p></div> :
-           sources.map((s,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
-            <div style={{width:120,fontSize:13,fontWeight:600}}>{s.source_name}</div>
-            <div style={{flex:1}}><div className="progress-bar" style={{height:8}}><div className="progress-fill" style={{width:`${Math.round(s.avg_trust||0)}%`,background:sourceColors[s.source_name]||"#3B82F6"}}/></div></div>
-            <span className="mono" style={{width:44,textAlign:"right",fontSize:13,color:sourceColors[s.source_name]||"#3B82F6"}}>{Math.round(s.avg_trust||0)}%</span>
-          </div>)}
+           sources.map((s,i)=>{
+            const baseColor = sourceColors[s.source_name]||"#3B82F6";
+            return <div key={i} style={{display:"flex",alignItems:"center",gap:14,marginBottom:14}}>
+              <div style={{width:120,fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:8}}>
+                <div style={{width:6,height:6,borderRadius:"50%",background:baseColor,boxShadow:`0 0 8px ${baseColor}80`}}/>
+                {s.source_name}
+              </div>
+              <div style={{flex:1}}><div className="progress-bar" style={{height:8,background:"var(--hover-bg)"}}><div className="progress-fill" style={{width:`${Math.round(s.avg_trust||0)}%`,background:`linear-gradient(90deg, ${baseColor}, ${baseColor}cc)`,boxShadow:`0 0 10px ${baseColor}60`}}/></div></div>
+              <span className="mono" style={{width:44,textAlign:"right",fontSize:13,fontWeight:700,color:baseColor}}>{Math.round(s.avg_trust||0)}%</span>
+            </div>;
+          })}
         </div>
 
         <div className="card" style={{padding:24}}>

@@ -169,7 +169,18 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
       return res.status(400).json({ error: 'Unsupported format' });
     }
 
-    // Create catalog entry if not already exists
+    // Sanitize price — strip $, commas, currency symbols, whitespace
+    const cleanPrice = (() => {
+      if (!price) return null;
+      const cleaned = String(price).replace(/[^0-9.]/g, '').replace(/\.(?=.*\.)/g, '');
+      const num = parseFloat(cleaned);
+      return isNaN(num) ? null : num;
+    })();
+
+    // Clamp name length to fit VARCHAR(255)
+    const safeName = (product.name || 'Untitled').slice(0, 255);
+
+    // Create or update catalog entry — failures are surfaced, not swallowed
     try {
       const [existingEntry] = await db.query(
         'SELECT id FROM catalog_entries WHERE store_id = ? AND product_id = ?',
@@ -179,7 +190,7 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
         await db.query(
           `INSERT INTO catalog_entries (store_id, user_id, product_id, status, custom_name, custom_description, custom_price)
            VALUES (?, ?, ?, 'Exported', ?, ?, ?)`,
-          [req.user.store_id, req.user.id, product.id, product.name, desc.slice(0, 500), price || null]
+          [req.user.store_id, req.user.id, product.id, safeName, desc.slice(0, 500), cleanPrice]
         );
       } else {
         await db.query(
@@ -188,7 +199,8 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
         );
       }
     } catch (catErr) {
-      console.error('Failed to save catalog entry:', catErr.message);
+      console.error('Failed to save catalog entry:', catErr.message, { price, cleanPrice, safeName });
+      return res.status(500).json({ error: 'Export saved to file but failed to add to catalog: ' + catErr.message });
     }
 
     // Save to export history

@@ -101,11 +101,50 @@ const SearchStep = ({ onSearch }) => {
   );
 
   return (
-    <div className="animate-fadeIn hero-bg" style={{display:"flex",flexDirection:"column",alignItems:"center",gap:24,padding:"48px 20px 40px"}}>
-      <div style={{textAlign:"center",maxWidth:560}}>
-        <div className="badge badge-ai" style={{marginBottom:16}}><Icon name="sparkle" size={11}/> AI-Powered Catalog Intelligence</div>
-        <h1 style={{fontSize:36,fontWeight:800,marginBottom:10,lineHeight:1.15,letterSpacing:"-0.02em"}}>Scan once, catalog{" "}<span style={{background:"linear-gradient(135deg,#3B82F6,#10B981)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>everywhere</span></h1>
-        <p style={{color:"var(--text-muted)",fontSize:15,lineHeight:1.6}}>Enter a barcode or upload a product image. We'll instantly query 5 data sources and generate AI-optimized catalog content.</p>
+    <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",alignItems:"center",gap:28,padding:"32px 20px 40px"}}>
+      {/* Hero */}
+      <div style={{textAlign:"center",maxWidth:560,display:"flex",flexDirection:"column",alignItems:"center",gap:14}}>
+        {/* Logo-style icon */}
+        <div style={{position:"relative",width:52,height:52}}>
+          <div style={{position:"absolute",inset:-4,borderRadius:16,background:"conic-gradient(from 0deg, #2563EB, #7C3AED, #10B981, #2563EB)",opacity:0.35,filter:"blur(10px)",animation:"logoSpin 6s linear infinite"}}/>
+          <div style={{position:"relative",width:52,height:52,borderRadius:14,background:"var(--surface)",border:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L2 7v10l10 5 10-5V7L12 2z" stroke="url(#searchLogoGrad)" strokeWidth="1.5" strokeLinejoin="round"/>
+              <path d="M12 22V12" stroke="url(#searchLogoGrad)" strokeWidth="1.5"/>
+              <path d="M2 7l10 5 10-5" stroke="url(#searchLogoGrad)" strokeWidth="1.5"/>
+              <circle cx="12" cy="12" r="2.2" fill="url(#searchLogoGrad)"/>
+              <defs>
+                <linearGradient id="searchLogoGrad" x1="2" y1="2" x2="22" y2="22">
+                  <stop offset="0%" stopColor="#3B82F6"/>
+                  <stop offset="50%" stopColor="#8B5CF6"/>
+                  <stop offset="100%" stopColor="#10B981"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+        </div>
+
+        <div>
+          <h1 style={{fontSize:30,fontWeight:900,marginBottom:6,lineHeight:1.1,letterSpacing:"-0.03em"}}>
+            New <span style={{background:"linear-gradient(135deg,#3B82F6,#8B5CF6,#10B981)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Catalog</span> Entry
+          </h1>
+          <p style={{color:"var(--text-dim)",fontSize:13,fontWeight:500}}>Scan a barcode or drop an image — we'll pull the rest</p>
+        </div>
+
+        {/* Real data sources — not fluff */}
+        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",justifyContent:"center",marginTop:2}}>
+          {[
+            {name:"Open Food Facts",color:"#10B981"},
+            {name:"UPC Database",color:"#6366F1"},
+            {name:"Gemini Vision",color:"#8B5CF6"},
+            {name:"Google Images",color:"#F59E0B"},
+          ].map(s=>(
+            <div key={s.name} style={{display:"inline-flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:20,background:"var(--hover-bg)",border:"1px solid var(--border-light)"}}>
+              <div style={{width:5,height:5,borderRadius:"50%",background:s.color}}/>
+              <span style={{fontSize:10,fontWeight:600,color:"var(--text-dim)",letterSpacing:"0.02em"}}>{s.name}</span>
+            </div>
+          ))}
+        </div>
       </div>
       {notFound&&<div className="card" style={{maxWidth:560,width:"100%",textAlign:"center",padding:24,border:"1px solid rgba(245,158,11,0.3)"}}><Icon name="search" size={28} color="#F59E0B"/><h3 style={{marginTop:10,fontWeight:700}}>Product Not Found</h3><p style={{color:"var(--text-muted)",marginTop:6,fontSize:13}}>No product data found for barcode <span className="mono" style={{color:"var(--text)"}}>{upc}</span>. Try a different barcode.</p></div>}
       {error&&<div className="card" style={{maxWidth:560,width:"100%",textAlign:"center",padding:24,border:"1px solid rgba(239,68,68,0.3)"}}><Icon name="warning" size={28} color="#EF4444"/><h3 style={{marginTop:10,fontWeight:700,color:"#EF4444"}}>Search Error</h3><p style={{color:"var(--text-muted)",marginTop:6,fontSize:13}}>{error}</p></div>}

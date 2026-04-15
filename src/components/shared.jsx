@@ -80,20 +80,32 @@ export const StepIndicator = ({ currentStep }) => {
   ];
   return (
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"16px 0"}}>
-      <div style={{display:"flex",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:4,gap:4}}>
+      <div style={{display:"flex",alignItems:"center",gap:4}}>
         {steps.map((step,i)=>{
           const isActive = i === currentStep;
           const isDone = i < currentStep;
           return (
-            <div key={i} style={{
-              display:"flex",alignItems:"center",gap:7,padding:"8px 20px",borderRadius:9,
-              background:isActive?"var(--primary)":isDone?"rgba(16,185,129,0.12)":"transparent",
-              transition:"all 0.3s ease",cursor:"default",minWidth:100,justifyContent:"center"
-            }}>
-              {isDone && <Icon name="check" size={13} color="#10B981"/>}
-              {!isDone && <Icon name={step.icon} size={13} color={isActive?"white":"var(--text-dim)"}/>}
-              <span style={{fontSize:12,fontWeight:600,color:isActive?"white":isDone?"#10B981":"var(--text-dim)",letterSpacing:"0.02em"}}>{step.label}</span>
-            </div>
+            <React.Fragment key={i}>
+              <div style={{
+                display:"flex",alignItems:"center",gap:8,padding:"9px 20px",borderRadius:999,
+                background:isActive?"linear-gradient(135deg,#2563EB,#7C3AED)":isDone?"rgba(16,185,129,0.1)":"var(--hover-bg)",
+                border:isActive?"none":isDone?"1px solid rgba(16,185,129,0.25)":"1px solid var(--border-light)",
+                boxShadow:isActive?"0 0 20px rgba(124,58,237,0.25)":"none",
+                transition:"all 0.3s ease",cursor:"default",minWidth:110,justifyContent:"center"
+              }}>
+                <div style={{width:18,height:18,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",
+                  background:isActive?"rgba(255,255,255,0.2)":isDone?"#10B981":"transparent",
+                  border:!isActive && !isDone ? "1.5px solid var(--text-dim)" : "none"}}>
+                  {isDone ? <Icon name="check" size={11} color="white"/> :
+                   isActive ? <Icon name={step.icon} size={11} color="white"/> :
+                   <span style={{fontSize:10,fontWeight:800,color:"var(--text-dim)"}}>{i+1}</span>}
+                </div>
+                <span style={{fontSize:12,fontWeight:700,color:isActive?"white":isDone?"#10B981":"var(--text-dim)",letterSpacing:"0.01em"}}>{step.label}</span>
+              </div>
+              {i < steps.length-1 && (
+                <div style={{width:24,height:2,borderRadius:2,background:i<currentStep?"linear-gradient(90deg,#10B981,rgba(124,58,237,0.4))":"var(--border-light)",transition:"all 0.3s"}}/>
+              )}
+            </React.Fragment>
           );
         })}
       </div>
@@ -181,21 +193,27 @@ export const TagInput = ({ tags, onTagsChange, placeholder }) => {
   );
 };
 
-export const ConfirmDialog = ({ title, message, confirmLabel, confirmColor, onConfirm, onCancel }) => (
-  <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={onCancel}>
-    <div className="card animate-scaleIn" style={{ padding: 28, maxWidth: 420, width: "100%" }} onClick={e => e.stopPropagation()}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-        <Icon name="warning" size={20} color={confirmColor || "#EF4444"} />
-        <h3 style={{ fontWeight: 700, fontSize: 16 }}>{title}</h3>
-      </div>
-      <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6, marginBottom: 20 }}>{message}</p>
-      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-        <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
-        <button className="btn" style={{ background: confirmColor || "#EF4444", color: "white" }} onClick={onConfirm}>{confirmLabel || "Confirm"}</button>
+export const ConfirmDialog = ({ title, message, confirmLabel, confirmColor, onConfirm, onCancel }) => {
+  const color = confirmColor || "#EF4444";
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(8px)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={onCancel}>
+      <div className="animate-scaleIn" style={{ padding: 28, maxWidth: 440, width: "100%", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, boxShadow: "0 20px 80px rgba(0,0,0,0.4)", position: "relative", overflow: "hidden" }} onClick={e => e.stopPropagation()}>
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${color}, ${color}88)` }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: `${color}15`, border: `1px solid ${color}30`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Icon name="warning" size={18} color={color} />
+          </div>
+          <h3 style={{ fontWeight: 800, fontSize: 16, letterSpacing: "-0.01em" }}>{title}</h3>
+        </div>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6, marginBottom: 22 }}>{message}</p>
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+          <button className="btn" style={{ background: color, color: "white", boxShadow: `0 0 20px ${color}40` }} onClick={onConfirm}>{confirmLabel || "Confirm"}</button>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 export const InputField = ({ label, type = "text", placeholder, value, onChange, onKeyDown, icon, rightEl, hint }) => (
   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
