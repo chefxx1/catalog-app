@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Icon, CopyButton, ConfidenceScore, safeJsonParse } from "../components/shared";
 import { toast } from "../components/Toast";
-import { resolveConflict, saveForLater, generateAIContent, getBrandVoices as apiGetBrandVoices } from "../api";
+import { resolveConflict, saveForLater, generateAIContent, getBrandVoices as apiGetBrandVoices, searchProductImages } from "../api";
 
 // ============================================================
 // REVIEW STEP — AI content review + export
@@ -105,6 +105,19 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
   const [translatedSpecs, setTranslatedSpecs] = useState(null);
   const [translatedName, setTranslatedName] = useState(null);
 
+  // Image Library modal
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [librarySearch, setLibrarySearch] = useState("");
+  const [libraryFilter, setLibraryFilter] = useState(null);
+  const [libraryResults, setLibraryResults] = useState([]);
+  const [librarySelected, setLibrarySelected] = useState(new Set());
+  const [librarySearching, setLibrarySearching] = useState(false);
+  const [pasteUrlMode, setPasteUrlMode] = useState(false);
+  const [pasteUrlValue, setPasteUrlValue] = useState("");
+  const [libraryPreview, setLibraryPreview] = useState(null);
+  const libraryCache = useRef({}); // { query: results[] }
+  const filterDebounce = useRef(null);
+
   // Lightbox keyboard controls
   useEffect(() => {
     if (lightbox === null) return;
@@ -171,13 +184,122 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
     if (!hasRealAI) { handleRegenerate(); }
   }, []);
 
+  // ── IMAGE LIBRARY ──
+  const openLibrary = () => {
+    const base = `${p.brand && p.brand !== "Unknown" ? p.brand + " " : ""}${p.name}`.trim();
+    setLibrarySearch(base);
+    setLibraryFilter(null);
+    setLibraryResults([]);
+    setLibrarySelected(new Set());
+    setPasteUrlMode(false);
+    setPasteUrlValue("");
+    setLibraryPreview(null);
+    setLibraryOpen(true);
+    // No auto-search — user clicks filter or Search
+  };
+
+  const runLibrarySearch = async (query) => {
+    if (!query || !query.trim()) return;
+    const key = query.trim().toLowerCase();
+
+    // Cache hit — skip API call
+    if (libraryCache.current[key]) {
+      setLibraryResults(libraryCache.current[key]);
+      return;
+    }
+
+    setLibrarySearching(true);
+    setLibraryResults([]);
+    try {
+      const results = await searchProductImages(query.trim());
+      const ranked = (results || [])
+        .filter(r => (r.width || 0) * (r.height || 0) > 0 || !r.width)
+        .sort((a, b) => {
+          const aPx = (a.width || 0) * (a.height || 0);
+          const bPx = (b.width || 0) * (b.height || 0);
+          return bPx - aPx;
+        });
+      libraryCache.current[key] = ranked;
+      setLibraryResults(ranked);
+    } catch (err) {
+      toast.error("Search failed: " + err.message);
+    }
+    setLibrarySearching(false);
+  };
+
+  const applyFilter = (filterKey) => {
+    const base = `${p.brand && p.brand !== "Unknown" ? p.brand + " " : ""}${p.name}`.trim();
+    const filterQueries = {
+      front: base,
+      back: `${base} back label`,
+      side: `${base} side view`,
+      top: `${base} top view`,
+      label: `${base} nutrition label ingredients`,
+      lifestyle: `${base} lifestyle in use`,
+      closeup: `${base} close up detail`,
+      packaging: `${base} packaging box`,
+      multipack: `${base} multipack bulk`,
+    };
+    const newQuery = filterQueries[filterKey] || base;
+    setLibraryFilter(filterKey);
+    setLibrarySearch(newQuery);
+    // Debounce — cancel pending search and schedule new one 400ms out
+    if (filterDebounce.current) clearTimeout(filterDebounce.current);
+    filterDebounce.current = setTimeout(() => runLibrarySearch(newQuery), 400);
+  };
+
+  const toggleLibrarySelect = (url) => {
+    setLibrarySelected(prev => {
+      const n = new Set(prev);
+      if (n.has(url)) n.delete(url);
+      else n.add(url);
+      return n;
+    });
+  };
+
+  const addFromLibrary = () => {
+    if (librarySelected.size === 0) return toast.warning("Select at least one image");
+    const selectedResults = libraryResults.filter(r => librarySelected.has(r.url));
+    const newImgs = selectedResults.map((img, i) => ({
+      id: `lib-${Date.now()}-${i}`,
+      url: img.url,
+      qualityScore: Math.min(10, Math.round(((img.width || 500) * (img.height || 500)) / 100000)),
+      selected: false,
+      label: libraryFilter || "Gallery",
+      source: img.source,
+      width: img.width,
+      height: img.height,
+    }));
+    setImages(prev => [...prev, ...newImgs]);
+    toast.success(`Added ${newImgs.length} image${newImgs.length !== 1 ? "s" : ""}`);
+    setLibraryOpen(false);
+  };
+
+  const addPastedUrl = () => {
+    const url = pasteUrlValue.trim();
+    if (!url) return;
+    if (!url.match(/^https?:\/\//)) return toast.error("URL must start with http:// or https://");
+    const newImg = {
+      id: `paste-${Date.now()}`,
+      url,
+      qualityScore: 7,
+      selected: false,
+      label: "Custom",
+    };
+    setImages(prev => [...prev, newImg]);
+    toast.success("Image added from URL");
+    setPasteUrlValue("");
+    setPasteUrlMode(false);
+    setLibraryOpen(false);
+  };
+
   return (
     <div className="animate-fadeIn" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,height:"calc(100vh - 200px)",minHeight:500}}>
       {/* LEFT */}
       <div style={{display:"flex",flexDirection:"column",overflow:"hidden",background:"var(--hover-bg)",borderRadius:12,border:"1px solid var(--border)"}}>
         <div style={{display:"flex",padding:"8px 12px",borderBottom:"1px solid var(--border)"}}>
           <div style={{display:"flex",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:8,padding:3,gap:3}}>
-            {tabs.map(t=><button key={t} onClick={()=>setActiveTab(t)} style={{background:activeTab===t?"var(--primary)":"transparent",border:"none",cursor:"pointer",padding:"6px 14px",fontSize:11,fontWeight:600,fontFamily:"'Sora',sans-serif",color:activeTab===t?"white":"var(--text-dim)",borderRadius:6,textTransform:"capitalize",letterSpacing:"0.03em",transition:"all 0.2s"}}>{t}</button>)}
+            {tabs.map(t=><button key={t} onClick={()=>setActiveTab(t)} style={{background:activeTab===t?"linear-gradient(135deg,#2563EB,#7C3AED)":"transparent",border:"none",cursor:"pointer",padding:"6px 14px",fontSize:11,fontWeight:700,fontFamily:"'Sora',sans-serif",color:activeTab===t?"white":"var(--text-dim)",borderRadius:6,textTransform:"capitalize",letterSpacing:"0.03em",transition:"all 0.2s",boxShadow:activeTab===t?"0 0 12px rgba(124,58,237,0.25)":"none"}}>{t}</button>)}
           </div>
         </div>
         <div className="split-panel" style={{padding:16,display:"flex",flexDirection:"column",gap:12}}>
@@ -253,7 +375,15 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
                 </div>)}
               </div>
               <div style={{fontSize:11,color:"var(--text-dim)",textAlign:"center"}}>{images.length} image{images.length!==1?"s":""} · Click thumbnails to browse · Click main image to zoom</div>
+              <button className="btn btn-primary" style={{justifyContent:"center",marginTop:4,padding:"10px 0",fontSize:12,fontWeight:700}} onClick={openLibrary}>
+                <Icon name="sparkle" size={13}/> Browse More Images
+              </button>
             </>}
+            {images.length===0&&(
+              <button className="btn btn-primary" style={{justifyContent:"center",padding:"10px 0",fontSize:12,fontWeight:700}} onClick={openLibrary}>
+                <Icon name="sparkle" size={13}/> Browse Image Library
+              </button>
+            )}
           </div>}
           {activeTab==="seo"&&<div style={{display:"flex",flexDirection:"column",gap:12}}>
             <div><div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:8}}>AI-GENERATED SEO TAGS</div><div style={{display:"flex",flexWrap:"wrap",gap:6}}>{seoTags.map((t,i)=><span key={i} style={{padding:"4px 12px",background:"rgba(37,99,235,0.15)",border:"1px solid rgba(37,99,235,0.3)",borderRadius:20,fontSize:12,color:"#60A5FA"}}>#{t}</span>)}</div></div>
@@ -393,6 +523,163 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
         </div>
         <div style={{color:"rgba(255,255,255,0.5)",fontSize:12,paddingBottom:12}}>{lightbox+1} / {images.length} · Click image to zoom · Scroll through with arrows</div>
       </div>}
+
+      {/* ═══════════ IMAGE LIBRARY MODAL ═══════════ */}
+      {libraryOpen && (
+        <div style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(8px)",display:"flex",alignItems:"center",justifyContent:"center",padding:"24px"}} onClick={() => setLibraryOpen(false)}>
+          <div className="animate-scaleIn" onClick={e => e.stopPropagation()} style={{background:"var(--bg)",border:"1px solid var(--border)",borderRadius:16,width:"100%",maxWidth:1200,height:"90vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 20px 80px rgba(0,0,0,0.5)"}}>
+            {/* HEADER */}
+            <div style={{padding:"18px 24px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <div style={{width:36,height:36,borderRadius:10,background:"linear-gradient(135deg,#3B82F6,#8B5CF6,#10B981)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <Icon name="sparkle" size={17} color="white"/>
+                </div>
+                <div>
+                  <h3 style={{fontSize:16,fontWeight:800,letterSpacing:"-0.02em"}}>Image Library</h3>
+                  <p style={{fontSize:11,color:"var(--text-dim)"}}>Browse and pick images for your product</p>
+                </div>
+              </div>
+              <button className="btn btn-ghost" style={{padding:8,border:"none"}} onClick={() => setLibraryOpen(false)}><Icon name="x" size={16}/></button>
+            </div>
+
+            {/* SEARCH BAR */}
+            <div style={{padding:"16px 24px",borderBottom:"1px solid var(--border-light)",display:"flex",flexDirection:"column",gap:12}}>
+              <div style={{display:"flex",gap:8}}>
+                <div style={{flex:1,position:"relative"}}>
+                  <div style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:"var(--text-dim)"}}><Icon name="search" size={14}/></div>
+                  <input className="input" value={librarySearch} onChange={e => setLibrarySearch(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && runLibrarySearch(librarySearch)}
+                    placeholder="Search for product images..."
+                    style={{paddingLeft:38,fontSize:13,padding:"10px 14px 10px 38px"}}/>
+                </div>
+                <button className="btn btn-primary" style={{padding:"10px 20px"}} onClick={() => runLibrarySearch(librarySearch)} disabled={librarySearching}>
+                  <Icon name="search" size={13}/> Search
+                </button>
+                <button className="btn btn-ghost" style={{padding:"10px 16px"}} onClick={() => setPasteUrlMode(p => !p)}>
+                  <Icon name="plus" size={13}/> Paste URL
+                </button>
+              </div>
+
+              {/* Filter chips */}
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {[
+                  {k:"front",    l:"Front"},
+                  {k:"back",     l:"Back"},
+                  {k:"side",     l:"Side"},
+                  {k:"top",      l:"Top View"},
+                  {k:"label",    l:"Label"},
+                  {k:"lifestyle",l:"Lifestyle"},
+                  {k:"closeup",  l:"Close-up"},
+                  {k:"packaging",l:"Packaging"},
+                  {k:"multipack",l:"Multi-Pack"},
+                ].map(f => {
+                  const active = libraryFilter === f.k;
+                  return (
+                    <button key={f.k} onClick={() => applyFilter(f.k)} disabled={librarySearching}
+                      style={{fontSize:11,padding:"5px 12px",borderRadius:16,cursor:"pointer",fontFamily:"'Sora',sans-serif",fontWeight:600,transition:"all 0.15s",
+                        border:`1px solid ${active ? "#7C3AED" : "var(--border-light)"}`,
+                        background:active ? "linear-gradient(135deg,rgba(37,99,235,0.15),rgba(124,58,237,0.15))" : "transparent",
+                        color:active ? "#A78BFA" : "var(--text-dim)",
+                      }}>{f.l}</button>
+                  );
+                })}
+              </div>
+
+              {/* Paste URL input */}
+              {pasteUrlMode && (
+                <div style={{display:"flex",gap:8,padding:"10px 12px",borderRadius:8,background:"rgba(124,58,237,0.06)",border:"1px solid rgba(124,58,237,0.15)"}}>
+                  <input className="input" value={pasteUrlValue} onChange={e => setPasteUrlValue(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && addPastedUrl()}
+                    placeholder="https://example.com/image.jpg"
+                    style={{flex:1,fontSize:12,padding:"8px 10px"}} autoFocus/>
+                  <button className="btn btn-primary" style={{fontSize:11,padding:"6px 14px"}} onClick={addPastedUrl} disabled={!pasteUrlValue.trim()}>Add</button>
+                </div>
+              )}
+            </div>
+
+            {/* RESULTS GRID */}
+            <div style={{flex:1,overflow:"auto",padding:"20px 24px"}}>
+              {librarySearching && (
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",gap:12}}>
+                  <div className="animate-spin" style={{width:32,height:32,border:"3px solid var(--border)",borderTopColor:"var(--primary)",borderRadius:"50%"}}/>
+                  <p style={{fontSize:12,color:"var(--text-dim)"}}>Searching Google Images...</p>
+                </div>
+              )}
+              {!librarySearching && libraryResults.length === 0 && (
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",gap:10,color:"var(--text-dim)"}}>
+                  <div style={{width:56,height:56,borderRadius:14,background:"var(--hover-bg)",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:4}}>
+                    <Icon name="search" size={24} color="var(--text-dim)"/>
+                  </div>
+                  <p style={{fontSize:13,fontWeight:600}}>Click a filter or hit Search to begin</p>
+                  <p style={{fontSize:11,color:"var(--text-dim)"}}>Results are cached per query so you can toggle filters freely</p>
+                </div>
+              )}
+              {!librarySearching && libraryResults.length > 0 && (
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(180px, 1fr))",gap:12}}>
+                  {libraryResults.map((img, i) => {
+                    const isSelected = librarySelected.has(img.url);
+                    const pixels = (img.width || 0) * (img.height || 0);
+                    const quality = pixels > 800*800 ? "HD" : pixels > 400*400 ? "MD" : "LO";
+                    const qColor = quality === "HD" ? "#10B981" : quality === "MD" ? "#F59E0B" : "#EF4444";
+                    return (
+                      <div key={i} onClick={() => toggleLibrarySelect(img.url)}
+                        onMouseEnter={() => setLibraryPreview(img)}
+                        onMouseLeave={() => setLibraryPreview(null)}
+                        style={{position:"relative",borderRadius:10,overflow:"hidden",cursor:"pointer",transition:"all 0.2s",
+                          border:`2px solid ${isSelected ? "#7C3AED" : "var(--border-light)"}`,
+                          boxShadow:isSelected ? "0 0 0 3px rgba(124,58,237,0.3)" : "none",
+                          transform:isSelected ? "scale(0.97)" : "scale(1)",
+                        }}>
+                        <div style={{aspectRatio:"1",background:"var(--hover-bg)",position:"relative"}}>
+                          <img src={img.thumbnail || img.url} alt="" loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                          {/* Quality badge */}
+                          <div style={{position:"absolute",top:6,left:6,display:"inline-flex",alignItems:"center",gap:3,padding:"2px 6px",borderRadius:10,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)"}}>
+                            <div style={{width:5,height:5,borderRadius:"50%",background:qColor}}/>
+                            <span style={{fontSize:9,fontWeight:700,color:"white"}}>{quality}</span>
+                          </div>
+                          {/* Selection checkmark */}
+                          {isSelected && (
+                            <div style={{position:"absolute",top:6,right:6,width:22,height:22,borderRadius:"50%",background:"linear-gradient(135deg,#2563EB,#7C3AED)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 0 10px rgba(124,58,237,0.6)"}}>
+                              <Icon name="check" size={12} color="white"/>
+                            </div>
+                          )}
+                          {/* Resolution */}
+                          {img.width && img.height && (
+                            <div style={{position:"absolute",bottom:6,right:6,padding:"2px 6px",borderRadius:6,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)",fontSize:9,fontWeight:700,color:"white"}}>
+                              {img.width}×{img.height}
+                            </div>
+                          )}
+                        </div>
+                        {/* Source */}
+                        <div style={{padding:"6px 8px",background:"var(--surface)",borderTop:"1px solid var(--border-light)"}}>
+                          <div style={{fontSize:10,color:"var(--text-dim)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontWeight:500}}>{img.source || "Unknown"}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* FOOTER */}
+            <div style={{padding:"14px 24px",borderTop:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--hover-bg)"}}>
+              <div style={{fontSize:12,color:"var(--text-muted)"}}>
+                {librarySelected.size > 0 ? (
+                  <><strong style={{color:"#A78BFA",fontSize:14}}>{librarySelected.size}</strong> image{librarySelected.size !== 1 ? "s" : ""} selected</>
+                ) : (
+                  <span style={{color:"var(--text-dim)"}}>{libraryResults.length} result{libraryResults.length !== 1 ? "s" : ""} · Click images to select</span>
+                )}
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button className="btn btn-ghost" style={{padding:"8px 18px"}} onClick={() => setLibraryOpen(false)}>Cancel</button>
+                <button className="btn btn-primary" style={{padding:"8px 22px",fontSize:13}} disabled={librarySelected.size === 0} onClick={addFromLibrary}>
+                  <Icon name="plus" size={13}/> Add {librarySelected.size > 0 ? `${librarySelected.size} ` : ""}to Gallery
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

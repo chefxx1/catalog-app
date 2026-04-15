@@ -333,6 +333,28 @@ export const generateAIContent = async (productData) => {
   return data;
 };
 
+export const recolorImage = async (imageUrl, color, productName) => {
+  const res = await apiFetch(`${API_URL}/ai/recolor`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ imageUrl, color, productName }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+};
+
+export const aiStudio = async (imageUrl, mode, productName) => {
+  const res = await apiFetch(`${API_URL}/ai/studio`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ imageUrl, mode, productName }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+};
+
 export const identifyProduct = async (imageBase64) => {
   const res = await apiFetch(`${API_URL}/ai/identify`, {
     method: 'POST',

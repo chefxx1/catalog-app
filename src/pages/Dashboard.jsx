@@ -367,13 +367,16 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
         {loading ? (
           <div style={{padding:"12px 0"}}>{[0,1,2,3].map(i=><div key={i} style={{display:"flex",alignItems:"center",gap:16,padding:"14px 20px",borderBottom:"1px solid var(--border-light)",opacity:1-i*0.15}}><div className="skeleton" style={{height:14,width:"25%",borderRadius:4}}/><div className="skeleton" style={{height:12,width:"14%",borderRadius:4}}/><div className="skeleton" style={{height:6,width:60,borderRadius:3}}/><div className="skeleton" style={{height:22,width:60,borderRadius:20}}/><div className="skeleton" style={{height:12,width:"10%",borderRadius:4}}/><div className="skeleton" style={{height:12,width:80,borderRadius:4}}/></div>)}</div>
         ) : catalog.length === 0 ? (
-          <div style={{padding:48,textAlign:"center"}}>
-            <div style={{width:64,height:64,borderRadius:16,background:"rgba(37,99,235,0.08)",border:"1px solid rgba(37,99,235,0.15)",display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:16}}>
-              <Icon name="package" size={28} color="var(--primary-light)"/>
+          <div style={{padding:"60px 48px",textAlign:"center"}}>
+            <div style={{position:"relative",width:72,height:72,margin:"0 auto 18px"}}>
+              <div style={{position:"absolute",inset:-4,borderRadius:20,background:"conic-gradient(from 0deg, #2563EB, #7C3AED, #10B981, #2563EB)",opacity:0.3,filter:"blur(14px)",animation:"logoSpin 6s linear infinite"}}/>
+              <div style={{position:"relative",width:72,height:72,borderRadius:18,background:"var(--surface)",border:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <Icon name="package" size={30} color="var(--text-dim)"/>
+              </div>
             </div>
-            <h3 style={{fontWeight:700,fontSize:16,marginBottom:6}}>No catalog entries yet</h3>
-            <p style={{color:"var(--text-dim)",fontSize:13,maxWidth:300,margin:"0 auto",lineHeight:1.5}}>Search for a product and save it to your catalog to see it here.</p>
-            <button className="btn btn-primary" style={{marginTop:20}} onClick={onNew}><Icon name="plus" size={14}/> Add First Product</button>
+            <h3 style={{fontWeight:800,fontSize:18,marginBottom:8,letterSpacing:"-0.01em"}}>No catalog entries yet</h3>
+            <p style={{color:"var(--text-dim)",fontSize:13,maxWidth:320,margin:"0 auto",lineHeight:1.6}}>Scan a barcode or upload a product image to start building your catalog.</p>
+            <button className="btn btn-primary" style={{marginTop:22,padding:"10px 22px"}} onClick={onNew}><Icon name="plus" size={14}/> Add First Product</button>
           </div>
         ) : (
           <table style={{width:"100%",borderCollapse:"collapse"}}>
@@ -384,7 +387,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
             </tr></thead>
             <tbody>{filteredCatalog.map((item,i)=>{
               const isSelected = selected.has(item.id);
-              return <tr key={item.id||i} onClick={()=>toggleSelect(item.id)} style={{borderBottom:"1px solid var(--border-light)",transition:"all 0.15s",background:isSelected?"rgba(59,130,246,0.06)":"transparent",cursor:"pointer"}} onMouseEnter={e=>{if(!isSelected)e.currentTarget.style.background="var(--hover-bg)"}} onMouseLeave={e=>{if(!isSelected)e.currentTarget.style.background="transparent"}}>
+              return <tr key={item.id||i} className={`catalog-row ${isSelected?"selected":""}`} onClick={()=>toggleSelect(item.id)} style={{borderBottom:"1px solid var(--border-light)",background:isSelected?"rgba(124,58,237,0.06)":"transparent",cursor:"pointer"}} onMouseEnter={e=>{if(!isSelected)e.currentTarget.style.background="var(--hover-bg)"}} onMouseLeave={e=>{if(!isSelected)e.currentTarget.style.background="transparent"}}>
               {visibleCols.product && <td style={{padding:"12px 16px",position:"relative"}}>
                 <div style={{position:"absolute",left:6,top:"50%",transform:"translateY(-50%)",width:18,height:18,borderRadius:5,border:isSelected?"2px solid #3B82F6":"2px solid var(--border)",background:isSelected?"#3B82F6":"transparent",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s",opacity:isSelected||selected.size>0?1:0}} className="row-check">
                   {isSelected && <Icon name="check" size={11} color="#fff"/>}
