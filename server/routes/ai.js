@@ -8,6 +8,19 @@ const { sanitize } = require('../middleware/validate');
 
 const router = express.Router();
 
+// Validate base64 image: MIME type whitelist + size limit
+function validateBase64Image(data) {
+  if (!data || typeof data !== 'string') return 'Image data is required';
+  const match = data.match(/^data:(image\/(?:jpeg|jpg|png|webp|gif));base64,(.+)$/);
+  if (!match) return 'Invalid image format. Only JPEG, PNG, WEBP, or GIF allowed';
+  const base64 = match[2];
+  // Rough size check: base64 is ~1.37x the binary size
+  const sizeBytes = (base64.length * 3) / 4;
+  const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
+  if (sizeBytes > MAX_SIZE) return 'Image too large. Max 10 MB';
+  return null;
+}
+
 function getModel(modelName = 'gemini-2.5-flash') {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('GEMINI_API_KEY not configured');
@@ -139,7 +152,8 @@ Return a JSON object with exactly this structure (no markdown, no code fences, j
 router.post('/identify', auth, async (req, res) => {
   try {
     const { image } = req.body; // base64 image data
-    if (!image) return res.status(400).json({ error: 'Image data is required' });
+    const imgErr = validateBase64Image(image);
+    if (imgErr) return res.status(400).json({ error: imgErr });
 
     const model = getModel();
 
@@ -363,7 +377,8 @@ IMPORTANT: Do NOT include the platform name in the title text. The title should 
 router.post('/extract-attributes', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
     const { image } = req.body;
-    if (!image) return res.status(400).json({ error: 'Image data is required' });
+    const imgErr = validateBase64Image(image);
+    if (imgErr) return res.status(400).json({ error: imgErr });
 
     const model = getModel();
 
