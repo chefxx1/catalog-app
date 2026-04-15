@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
+const helmet = require('helmet');
 require('dotenv').config({ path: __dirname + '/.env' });
 
 const authRoutes = require('./routes/auth');
@@ -16,6 +17,13 @@ const rateLimit = require('./middleware/rateLimit');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Security headers (CSP, X-Frame-Options, HSTS, etc.)
+app.use(helmet({
+  contentSecurityPolicy: false, // off because we inline styles; turn on in prod with a proper policy
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginEmbedderPolicy: false,
+}));
 
 // Middleware
 app.use(cors({
