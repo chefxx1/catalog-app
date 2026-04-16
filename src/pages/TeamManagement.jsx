@@ -13,9 +13,16 @@ const TeamManagement = ({ currentUserId }) => {
   const [invSending, setInvSending] = useState(false);
   const [pendingInvites, setPendingInvites] = useState([]);
 
-  useEffect(() => {
+  const refreshTeam = () => {
     getTeamUsers().then(d => { setTeamUsers(d.users || []); setTeamLoading(false); }).catch(() => { setTeamLoading(false); toast.error("Failed to load team members"); });
     getPendingInvites().then(d => setPendingInvites((d.invites || []).filter(i => !i.accepted))).catch(() => { toast.warning("Could not load pending invites"); });
+  };
+
+  useEffect(() => {
+    refreshTeam();
+    const onVisible = () => { if (document.visibilityState === "visible") refreshTeam(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
 
   const handleSendInvite = async () => {
