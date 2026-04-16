@@ -311,6 +311,9 @@ router.patch('/team/:id/role', auth, requireRole('Admin'), async (req, res) => {
     const [existing] = await db.query('SELECT id FROM users WHERE id = ? AND store_id = ?', [targetId, req.user.store_id]);
     if (existing.length === 0) return res.status(404).json({ error: 'User not found' });
 
+    const [owner] = await db.query('SELECT id FROM users WHERE store_id = ? ORDER BY created_at ASC, id ASC LIMIT 1', [req.user.store_id]);
+    if (owner.length && owner[0].id === targetId) return res.status(403).json({ error: "Cannot change the store owner's role" });
+
     await db.query('UPDATE users SET role = ? WHERE id = ?', [role, targetId]);
     res.json({ success: true });
   } catch (err) {
@@ -328,6 +331,9 @@ router.delete('/team/:id', auth, requireRole('Admin'), async (req, res) => {
 
     const [existing] = await db.query('SELECT id FROM users WHERE id = ? AND store_id = ?', [targetId, req.user.store_id]);
     if (existing.length === 0) return res.status(404).json({ error: 'User not found' });
+
+    const [owner] = await db.query('SELECT id FROM users WHERE store_id = ? ORDER BY created_at ASC, id ASC LIMIT 1', [req.user.store_id]);
+    if (owner.length && owner[0].id === targetId) return res.status(403).json({ error: "Cannot remove the store owner" });
 
     // Delete user — FK cascades handle user_settings, password_resets
     await db.query('DELETE FROM users WHERE id = ?', [targetId]);
