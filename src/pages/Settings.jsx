@@ -28,14 +28,6 @@ const Settings = ({ user, onUserUpdate }) => {
   const [exportFormat, setExportFormat] = useState("CSV");
   const [platform, setPlatform] = useState("Shopify");
 
-  // API Keys
-  const [openaiKey, setOpenaiKey] = useState("");
-  const [amazonKey, setAmazonKey] = useState("");
-  const [googleKey, setGoogleKey] = useState("");
-  const [showOpenai, setShowOpenai] = useState(false);
-  const [showAmazon, setShowAmazon] = useState(false);
-  const [showGoogle, setShowGoogle] = useState(false);
-  const [apiSaved, setApiSaved] = useState(false);
 
   // Notifications
   const [notifExport, setNotifExport] = useState(true);
@@ -92,7 +84,6 @@ const Settings = ({ user, onUserUpdate }) => {
     } catch (err) { toast.error("Failed to save settings"); }
   };
 
-  const handleApiSave = () => { setApiSaved(true); setTimeout(() => setApiSaved(false), 2000); };
 
   return (
     <div className="animate-fadeIn" style={{ maxWidth: 720, margin: "0 auto", display: "flex", flexDirection: "column", gap: 20 }}>
@@ -207,29 +198,6 @@ const Settings = ({ user, onUserUpdate }) => {
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16, paddingBottom: 20, borderBottom: "1px solid var(--border-light)" }}>
             <button className="btn btn-primary" onClick={handleSettingsSave}><Icon name="check" size={14} /> Save Settings</button>
             {settingsSaved && <span style={{ fontSize: 12, color: "#10B981", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><Icon name="check" size={12} color="#10B981" /> Saved</span>}
-          </div>
-
-          {/* API Keys */}
-          <div style={{ paddingTop: 20 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-              <Icon name="key" size={16} color="#F59E0B" />
-              <span style={{ fontWeight: 600, fontSize: 13, color: "var(--text-sec)" }}>API Keys</span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <InputField label="OpenAI API Key" type={showOpenai ? "text" : "password"} placeholder="sk-..." icon="key"
-                value={openaiKey} onChange={e => setOpenaiKey(e.target.value)} hint="platform.openai.com/api-keys"
-                rightEl={<span onClick={() => setShowOpenai(p => !p)}><Icon name={showOpenai ? "eyeOff" : "eye"} size={16} /></span>} />
-              <InputField label="Amazon Product API Key" type={showAmazon ? "text" : "password"} placeholder="Enter API key" icon="key"
-                value={amazonKey} onChange={e => setAmazonKey(e.target.value)} hint="Amazon Product Advertising API"
-                rightEl={<span onClick={() => setShowAmazon(p => !p)}><Icon name={showAmazon ? "eyeOff" : "eye"} size={16} /></span>} />
-              <InputField label="Google Custom Search API Key" type={showGoogle ? "text" : "password"} placeholder="Enter API key" icon="key"
-                value={googleKey} onChange={e => setGoogleKey(e.target.value)} hint="console.cloud.google.com/apis"
-                rightEl={<span onClick={() => setShowGoogle(p => !p)}><Icon name={showGoogle ? "eyeOff" : "eye"} size={16} /></span>} />
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 16, paddingBottom: 20, borderBottom: "1px solid var(--border-light)" }}>
-              <button className="btn btn-primary" onClick={handleApiSave}><Icon name="check" size={14} /> Save Keys</button>
-              {apiSaved && <span style={{ fontSize: 12, color: "#10B981", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}><Icon name="check" size={12} color="#10B981" /> Saved</span>}
-            </div>
           </div>
 
           {/* Notifications */}
