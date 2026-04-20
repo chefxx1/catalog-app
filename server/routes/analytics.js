@@ -128,4 +128,25 @@ router.get('/completeness', auth, async (req, res) => {
   }
 });
 
+// Low stock alerts
+router.get('/low-stock', auth, async (req, res) => {
+  try {
+    const [entries] = await db.query(
+      `SELECT ce.id, ce.stock_quantity, ce.low_stock_threshold, ce.custom_name, p.name, p.barcode
+       FROM catalog_entries ce
+       JOIN products p ON ce.product_id = p.id
+       WHERE ce.store_id = ?
+         AND ce.stock_quantity IS NOT NULL
+         AND ce.low_stock_threshold IS NOT NULL
+         AND ce.stock_quantity <= ce.low_stock_threshold
+       ORDER BY ce.stock_quantity ASC
+       LIMIT 50`,
+      [req.user.store_id]
+    );
+    res.json({ items: entries.map(e => ({ id: e.id, name: e.custom_name || e.name, barcode: e.barcode, stock: e.stock_quantity, threshold: e.low_stock_threshold })) });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

@@ -14,6 +14,7 @@ import BulkImportView from "./pages/BulkImportView";
 import Analytics from "./pages/Analytics";
 import BrandVoices from "./pages/BrandVoices";
 import Settings from "./pages/Settings";
+import Trending from "./pages/Trending";
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -45,9 +46,9 @@ export default function App() {
     if (!user) return;
     const handleKey = (e) => {
       if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
-      const views = ["dashboard","catalog","analytics","voices","settings"];
+      const views = ["dashboard","catalog","trending","analytics","voices","settings"];
       if (e.ctrlKey || e.metaKey) {
-        if (e.key >= "1" && e.key <= "5") { e.preventDefault(); setView(views[parseInt(e.key)-1]); if(e.key==="2") setStep(0); }
+        if (e.key >= "1" && e.key <= "6") { e.preventDefault(); setView(views[parseInt(e.key)-1]); if(e.key==="2") setStep(0); }
         if (e.key === "n" || e.key === "N") { e.preventDefault(); setView("catalog"); setStep(0); setProductData(null); }
       }
       if (e.key === "?" && !e.ctrlKey) setShowShortcuts(s => !s);
@@ -63,6 +64,7 @@ export default function App() {
   const navItems = [
     { id: "dashboard", icon: "grid", label: "Dashboard" },
     { id: "catalog", icon: "package", label: "New Catalog" },
+    { id: "trending", icon: "sparkle", label: "Trending" },
     { id: "analytics", icon: "chart", label: "Analytics" },
     { id: "voices", icon: "tag", label: "Brand Voices" },
     { id: "settings", icon: "settings", label: "Settings" },
@@ -174,10 +176,10 @@ export default function App() {
               <button className="mobile-menu-btn btn btn-ghost" style={{padding:6}} onClick={()=>setSidebarOpen(true)}><Icon name="menu" size={20}/></button>
               <div>
                 <h2 style={{ fontSize: 18, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.2 }}>
-                  {view === "dashboard" ? "Dashboard" : view === "catalog" ? "New Entry" : view === "analytics" ? "Analytics" : view === "voices" ? "Brand Voices" : "Settings"}
+                  {view === "dashboard" ? "Dashboard" : view === "catalog" ? "New Entry" : view === "trending" ? "Trending" : view === "analytics" ? "Analytics" : view === "voices" ? "Brand Voices" : "Settings"}
                 </h2>
                 <p style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>
-                  {view === "dashboard" ? "Overview & quick actions" : view === "catalog" ? "Search, review, and export products" : view === "analytics" ? "Performance metrics & insights" : view === "voices" ? "AI tone & vocabulary presets" : "Account & store configuration"}
+                  {view === "dashboard" ? "Overview & quick actions" : view === "catalog" ? "Search, review, and export products" : view === "trending" ? "What's hot worldwide — add with one click" : view === "analytics" ? "Performance metrics & insights" : view === "voices" ? "AI tone & vocabulary presets" : "Account & store configuration"}
                 </p>
               </div>
             </div>
@@ -228,6 +230,7 @@ export default function App() {
                   {step === 2 && <><StepIndicator currentStep={step} /><ExportStep onComplete={() => { setStep(0); setView("dashboard"); }} productData={productData} user={user} /></>}
                 </div>
               )}
+              {view === "trending" && <Trending user={user} />}
               {view === "analytics" && <Analytics />}
               {view === "voices" && <BrandVoices user={user} />}
               {view === "settings" && <Settings user={user} onUserUpdate={setUser} />}
@@ -244,7 +247,7 @@ export default function App() {
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {[
-              {keys:"Ctrl + 1-5",desc:"Navigate to page"},
+              {keys:"Ctrl + 1-6",desc:"Navigate to page"},
               {keys:"Ctrl + N",desc:"New product"},
               {keys:"?",desc:"Toggle this menu"},
             ].map((s,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<2?"1px solid var(--border-light)":"none"}}>

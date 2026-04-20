@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Icon, LoadingDots } from "../components/shared";
 import { toast } from "../components/Toast";
-import { getStats, getSourcePerformance, getSearchHistory, clearSearchHistory, getCompleteness, getActivity, getPriceAlerts } from "../api";
+import { getStats, getSourcePerformance, getSearchHistory, clearSearchHistory, getCompleteness, getActivity, getPriceAlerts, getLowStock } from "../api";
 
 const Analytics = () => {
   const [stats, setStats] = useState(null);
@@ -10,6 +10,7 @@ const Analytics = () => {
   const [completenessData, setCompletenessData] = useState(null);
   const [activity, setActivity] = useState([]);
   const [priceAlerts, setPriceAlerts] = useState([]);
+  const [lowStock, setLowStock] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -20,13 +21,15 @@ const Analytics = () => {
       getCompleteness().catch(() => null),
       getActivity(15).catch(() => ({ activity: [] })),
       getPriceAlerts().catch(() => ({ alerts: [] })),
-    ]).then(([s, src, h, comp, act, pa]) => {
+      getLowStock().catch(() => ({ items: [] })),
+    ]).then(([s, src, h, comp, act, pa, ls]) => {
       setStats(s);
       setSources(src.sources || []);
       setHistory(h.history || []);
       setCompletenessData(comp);
       setActivity(act.activity || []);
       setPriceAlerts(pa.alerts || []);
+      setLowStock(ls.items || []);
       setLoading(false);
     }).catch(() => { setLoading(false); toast.error("Failed to load analytics"); });
   }, []);
@@ -184,6 +187,33 @@ const Analytics = () => {
           </div>}
         </div>
       </div>
+
+      {/* Low Stock Alerts */}
+      {lowStock.length > 0 && (
+        <div className="card" style={{padding:24}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+            <Icon name="warning" size={16} color="#F59E0B"/>
+            <h3 style={{fontWeight:700,margin:0}}>Low Stock ({lowStock.length})</h3>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {lowStock.slice(0,8).map((it,i) => {
+              const isOut = it.stock === 0;
+              return (
+                <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:"var(--hover-bg)",borderRadius:8}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:600}}>{it.name}</div>
+                    <div className="mono" style={{fontSize:11,color:"var(--text-dim)"}}>{it.barcode||"—"}</div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span className="mono" style={{fontSize:13,fontWeight:700,color:isOut?"#EF4444":"#F59E0B"}}>{it.stock}</span>
+                    <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:isOut?"rgba(239,68,68,0.15)":"rgba(245,158,11,0.15)",color:isOut?"#EF4444":"#F59E0B",fontWeight:700}}>{isOut?"OUT":"LOW"}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Price Alerts */}
       {priceAlerts.length > 0 && (

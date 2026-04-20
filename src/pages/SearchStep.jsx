@@ -3,10 +3,12 @@ import { Icon, LoadingDots } from "../components/shared";
 import { toast } from "../components/Toast";
 import { searchProduct, identifyProduct, searchProductImages } from "../api";
 import { Html5Qrcode } from "html5-qrcode";
+import CameraScanner from "../components/CameraScanner";
 
 const SearchStep = ({ onSearch }) => {
   const [upc,setUpc]=useState(""); const [loading,setLoading]=useState(false); const [loadingStep,setLoadingStep]=useState(0); const [dragOver,setDragOver]=useState(false); const fileRef=useRef(null);
   const [error,setError]=useState(null); const [notFound,setNotFound]=useState(false);
+  const [scannerOpen,setScannerOpen]=useState(false);
   const msgs=["Checking Open Food Facts...","Scanning UPC Database..."];
   const sourceNames=[{name:"Open Food Facts",icon:"database",trustScore:75,color:"#10B981"},{name:"UPC Database",icon:"barcode",trustScore:80,color:"#6366F1"}];
   const handleSearch=(code)=>{const barcode=code||upc.trim();if(!barcode||loading)return;setError(null);setNotFound(false);setLoading(true);setLoadingStep(0);let s=0;const apiPromise=searchProduct(barcode);const iv=setInterval(()=>{s++;if(s>=msgs.length){clearInterval(iv);}else setLoadingStep(s);},800);apiPromise.then(data=>{clearInterval(iv);setLoadingStep(msgs.length-1);setTimeout(()=>{setLoading(false);if(!data.product){setNotFound(true);}else{onSearch(data);}},600);}).catch(err=>{clearInterval(iv);setLoading(false);setError(err.message||"Search failed");});};
@@ -34,6 +36,22 @@ const SearchStep = ({ onSearch }) => {
   const [productImages, setProductImages] = useState([]);
   const [selectedImages, setSelectedImages] = useState(new Set());
   const [searchingImages, setSearchingImages] = useState(false);
+  const handleIdentifyBase64 = async (base64) => {
+    setError(null); setIdentifying(true); setIdentified(null); setProductImages([]); setSelectedImages(new Set());
+    try {
+      setUploadedImage(base64);
+      const result = await identifyProduct(base64);
+      setIdentified(result);
+      if (result.name) {
+        setSearchingImages(true);
+        searchProductImages(`${result.name} ${result.brand || ''}`).then(imgs => {
+          setProductImages(imgs);
+          setSelectedImages(new Set([0]));
+        }).catch(() => { toast.warning("Could not load product images"); }).finally(() => setSearchingImages(false));
+      }
+    } catch (err) { setError(err.message || "Image identification failed"); }
+    setIdentifying(false);
+  };
   const handleImageIdentify = async (file) => {
     setError(null); setIdentifying(true); setIdentified(null); setProductImages([]); setSelectedImages(new Set());
     try {
@@ -187,7 +205,7 @@ const SearchStep = ({ onSearch }) => {
         </div>
         <div style={{display:"flex",gap:10}}>
           <button className="btn btn-primary" style={{flex:1,justifyContent:"center",fontSize:15,padding:"12px 0"}} onClick={()=>handleSearch()} disabled={loading||identifying}><Icon name="search" size={16}/> {loading?"Searching...":"Search Product"}</button>
-          <button className="btn btn-ghost" onClick={()=>fileRef.current?.click()}><Icon name="camera" size={16}/> Scan</button>
+          <button className="btn btn-ghost" onClick={()=>setScannerOpen(true)}><Icon name="camera" size={16}/> Scan</button>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:12,color:"var(--text-dim)"}}><div style={{flex:1,height:1,background:"var(--border)"}}/><span style={{fontSize:11,fontWeight:600,letterSpacing:"0.06em"}}>OR UPLOAD IMAGE</span><div style={{flex:1,height:1,background:"var(--border)"}}/></div>
         <div className={`drop-zone ${dragOver?"dragging":""}`} onClick={()=>fileRef.current?.click()} onDragOver={e=>{e.preventDefault();setDragOver(true);}} onDragLeave={()=>setDragOver(false)} onDrop={e=>{e.preventDefault();setDragOver(false);const f=e.dataTransfer.files[0];if(f)scanBarcodeFromFile(f);}}>
@@ -202,6 +220,12 @@ const SearchStep = ({ onSearch }) => {
         {[{c:"3017620422003",l:"Nutella"},{c:"5449000000996",l:"Coca-Cola"},{c:"8076809513753",l:"Barilla"}].map(({c,l})=><button key={c} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"5px 12px",borderRadius:20,fontSize:11,fontWeight:600,background:"var(--hover-bg)",border:"1px solid var(--border-light)",cursor:"pointer",color:"var(--text-sec)",fontFamily:"'Sora',sans-serif",transition:"all 0.2s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--primary)";e.currentTarget.style.color="var(--primary)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border-light)";e.currentTarget.style.color="var(--text-sec)";}} onClick={()=>{setUpc(c);setTimeout(()=>handleSearch(c),50);}}><Icon name="barcode" size={10}/> {l}</button>)}
       </div>
       <div id="barcode-scanner-temp" style={{display:"none"}}/>
+      {scannerOpen && <CameraScanner
+        onClose={()=>setScannerOpen(false)}
+        onDetect={(code)=>{setScannerOpen(false);setUpc(code);handleSearch(code);}}
+        onFilePick={(file)=>{setScannerOpen(false);scanBarcodeFromFile(file);}}
+        onCapture={(base64)=>{setScannerOpen(false);handleIdentifyBase64(base64);}}
+      />}
     </div>
   );
 };
