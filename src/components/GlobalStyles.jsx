@@ -109,6 +109,10 @@ const GlobalStyles = ({ dark }) => (
     textarea.input { resize:vertical; min-height:80px; }
     select.input { appearance:none; background-image:url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2394A3B8' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 14px center; padding-right:36px; }
     select.input option { background:var(--surface); }
+    .input[type="number"]::-webkit-inner-spin-button, .input[type="number"]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+    .input[type="number"] { -moz-appearance:textfield; }
+    .stepper-btn { width:22px; height:22px; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text-muted); cursor:pointer; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; padding:0; transition:all 0.15s; }
+    .stepper-btn:hover { border-color:var(--primary); color:var(--primary); background:rgba(124,58,237,0.08); }
 
     .progress-bar { height:4px; background:var(--surface-light); border-radius:2px; overflow:hidden; }
     .progress-fill { height:100%; border-radius:2px; transition:width 0.5s ease; }

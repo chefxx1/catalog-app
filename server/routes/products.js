@@ -545,7 +545,9 @@ router.get('/catalog', auth, async (req, res) => {
     const [entries] = await db.query(
       `SELECT ce.*, p.barcode, p.name, p.brand, p.description,
               p.ai_description_professional, p.ai_category_suggestion, p.seo_tags,
-              (SELECT COUNT(*) FROM product_images pi WHERE pi.product_id = p.id) AS image_count
+              (SELECT COUNT(*) FROM product_images pi WHERE pi.product_id = p.id) AS image_count,
+              (SELECT COUNT(*) FROM product_variants pv WHERE pv.catalog_entry_id = ce.id) AS variant_count,
+              (SELECT COALESCE(SUM(pv.stock_quantity),0) FROM product_variants pv WHERE pv.catalog_entry_id = ce.id) AS variant_stock
        FROM catalog_entries ce
        JOIN products p ON ce.product_id = p.id
        WHERE ce.store_id = ?
@@ -580,10 +582,10 @@ router.post('/catalog', auth, requireRole('Admin', 'Editor'), async (req, res) =
   }
 });
 
-// Update catalog entry (status, custom fields)
+// Update catalog entry (status, custom fields, stock)
 router.patch('/catalog/:id', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
-    const { status, custom_name: rawName, custom_description: rawDesc, custom_price } = req.body;
+    const { status, custom_name: rawName, custom_description: rawDesc, custom_price, stock_quantity, low_stock_threshold } = req.body;
     const validStatuses = ['Draft', 'Review', 'Published', 'Exported'];
     if (status !== undefined && !validStatuses.includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
@@ -594,6 +596,16 @@ router.patch('/catalog/:id', auth, requireRole('Admin', 'Editor'), async (req, r
     if (rawName !== undefined) { fields.push('custom_name = ?'); values.push(sanitize(rawName).slice(0, 200)); }
     if (rawDesc !== undefined) { fields.push('custom_description = ?'); values.push(sanitize(rawDesc).slice(0, 5000)); }
     if (custom_price !== undefined) { fields.push('custom_price = ?'); values.push(custom_price); }
+    if (stock_quantity !== undefined) {
+      const n = stock_quantity === null || stock_quantity === '' ? null : parseInt(stock_quantity, 10);
+      if (n !== null && (isNaN(n) || n < 0)) return res.status(400).json({ error: 'Invalid stock_quantity' });
+      fields.push('stock_quantity = ?'); values.push(n);
+    }
+    if (low_stock_threshold !== undefined) {
+      const n = low_stock_threshold === null || low_stock_threshold === '' ? null : parseInt(low_stock_threshold, 10);
+      if (n !== null && (isNaN(n) || n < 0)) return res.status(400).json({ error: 'Invalid low_stock_threshold' });
+      fields.push('low_stock_threshold = ?'); values.push(n);
+    }
     if (fields.length === 0) return res.status(400).json({ error: 'No fields to update' });
     fields.push('updated_at = NOW()');
     values.push(req.params.id, req.user.store_id);
@@ -602,6 +614,7 @@ router.patch('/catalog/:id', auth, requireRole('Admin', 'Editor'), async (req, r
     if (status !== undefined) changes.status = status;
     if (rawName !== undefined) changes.name = sanitize(rawName).slice(0, 200);
     if (custom_price !== undefined) changes.price = custom_price;
+    if (stock_quantity !== undefined) changes.stock_quantity = stock_quantity;
     logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'updated', entity_type: 'catalog_entry', entity_id: parseInt(req.params.id), entity_name: rawName || null, details: changes });
     res.json({ success: true });
   } catch (err) {
@@ -614,6 +627,89 @@ router.delete('/catalog/:id', auth, requireRole('Admin'), async (req, res) => {
   try {
     await db.query('DELETE FROM catalog_entries WHERE id = ? AND store_id = ?', [req.params.id, req.user.store_id]);
     logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'deleted', entity_type: 'catalog_entry', entity_id: parseInt(req.params.id) });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── PRODUCT VARIANTS ──
+async function ensureEntryInStore(entryId, storeId) {
+  const [rows] = await db.query('SELECT id FROM catalog_entries WHERE id = ? AND store_id = ?', [entryId, storeId]);
+  return rows.length > 0;
+}
+
+router.get('/catalog/:id/variants', auth, async (req, res) => {
+  try {
+    if (!(await ensureEntryInStore(req.params.id, req.user.store_id))) return res.status(404).json({ error: 'Not found' });
+    const [variants] = await db.query('SELECT * FROM product_variants WHERE catalog_entry_id = ? ORDER BY id ASC', [req.params.id]);
+    res.json({ variants: variants.map(v => ({ ...v, option_values: typeof v.option_values === 'string' ? JSON.parse(v.option_values || '{}') : (v.option_values || {}) })) });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.post('/catalog/:id/variants', auth, requireRole('Admin', 'Editor'), async (req, res) => {
+  try {
+    if (!(await ensureEntryInStore(req.params.id, req.user.store_id))) return res.status(404).json({ error: 'Not found' });
+    const { variant_name: rawName, option_values, sku: rawSku, price, stock_quantity } = req.body;
+    if (!rawName || typeof rawName !== 'string') return res.status(400).json({ error: 'variant_name required' });
+    const variant_name = sanitize(rawName).slice(0, 255);
+    const sku = rawSku ? sanitize(String(rawSku)).slice(0, 100) : null;
+    const priceVal = price === undefined || price === null || price === '' ? null : parseFloat(price);
+    if (priceVal !== null && (isNaN(priceVal) || priceVal < 0)) return res.status(400).json({ error: 'Invalid price' });
+    const stockVal = stock_quantity === undefined || stock_quantity === null || stock_quantity === '' ? 0 : parseInt(stock_quantity, 10);
+    if (isNaN(stockVal) || stockVal < 0) return res.status(400).json({ error: 'Invalid stock_quantity' });
+    const opts = option_values && typeof option_values === 'object' ? JSON.stringify(option_values) : null;
+    const [result] = await db.query(
+      'INSERT INTO product_variants (catalog_entry_id, variant_name, option_values, sku, price, stock_quantity) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.params.id, variant_name, opts, sku, priceVal, stockVal]
+    );
+    logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'created', entity_type: 'variant', entity_id: result.insertId, entity_name: variant_name });
+    res.status(201).json({ id: result.insertId });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.patch('/variants/:vid', auth, requireRole('Admin', 'Editor'), async (req, res) => {
+  try {
+    const [[variant]] = await db.query(
+      `SELECT pv.id FROM product_variants pv JOIN catalog_entries ce ON ce.id = pv.catalog_entry_id WHERE pv.id = ? AND ce.store_id = ?`,
+      [req.params.vid, req.user.store_id]
+    );
+    if (!variant) return res.status(404).json({ error: 'Not found' });
+    const { variant_name, option_values, sku, price, stock_quantity } = req.body;
+    const fields = [], values = [];
+    if (variant_name !== undefined) { fields.push('variant_name = ?'); values.push(sanitize(String(variant_name)).slice(0, 255)); }
+    if (option_values !== undefined) { fields.push('option_values = ?'); values.push(option_values ? JSON.stringify(option_values) : null); }
+    if (sku !== undefined) { fields.push('sku = ?'); values.push(sku ? sanitize(String(sku)).slice(0, 100) : null); }
+    if (price !== undefined) {
+      const p = price === null || price === '' ? null : parseFloat(price);
+      if (p !== null && (isNaN(p) || p < 0)) return res.status(400).json({ error: 'Invalid price' });
+      fields.push('price = ?'); values.push(p);
+    }
+    if (stock_quantity !== undefined) {
+      const n = stock_quantity === null || stock_quantity === '' ? 0 : parseInt(stock_quantity, 10);
+      if (isNaN(n) || n < 0) return res.status(400).json({ error: 'Invalid stock_quantity' });
+      fields.push('stock_quantity = ?'); values.push(n);
+    }
+    if (fields.length === 0) return res.status(400).json({ error: 'No fields' });
+    values.push(req.params.vid);
+    await db.query(`UPDATE product_variants SET ${fields.join(', ')} WHERE id = ?`, values);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+router.delete('/variants/:vid', auth, requireRole('Admin', 'Editor'), async (req, res) => {
+  try {
+    const [result] = await db.query(
+      `DELETE pv FROM product_variants pv JOIN catalog_entries ce ON ce.id = pv.catalog_entry_id WHERE pv.id = ? AND ce.store_id = ?`,
+      [req.params.vid, req.user.store_id]
+    );
+    if (result.affectedRows === 0) return res.status(404).json({ error: 'Not found' });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });

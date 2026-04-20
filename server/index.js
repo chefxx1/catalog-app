@@ -11,6 +11,7 @@ const brandVoiceRoutes = require('./routes/brandVoices');
 const aiRoutes = require('./routes/ai');
 const exportRoutes = require('./routes/export');
 const catalogRoutes = require('./routes/catalog');
+const trendingRoutes = require('./routes/trending');
 const db = require('./db');
 
 const rateLimit = require('./middleware/rateLimit');
@@ -47,6 +48,7 @@ app.use('/api/brand-voices', brandVoiceRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/catalog', catalogRoutes);
+app.use('/api/trending', trendingRoutes);
 
 // Health check
 app.get('/api/health', async (req, res) => {
@@ -95,6 +97,28 @@ async function autoMigrate() {
       id INT AUTO_INCREMENT PRIMARY KEY, store_id INT NOT NULL, product_id INT NOT NULL, source_name VARCHAR(100) NOT NULL, price DECIMAL(10,2) NOT NULL, currency VARCHAR(10) DEFAULT 'USD', recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE, FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
     )`);
+
+    // Inventory columns on catalog_entries
+    const [invCols] = await db.query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'catalog_entries' AND COLUMN_NAME IN ('stock_quantity','low_stock_threshold')`);
+    const invNames = invCols.map(r => r.COLUMN_NAME);
+    if (!invNames.includes('stock_quantity')) {
+      await db.query(`ALTER TABLE catalog_entries ADD COLUMN stock_quantity INT NULL DEFAULT NULL`);
+    }
+    if (!invNames.includes('low_stock_threshold')) {
+      await db.query(`ALTER TABLE catalog_entries ADD COLUMN low_stock_threshold INT NULL DEFAULT 5`);
+    }
+
+    // Product variants
+    await db.query(`CREATE TABLE IF NOT EXISTS product_variants (
+      id INT AUTO_INCREMENT PRIMARY KEY, catalog_entry_id INT NOT NULL, variant_name VARCHAR(255) NOT NULL, option_values JSON NULL, sku VARCHAR(100) NULL, price DECIMAL(10,2) NULL, stock_quantity INT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      FOREIGN KEY (catalog_entry_id) REFERENCES catalog_entries(id) ON DELETE CASCADE, INDEX idx_variant_catalog (catalog_entry_id)
+    )`);
+
+    // Trending cache (global, not store-scoped)
+    await db.query(`CREATE TABLE IF NOT EXISTS trending_cache (
+      id INT AUTO_INCREMENT PRIMARY KEY, cache_key VARCHAR(191) NOT NULL UNIQUE, data JSON NOT NULL, cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, INDEX idx_cache_key (cache_key)
+    )`);
+
     console.log('Auto-migrate: all tables verified');
   } catch (err) {
     console.error('Auto-migrate error:', err.message);

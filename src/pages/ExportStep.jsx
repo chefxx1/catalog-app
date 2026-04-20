@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { toast } from "../components/Toast";
 import { Icon } from "../components/shared";
-import { exportProduct, getExportHistory, downloadExport, getGoogleMerchantFeed } from "../api";
+import { exportProduct, getExportHistory, downloadExport, getGoogleMerchantFeed, getCatalog, getVariants, saveForLater } from "../api";
+import { generateProductPdf } from "../utils/pdfExport";
 
 // ============================================================
 // STEP 3: EXPORT
@@ -15,7 +16,7 @@ const ExportStep = ({ onComplete, productData, user }) => {
   const [showPreview, setShowPreview] = useState(false);
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
-  const platforms=[{name:"Shopify",color:"#96BF48"},{name:"WooCommerce",color:"#7F54B3"},{name:"Magento",color:"#EE672F"},{name:"BigCommerce",color:"#34313F"},{name:"Google Shopping",color:"#4285F4"}];
+  const platforms=[{name:"Shopify",color:"#96BF48"},{name:"WooCommerce",color:"#7F54B3"},{name:"Magento",color:"#EE672F"},{name:"BigCommerce",color:"#34313F"},{name:"Google Shopping",color:"#4285F4"},{name:"PDF Catalog",color:"#DC2626"}];
   const product = productData?.product || {};
   const productName = product.name || "Product";
 
@@ -30,6 +31,25 @@ const ExportStep = ({ onComplete, productData, user }) => {
         const r = await getGoogleMerchantFeed();
         if (r.productCount === 0) { throw new Error("No published products to export"); }
         result = { content: r.content, filename: r.filename, contentType: "application/xml" };
+      } else if (plat === "PDF Catalog") {
+        // Save product + catalog entry first (PDF generation is client-side, so
+        // without this the entry never reaches the database)
+        try { await saveForLater(productData); } catch (e) { console.warn("saveForLater failed:", e?.message); }
+        let variants = [];
+        try {
+          const entries = await getCatalog();
+          const match = entries.find(e => e.product_id === product.id || (product.barcode && e.barcode === product.barcode));
+          if (match) { const v = await getVariants(match.id); variants = v.variants || []; }
+        } catch {}
+        const blob = await generateProductPdf({
+          ...product,
+          image_url: productData?.images?.[0]?.image_url,
+          price: productData?.enriched?.price || product.price,
+          description: product.ai_description_professional || product.edited_description || product.description,
+          variants,
+        }, user?.store_name);
+        const safe = (productName || "product").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+        result = { content: blob, filename: `${safe}.pdf`, contentType: "application/pdf", isBlob: true };
       } else {
         result = await exportProduct(fmt, plat, product.barcode, productData);
       }
@@ -47,7 +67,7 @@ const ExportStep = ({ onComplete, productData, user }) => {
 
   const handleDownload = () => {
     if (!exportedFile) return;
-    const blob = new Blob([exportedFile.content], { type: exportedFile.contentType });
+    const blob = exportedFile.isBlob ? exportedFile.content : new Blob([exportedFile.content], { type: exportedFile.contentType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = exportedFile.filename; a.click();
@@ -95,8 +115,8 @@ const ExportStep = ({ onComplete, productData, user }) => {
       </div>
       {exportError&&<div style={{padding:"10px 14px",background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,fontSize:13,color:"#FCA5A5",display:"flex",gap:8,alignItems:"center"}}><Icon name="warning" size={14} color="#EF4444"/>{exportError}</div>}
       <div>
-        <div style={{fontSize:11,fontWeight:600,color:"var(--text-dim)",letterSpacing:"0.06em",marginBottom:10}}>FORMAT</div>
-        <div style={{display:"flex",gap:8}}>{["CSV","JSON","XML"].map(f=>{
+        <div style={{fontSize:11,fontWeight:600,color:"var(--text-dim)",letterSpacing:"0.06em",marginBottom:10}}>FORMAT {plat==="PDF Catalog"&&<span style={{color:"var(--text-dim)",fontWeight:400}}>— PDF (fixed)</span>}</div>
+        <div style={{display:"flex",gap:8,opacity:plat==="PDF Catalog"?0.4:1,pointerEvents:plat==="PDF Catalog"?"none":"auto"}}>{["CSV","JSON","XML"].map(f=>{
           const icons = {CSV:"download",JSON:"code",XML:"code"};
           const active = fmt===f;
           return <button key={f} onClick={()=>{setFmt(f);setShowPreview(false);}} style={{flex:1,padding:"14px 8px",borderRadius:10,
@@ -112,9 +132,9 @@ const ExportStep = ({ onComplete, productData, user }) => {
       </div>
       <div>
         <div style={{fontSize:11,fontWeight:600,color:"var(--text-dim)",letterSpacing:"0.06em",marginBottom:10}}>PLATFORM</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{platforms.map(pl=><div key={pl.name} className={`export-card ${plat===pl.name?"selected":""}`} onClick={()=>{setPlat(pl.name); if(pl.name==="Google Shopping") setFmt("XML"); setShowPreview(false);}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{platforms.map(pl=><div key={pl.name} className={`export-card ${plat===pl.name?"selected":""}`} onClick={()=>{setPlat(pl.name); if(pl.name==="Google Shopping") setFmt("XML"); else if(pl.name==="PDF Catalog") setFmt("PDF"); else if(fmt==="PDF"||fmt==="XML"&&plat==="Google Shopping") setFmt("CSV"); setShowPreview(false);}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}><div style={{width:8,height:8,borderRadius:"50%",background:pl.color}}/><span style={{fontSize:13,fontWeight:600}}>{pl.name}</span></div>
-          <div style={{fontSize:11,color:"var(--text-dim)",marginTop:4}}>{pl.name==="Google Shopping"?"Product feed XML":fmt+" optimized"}</div>
+          <div style={{fontSize:11,color:"var(--text-dim)",marginTop:4}}>{pl.name==="Google Shopping"?"Product feed XML":pl.name==="PDF Catalog"?"Branded PDF datasheet":fmt+" optimized"}</div>
           {plat===pl.name&&<div style={{position:"absolute",top:10,right:10}}><Icon name="check" size={13} color="#10B981"/></div>}
         </div>)}</div>
       </div>
@@ -133,7 +153,7 @@ const ExportStep = ({ onComplete, productData, user }) => {
       </div>}
       {exporting&&<div><div style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:12}}><span style={{color:"var(--text-muted)"}}>Generating {fmt}...</span><span className="mono" style={{color:"#10B981"}}>{progress}%</span></div><div className="progress-bar" style={{height:6}}><div className="progress-fill" style={{width:`${progress}%`,background:"linear-gradient(90deg,#2563EB,#10B981)"}}/></div></div>}
       <div style={{display:"flex",gap:10}}>
-        <button className="btn btn-ghost" style={{justifyContent:"center",fontSize:13,padding:14}} onClick={handlePreview} disabled={exporting}><Icon name="search" size={15}/> Preview</button>
+        <button className="btn btn-ghost" style={{justifyContent:"center",fontSize:13,padding:14}} onClick={handlePreview} disabled={exporting||plat==="PDF Catalog"||plat==="Google Shopping"}><Icon name="search" size={15}/> Preview</button>
         <button className="btn btn-success" style={{flex:1,justifyContent:"center",fontSize:15,padding:14}} onClick={handleExport} disabled={exporting||!canWrite} title={!canWrite?"Viewers cannot export products":""}>{exporting?<><Icon name="refresh" size={15}/> Generating...</>:<><Icon name="download" size={15}/> Export to {plat}</>}</button>
       </div>
       <div>

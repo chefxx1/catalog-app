@@ -179,6 +179,32 @@ export const updateCatalogStatus = async (id, status) => {
   return updateCatalogEntry(id, { status });
 };
 
+export const getVariants = async (entryId) => {
+  const res = await apiFetch(`${API_URL}/products/catalog/${entryId}/variants`, { headers: headers() });
+  return handleResponse(res);
+};
+
+export const createVariant = async (entryId, variant) => {
+  const res = await apiFetch(`${API_URL}/products/catalog/${entryId}/variants`, {
+    method: 'POST', headers: headers(), body: JSON.stringify(variant),
+  });
+  return handleResponse(res);
+};
+
+export const updateVariant = async (variantId, fields) => {
+  const res = await apiFetch(`${API_URL}/products/variants/${variantId}`, {
+    method: 'PATCH', headers: headers(), body: JSON.stringify(fields),
+  });
+  return handleResponse(res);
+};
+
+export const deleteVariant = async (variantId) => {
+  const res = await apiFetch(`${API_URL}/products/variants/${variantId}`, {
+    method: 'DELETE', headers: headers(),
+  });
+  return handleResponse(res);
+};
+
 export const deleteCatalogEntry = async (id) => {
   const res = await apiFetch(`${API_URL}/products/catalog/${id}`, {
     method: 'DELETE',
@@ -232,6 +258,29 @@ export const getSourcePerformance = async () => {
 
 export const getCompleteness = async () => {
   const res = await apiFetch(`${API_URL}/analytics/completeness`, { headers: headers() });
+  return handleResponse(res);
+};
+
+export const getLowStock = async () => {
+  const res = await apiFetch(`${API_URL}/analytics/low-stock`, { headers: headers() });
+  return handleResponse(res);
+};
+
+export const getTrending = async (country = 'US', category = 'Electronics') => {
+  const qs = new URLSearchParams({ country, category }).toString();
+  const res = await apiFetch(`${API_URL}/trending?${qs}`, { headers: headers() });
+  return handleResponse(res);
+};
+
+export const getTrendingCategories = async () => {
+  const res = await apiFetch(`${API_URL}/trending/categories`, { headers: headers() });
+  return handleResponse(res);
+};
+
+export const addTrendingToCatalog = async (item) => {
+  const res = await apiFetch(`${API_URL}/trending/add`, {
+    method: 'POST', headers: headers(), body: JSON.stringify(item),
+  });
   return handleResponse(res);
 };
 

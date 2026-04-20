@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { Icon, CopyButton, LoadingDots, ConfirmDialog, safeJsonParse } from "../components/shared";
 import { toast } from "../components/Toast";
 import { getStats, getCatalog, getBrandVoices as apiGetBrandVoices, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, exportProduct, getTags, createTag, deleteTag, setEntryTags, getSavedViews, createSavedView, deleteSavedView, getQualitySuggestions } from "../api";
+import { generateCatalogPdf } from "../utils/pdfExport";
+import VariantManager from "../components/VariantManager";
 
 const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }) => {
   const [stats, setStats] = useState(null);
@@ -39,7 +41,10 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
   const [changelog, setChangelog] = useState([]);
   const [savingView, setSavingView] = useState(false);
   const [newViewName, setNewViewName] = useState("");
-  const [visibleCols, setVisibleCols] = useState({ product: true, barcode: true, completeness: true, status: true, tags: false, date: true, actions: true });
+  const [visibleCols, setVisibleCols] = useState({ product: true, barcode: true, completeness: true, stock: true, status: true, tags: false, date: true, actions: true });
+  const [stockEditId, setStockEditId] = useState(null);
+  const [stockEditValue, setStockEditValue] = useState("");
+  const [variantEntry, setVariantEntry] = useState(null);
   const [showColPicker, setShowColPicker] = useState(false);
   const canEdit = user.role === "Admin" || user.role === "Editor";
 
@@ -210,6 +215,24 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
     const items = [...selected].map(id => catalog.find(c => c.id === id)).filter(Boolean);
     setBatchExporting(true);
     setBatchProgress({ done: 0, total: items.length });
+
+    if (batchPlat === "PDF Catalog") {
+      try {
+        const blob = await generateCatalogPdf(items, user?.store_name);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = `catalog-${items.length}products.pdf`; a.click();
+        URL.revokeObjectURL(url);
+        for (const item of items) { try { await updateCatalogStatus(item.id, "Exported"); } catch {} }
+        setBatchProgress({ done: items.length, total: items.length });
+        toast.success(`PDF catalog generated (${items.length} product${items.length!==1?"s":""})`);
+        setCatalog(prev => prev.map(c => selected.has(c.id) ? { ...c, status: "Exported" } : c));
+        setSelected(new Set());
+        setShowBatchModal(false);
+      } catch (err) { toast.error("PDF generation failed: " + (err?.message||"")); }
+      setBatchExporting(false);
+      return;
+    }
+
     const allContent = [];
     let success = 0, failed = 0;
     for (const item of items) {
@@ -358,7 +381,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
         {showColPicker && (
           <div className="animate-slideUp" style={{display:"flex",gap:8,marginBottom:12,padding:"8px 14px",background:"var(--hover-bg)",borderRadius:8,border:"1px solid var(--border-light)",flexWrap:"wrap",alignItems:"center"}}>
             <span style={{fontSize:11,color:"var(--text-dim)",fontWeight:500}}>Show:</span>
-            {[{k:"product",l:"Product"},{k:"barcode",l:"Barcode"},{k:"completeness",l:"Quality"},{k:"status",l:"Status"},{k:"tags",l:"Tags"},{k:"date",l:"Date"},{k:"actions",l:"Actions"}].map(c=>(
+            {[{k:"product",l:"Product"},{k:"barcode",l:"Barcode"},{k:"completeness",l:"Quality"},{k:"stock",l:"Stock"},{k:"status",l:"Status"},{k:"tags",l:"Tags"},{k:"date",l:"Date"},{k:"actions",l:"Actions"}].map(c=>(
               <button key={c.k} onClick={()=>setVisibleCols(v=>({...v,[c.k]:!v[c.k]}))} style={{fontSize:11,padding:"3px 10px",borderRadius:12,border:`1px solid ${visibleCols[c.k]?"var(--primary)":"var(--border-light)"}`,background:visibleCols[c.k]?"rgba(37,99,235,0.08)":"transparent",color:visibleCols[c.k]?"var(--primary-light)":"var(--text-dim)",cursor:"pointer",fontFamily:"'Sora',sans-serif",fontWeight:600,transition:"all 0.15s"}}>{c.l}</button>
             ))}
           </div>
@@ -382,7 +405,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
           <table style={{width:"100%",borderCollapse:"collapse"}}>
             <thead><tr style={{borderBottom:"1px solid var(--border)",position:"sticky",top:0,background:"var(--surface)",zIndex:2}}>
               {[
-                {k:"product",l:"PRODUCT"},{k:"barcode",l:"BARCODE"},{k:"completeness",l:"QUALITY"},{k:"status",l:"STATUS"},{k:"tags",l:"TAGS"},{k:"date",l:"DATE"},{k:"actions",l:"ACTIONS"}
+                {k:"product",l:"PRODUCT"},{k:"barcode",l:"BARCODE"},{k:"completeness",l:"QUALITY"},{k:"stock",l:"STOCK"},{k:"status",l:"STATUS"},{k:"tags",l:"TAGS"},{k:"date",l:"DATE"},{k:"actions",l:"ACTIONS"}
               ].filter(h=>visibleCols[h.k]).map(h=><th key={h.k} style={{padding:"10px 16px",textAlign:"left",fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.06em"}}>{h.l}</th>)}
             </tr></thead>
             <tbody>{filteredCatalog.map((item,i)=>{
@@ -423,6 +446,60 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
                   );
                 })()}
               </td>}
+              {visibleCols.stock && <td style={{padding:"12px 16px"}} onClick={e=>e.stopPropagation()}>
+                {item.variant_count > 0 ? (() => {
+                  const total = item.variant_stock || 0;
+                  const color = total === 0 ? "#EF4444" : total <= (item.low_stock_threshold ?? 5) ? "#F59E0B" : "var(--text-muted)";
+                  return (
+                    <div style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}} onClick={()=>setVariantEntry(item)} title="View variants">
+                      <span className="mono" style={{fontSize:12,fontWeight:600,color}}>{total}</span>
+                      <span style={{fontSize:10,padding:"1px 6px",borderRadius:8,background:"rgba(124,58,237,0.15)",color:"var(--primary-light,#A78BFA)",fontWeight:700}}>{item.variant_count} VAR</span>
+                    </div>
+                  );
+                })() : stockEditId===item.id ? (() => {
+                  const saveStock = async () => {
+                    const v = stockEditValue==="" ? null : parseInt(stockEditValue,10);
+                    try {
+                      await updateCatalogEntry(item.id,{stock_quantity:v});
+                      setCatalog(prev=>prev.map(c=>c.id===item.id?{...c,stock_quantity:v}:c));
+                      toast.success("Stock updated");
+                      setStockEditId(null);
+                    } catch(err) {
+                      toast.error(err?.message||"Update failed — restart backend if column is missing");
+                    }
+                  };
+                  const bump = (d) => {
+                    const cur = parseInt(stockEditValue,10);
+                    const next = (isNaN(cur)?0:cur) + d;
+                    setStockEditValue(String(Math.max(0,next)));
+                  };
+                  return (
+                    <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                      <button type="button" className="stepper-btn" onClick={()=>bump(-1)}>−</button>
+                      <input className="input" type="number" min="0" value={stockEditValue} onChange={e=>setStockEditValue(e.target.value)} onKeyDown={e=>{
+                        if(e.key==="Enter") saveStock();
+                        else if(e.key==="Escape") setStockEditId(null);
+                      }} autoFocus style={{width:54,fontSize:12,padding:"3px 6px",textAlign:"center"}}/>
+                      <button type="button" className="stepper-btn" onClick={()=>bump(1)}>+</button>
+                      <button className="btn btn-ghost" style={{padding:"3px 6px",fontSize:11}} onClick={saveStock} title="Save"><Icon name="check" size={11}/></button>
+                      <button className="btn btn-ghost" style={{padding:"3px 6px",fontSize:11}} onClick={()=>setStockEditId(null)} title="Cancel"><Icon name="x" size={11}/></button>
+                    </div>
+                  );
+                })() : (() => {
+                  const stock = item.stock_quantity;
+                  const threshold = item.low_stock_threshold ?? 5;
+                  const isLow = stock !== null && stock !== undefined && stock <= threshold;
+                  const isOut = stock === 0;
+                  const color = isOut ? "#EF4444" : isLow ? "#F59E0B" : "var(--text-muted)";
+                  return (
+                    <div style={{display:"flex",alignItems:"center",gap:6,cursor:canEdit?"pointer":"default"}} onClick={()=>{if(canEdit){setStockEditId(item.id);setStockEditValue(stock==null?"":String(stock));}}} title={canEdit?"Click to edit":""}>
+                      <span className="mono" style={{fontSize:12,fontWeight:600,color}}>{stock==null?"—":stock}</span>
+                      {isOut && <span style={{fontSize:10,padding:"1px 6px",borderRadius:8,background:"rgba(239,68,68,0.15)",color:"#EF4444",fontWeight:700}}>OUT</span>}
+                      {!isOut && isLow && <span style={{fontSize:10,padding:"1px 6px",borderRadius:8,background:"rgba(245,158,11,0.15)",color:"#F59E0B",fontWeight:700}}>LOW</span>}
+                    </div>
+                  );
+                })()}
+              </td>}
               {visibleCols.status && <td style={{padding:"12px 16px"}}><span className={`badge ${sc[item.status]||"badge-neutral"}`}>{item.status||"Draft"}</span></td>}
               {visibleCols.tags && <td style={{padding:"12px 16px"}} onClick={e=>e.stopPropagation()}>
                 <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
@@ -439,6 +516,10 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
               {visibleCols.actions && <td style={{padding:"12px 16px"}}><div style={{display:"flex",gap:6}} onClick={e=>e.stopPropagation()}>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="View" onClick={()=>onViewProduct(item.product_id,1)}><Icon name="eye" size={12}/></button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Edit" onClick={()=>startEdit(item)}><Icon name="edit" size={12}/></button>
+                <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11,position:"relative"}} title="Variants" onClick={()=>setVariantEntry(item)}>
+                  <Icon name="copy" size={12}/>
+                  {item.variant_count>0 && <span style={{position:"absolute",top:-2,right:-2,fontSize:9,fontWeight:700,background:"#7C3AED",color:"#fff",borderRadius:8,padding:"1px 5px",minWidth:14,textAlign:"center"}}>{item.variant_count}</span>}
+                </button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Export" onClick={()=>onExportProduct(item.product_id)}><Icon name="download" size={12}/></button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11,color:"#EF4444"}} title="Delete" onClick={()=>setShowDeleteDialog(item.id)}><Icon name="trash" size={12} color="#EF4444"/></button>
               </div></td>}
@@ -560,6 +641,20 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
         </div>
       </div>}
 
+      {variantEntry && <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{setVariantEntry(null);getCatalog().then(c=>setCatalog(c||[])).catch(()=>{})}}>
+        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(4px)"}}/>
+        <div className="card animate-scaleIn" style={{position:"relative",width:560,maxWidth:"92vw",maxHeight:"85vh",overflow:"auto",padding:24}} onClick={e=>e.stopPropagation()}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+            <div>
+              <h3 style={{fontSize:17,fontWeight:700,marginBottom:2}}>Variants</h3>
+              <p style={{fontSize:12,color:"var(--text-dim)"}}>{variantEntry.custom_name||variantEntry.name}</p>
+            </div>
+            <button className="btn btn-ghost" style={{padding:"6px 10px"}} onClick={()=>{setVariantEntry(null);getCatalog().then(c=>setCatalog(c||[])).catch(()=>{})}}><Icon name="x" size={14}/></button>
+          </div>
+          <VariantManager entryId={variantEntry.id} canEdit={canEdit}/>
+        </div>
+      </div>}
+
       {showBatchModal && <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{if(!batchExporting)setShowBatchModal(false);}}>
         <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(4px)"}}/>
         <div className="card animate-scaleIn" style={{position:"relative",width:440,maxWidth:"90vw",padding:28}} onClick={e=>e.stopPropagation()}>
@@ -568,14 +663,14 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
 
           <div style={{marginBottom:18}}>
             <label style={{fontSize:12,fontWeight:600,color:"var(--text-dim)",marginBottom:8,display:"block",letterSpacing:"0.04em"}}>FORMAT</label>
-            <div style={{display:"flex",gap:8}}>{["CSV","JSON","XML"].map(f=><button key={f} onClick={()=>setBatchFmt(f)} className="mono" style={{flex:1,padding:12,borderRadius:8,border:`2px solid ${batchFmt===f?"#3B82F6":"var(--border)"}`,background:batchFmt===f?"rgba(37,99,235,0.1)":"var(--hover-bg)",color:batchFmt===f?"#60A5FA":"var(--text-muted)",fontSize:14,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}>{f}</button>)}</div>
+            <div style={{display:"flex",gap:8,opacity:batchPlat==="PDF Catalog"?0.4:1,pointerEvents:batchPlat==="PDF Catalog"?"none":"auto"}}>{["CSV","JSON","XML"].map(f=><button key={f} onClick={()=>setBatchFmt(f)} className="mono" style={{flex:1,padding:12,borderRadius:8,border:`2px solid ${batchFmt===f?"#3B82F6":"var(--border)"}`,background:batchFmt===f?"rgba(37,99,235,0.1)":"var(--hover-bg)",color:batchFmt===f?"#60A5FA":"var(--text-muted)",fontSize:14,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}>{f}</button>)}</div>
           </div>
 
           <div style={{marginBottom:24}}>
             <label style={{fontSize:12,fontWeight:600,color:"var(--text-dim)",marginBottom:8,display:"block",letterSpacing:"0.04em"}}>PLATFORM</label>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>{[
-              {name:"Shopify",color:"#96BF48"},{name:"WooCommerce",color:"#7F54B3"},{name:"Magento",color:"#EE672F"},{name:"BigCommerce",color:"#34313F"},{name:"Google Shopping",color:"#4285F4"}
-            ].map(p=><button key={p.name} onClick={()=>{setBatchPlat(p.name); if(p.name==="Google Shopping") setBatchFmt("XML");}} style={{padding:12,borderRadius:8,border:`2px solid ${batchPlat===p.name?p.color:"var(--border)"}`,background:batchPlat===p.name?p.color+"18":"var(--hover-bg)",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:8}}>
+              {name:"Shopify",color:"#96BF48"},{name:"WooCommerce",color:"#7F54B3"},{name:"Magento",color:"#EE672F"},{name:"BigCommerce",color:"#34313F"},{name:"Google Shopping",color:"#4285F4"},{name:"PDF Catalog",color:"#DC2626"}
+            ].map(p=><button key={p.name} onClick={()=>{setBatchPlat(p.name); if(p.name==="Google Shopping") setBatchFmt("XML"); else if(p.name==="PDF Catalog") setBatchFmt("PDF");}} style={{padding:12,borderRadius:8,border:`2px solid ${batchPlat===p.name?p.color:"var(--border)"}`,background:batchPlat===p.name?p.color+"18":"var(--hover-bg)",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:8}}>
               <div style={{width:10,height:10,borderRadius:"50%",background:p.color}}/>
               <span style={{fontSize:13,fontWeight:600,color:batchPlat===p.name?"var(--text)":"var(--text-muted)"}}>{p.name}</span>
             </button>)}</div>
