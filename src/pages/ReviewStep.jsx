@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Icon, CopyButton, ConfidenceScore, safeJsonParse } from "../components/shared";
 import { toast } from "../components/Toast";
-import { resolveConflict, saveForLater, generateAIContent, getBrandVoices as apiGetBrandVoices, searchProductImages } from "../api";
+import { resolveConflict, saveForLater, generateAIContent, getBrandVoices as apiGetBrandVoices, searchProductImages, streamDescription } from "../api";
 
 // ============================================================
 // REVIEW STEP — AI content review + export
@@ -89,6 +89,8 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
   const [customPrompt, setCustomPrompt] = useState("");
   const [useCustom, setUseCustom] = useState(false);
   const [selectedDesc,setSelectedDesc]=useState(0); const [editedDesc,setEditedDesc]=useState(p.aiDescriptions[0].text);
+  const [streamTones, setStreamTones] = useState({ Professional: "", Friendly: "", Luxury: "" });
+  const [isStreaming, setIsStreaming] = useState(false);
   const [expandedSource,setExpandedSource]=useState(displaySources[0]?.name || "Amazon"); const [resolvedConflicts,setResolvedConflicts]=useState({});
   const [images,setImages]=useState(p.images); const [activeTab,setActiveTab]=useState("overview"); const [regenerating,setRegenerating]=useState(false);
   const [aiError, setAiError] = useState(null);
@@ -147,35 +149,63 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
     const bv = voice || selectedVoice;
     const useLang = lang || selectedLang;
     setRegenerating(true); setAiError(null);
-    try {
-      const result = await generateAIContent({
-        name: product.name || p.name,
-        brand: product.brand || p.brand,
-        category: product.description || p.category,
-        description: product.description || '',
-        specs: p.specs || null,
-        barcode: product.barcode || p.upc,
-        language: useLang !== "English" ? useLang : undefined,
-        ...(useCustom && customPrompt.trim() ? { customInstructions: customPrompt.trim() } : bv?.metadata ? { brandVoice: { tone: bv.metadata.tone, audience: bv.metadata.audience, style: bv.metadata.style, includeKeywords: bv.metadata.keywords || [], excludeKeywords: bv.metadata.excludeKeywords || [] } } : {}),
+
+    const basePayload = {
+      name: product.name || p.name,
+      brand: product.brand || p.brand,
+      category: product.description || p.category,
+      description: product.description || '',
+      specs: p.specs || null,
+      barcode: product.barcode || p.upc,
+      language: useLang !== "English" ? useLang : undefined,
+      ...(useCustom && customPrompt.trim() ? { customInstructions: customPrompt.trim() } : bv?.metadata ? { brandVoice: { tone: bv.metadata.tone, audience: bv.metadata.audience, style: bv.metadata.style, includeKeywords: bv.metadata.keywords || [], excludeKeywords: bv.metadata.excludeKeywords || [] } } : {}),
+    };
+
+    // Stream all 3 tones live — each box fills as Gemini writes
+    setStreamTones({ Professional: "", Friendly: "", Luxury: "" });
+    setIsStreaming(true);
+    const streamPromise = new Promise((resolve) => {
+      streamDescription(basePayload, {
+        onToneChunk: (tone, text) => {
+          setStreamTones(prev => ({ ...prev, [tone]: (prev[tone] || "") + text }));
+        },
+        onDone: (tones) => resolve(tones),
+        onError: () => resolve(null),
       });
+    });
+
+    // Structured call in parallel for SEO/category/meta only
+    const structuredPromise = generateAIContent(basePayload).catch(err => { setAiError(err.message); return null; });
+
+    try {
+      const [streamedTones, result] = await Promise.all([streamPromise, structuredPromise]);
+      const descs = streamedTones || {
+        Professional: result?.descriptions?.professional || '',
+        Friendly: result?.descriptions?.friendly || '',
+        Luxury: result?.descriptions?.luxury || '',
+      };
       const newDescs = [
-        { tone: "Professional", text: result.descriptions.professional },
-        { tone: "Friendly", text: result.descriptions.friendly },
-        { tone: "Luxury", text: result.descriptions.luxury },
+        { tone: "Professional", text: descs.Professional || result?.descriptions?.professional || '' },
+        { tone: "Friendly",     text: descs.Friendly     || result?.descriptions?.friendly     || '' },
+        { tone: "Luxury",       text: descs.Luxury       || result?.descriptions?.luxury       || '' },
       ];
       setAiDescs(newDescs);
-      setSelectedDesc(0);
-      setEditedDesc(newDescs[0].text);
-      if (result.seoTags?.length) setSeoTags(result.seoTags);
-      if (result.metaTitle) setMetaTitle(result.metaTitle);
-      if (result.metaDescription) setMetaDescription(result.metaDescription);
-      if (result.category) setAiCategory(result.category);
-      setTranslatedSpecs(result.translatedSpecs || null);
-      setTranslatedName(result.translatedName || null);
+      setEditedDesc(newDescs[selectedDesc]?.text || newDescs[0].text);
+      if (result) {
+        if (result.seoTags?.length) setSeoTags(result.seoTags);
+        if (result.metaTitle) setMetaTitle(result.metaTitle);
+        if (result.metaDescription) setMetaDescription(result.metaDescription);
+        if (result.category) setAiCategory(result.category);
+        setTranslatedSpecs(result.translatedSpecs || null);
+        setTranslatedName(result.translatedName || null);
+      }
     } catch (err) {
       setAiError(err.message);
       toast.error("AI generation failed: " + (err.message || "Unknown error"));
     }
+
+    setIsStreaming(false);
+    setStreamTones({ Professional: "", Friendly: "", Luxury: "" });
     setRegenerating(false);
   };
 
@@ -426,16 +456,45 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em"}}>DESCRIPTION VARIANTS</div>
-            {regenerating?<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12,padding:"30px 0"}}><div className="loading-spinner" style={{width:28,height:28,border:"3px solid var(--border)",borderTopColor:"#3B82F6",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/><span style={{fontSize:12,color:"var(--text-dim)"}}>AI is writing descriptions...</span></div>:aiDescs.map((d,i)=><div key={i} className={`description-card ${selectedDesc===i?"selected":""}`} onClick={()=>{setSelectedDesc(i);setEditedDesc(d.text);}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-                <div style={{display:"flex",alignItems:"center",gap:6}}><span className="badge badge-neutral">{d.tone}</span>{selectedDesc===i&&<Icon name="check" size={12} color="#10B981"/>}</div>
-                <CopyButton text={d.text}/>
-              </div>
-              <p style={{fontSize:13,lineHeight:1.6,color:"var(--text-muted)"}}>{d.text.slice(0,120)}...</p>
-            </div>)}
+            {["Professional","Friendly","Luxury"].map((toneName, i) => {
+              const d = aiDescs[i] || { tone: toneName, text: "" };
+              const liveText = streamTones[toneName] || "";
+              const showLive = isStreaming && liveText.length > 0;
+              const showWaiting = isStreaming && !liveText;
+              const displayText = showLive ? liveText : d.text;
+              return (
+                <div key={i} className={`description-card ${selectedDesc===i?"selected":""}`} onClick={()=>{if(!regenerating){setSelectedDesc(i);setEditedDesc(d.text);}}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span className="badge badge-neutral">{toneName}</span>
+                      {showLive && <span style={{fontSize:10,color:"#8B5CF6",fontWeight:700,display:"inline-flex",alignItems:"center",gap:4}}><span className="typing-pulse" style={{width:6,height:6,borderRadius:"50%",background:"#8B5CF6"}}/> typing</span>}
+                      {showWaiting && <span style={{fontSize:10,color:"var(--text-dim)",fontWeight:600,display:"inline-flex",alignItems:"center",gap:4}}><span className="typing-pulse" style={{width:6,height:6,borderRadius:"50%",background:"var(--text-dim)"}}/> queued</span>}
+                      {selectedDesc===i && !isStreaming && <Icon name="check" size={12} color="#10B981"/>}
+                    </div>
+                    {!isStreaming && <CopyButton text={d.text}/>}
+                  </div>
+                  {showLive ? (
+                    <p style={{fontSize:13,lineHeight:1.6,color:"var(--text)"}}>{displayText}<span className="cursor-blink" style={{display:"inline-block",width:2,height:14,background:"#8B5CF6",marginLeft:2,verticalAlign:"middle"}}/></p>
+                  ) : showWaiting ? (
+                    <div style={{display:"flex",flexDirection:"column",gap:6,padding:"4px 0"}}>
+                      <div className="skeleton" style={{height:10,width:"95%",borderRadius:4}}/>
+                      <div className="skeleton" style={{height:10,width:"80%",borderRadius:4}}/>
+                      <div className="skeleton" style={{height:10,width:"60%",borderRadius:4}}/>
+                    </div>
+                  ) : (
+                    <p style={{fontSize:13,lineHeight:1.6,color:"var(--text-muted)"}}>{(displayText || "").slice(0,120)}{displayText && displayText.length > 120 ? "..." : ""}</p>
+                  )}
+                </div>
+              );
+            })}
           </div>
           <div><div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:8,display:"flex",alignItems:"center",gap:8}}>FINAL DESCRIPTION <span className="badge badge-ai">Editable</span><CopyButton text={editedDesc}/></div>
-            <textarea className="input" value={editedDesc} onChange={e=>setEditedDesc(e.target.value)} rows={5} style={{lineHeight:1.6}}/>
+            {(() => {
+              const activeToneName = ["Professional","Friendly","Luxury"][selectedDesc];
+              const liveActive = isStreaming ? (streamTones[activeToneName] || "") : "";
+              const value = liveActive || editedDesc;
+              return <textarea className="input" value={value} onChange={e=>setEditedDesc(e.target.value)} rows={5} style={{lineHeight:1.6}} readOnly={isStreaming && !!liveActive}/>;
+            })()}
           </div>
 
           <div style={{padding:12,background:"var(--hover-bg)",borderRadius:8,border:"1px solid var(--border)"}}>
