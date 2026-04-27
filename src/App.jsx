@@ -15,6 +15,7 @@ import Analytics from "./pages/Analytics";
 import BrandVoices from "./pages/BrandVoices";
 import Settings from "./pages/Settings";
 import Trending from "./pages/Trending";
+import CommandPalette from "./components/CommandPalette";
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -27,6 +28,8 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [productData, setProductData] = useState(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [catalogRefreshKey, setCatalogRefreshKey] = useState(0);
 
   useEffect(() => {
     setOnUnauthorized(() => {
@@ -45,6 +48,12 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     const handleKey = (e) => {
+      // Ctrl+K opens palette regardless of input focus
+      if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setPaletteOpen(o => !o);
+        return;
+      }
       if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
       const views = ["dashboard","catalog","trending","analytics","voices","settings"];
       if (e.ctrlKey || e.metaKey) {
@@ -183,13 +192,24 @@ export default function App() {
                 </p>
               </div>
             </div>
-            <span style={{ fontSize: 11, color: "var(--text-dim)", fontWeight: 500 }}>
-              {new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
-            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <button
+                onClick={() => setPaletteOpen(true)}
+                className="ask-ai-bar"
+                title="Ask the catalog assistant (Ctrl+K)"
+              >
+                <Icon name="sparkle" size={13} />
+                <span className="ask-ai-bar-text">Ask anything...</span>
+                <kbd>⌘ K</kbd>
+              </button>
+              <span style={{ fontSize: 11, color: "var(--text-dim)", fontWeight: 500 }}>
+                {new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+              </span>
+            </div>
           </div>
 
           <div className="main-content" style={{ flex: 1, overflow: "auto", padding: "24px 32px" }}>
-              {view === "dashboard" && <Dashboard user={user} onNew={() => { setStep(0); setProductData(null); setView("catalog"); }} onViewVoices={() => setView("voices")}
+              {view === "dashboard" && <Dashboard user={user} refreshKey={catalogRefreshKey} onNew={() => { setStep(0); setProductData(null); setView("catalog"); }} onViewVoices={() => setView("voices")}
                 onViewProduct={async (productId, step) => {
                   try {
                     const data = await getProductById(productId);
@@ -238,25 +258,35 @@ export default function App() {
         </div>
       </div>
 
-      {showShortcuts && <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setShowShortcuts(false)}>
-        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(4px)"}}/>
-        <div className="card animate-scaleIn" style={{position:"relative",width:380,maxWidth:"90vw",padding:24}} onClick={e=>e.stopPropagation()}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-            <h3 style={{fontSize:16,fontWeight:700}}>Keyboard Shortcuts</h3>
-            <button className="btn btn-ghost" style={{padding:4}} onClick={()=>setShowShortcuts(false)}><Icon name="x" size={16}/></button>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {[
-              {keys:"Ctrl + 1-6",desc:"Navigate to page"},
-              {keys:"Ctrl + N",desc:"New product"},
-              {keys:"?",desc:"Toggle this menu"},
-            ].map((s,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<2?"1px solid var(--border-light)":"none"}}>
-              <span style={{fontSize:13,color:"var(--text-muted)"}}>{s.desc}</span>
-              <kbd style={{padding:"3px 8px",borderRadius:4,fontSize:11,fontFamily:"monospace",background:"var(--hover-bg)",border:"1px solid var(--border)",color:"var(--text-dim)"}}>{s.keys}</kbd>
-            </div>)}
+      <CommandPalette open={paletteOpen} onClose={()=>setPaletteOpen(false)} user={user} onCatalogChanged={()=>setCatalogRefreshKey(k=>k+1)} />
+
+      {showShortcuts && (
+        <div className="modal-modern-overlay" onClick={()=>setShowShortcuts(false)}>
+          <div className="modal-modern-card size-sm" onClick={e=>e.stopPropagation()}>
+            <div className="modal-modern-blobs" />
+            <div className="modal-modern-header">
+              <div>
+                <h3>Keyboard Shortcuts</h3>
+                <p>Move faster with the keyboard</p>
+              </div>
+              <button className="modal-modern-close" onClick={()=>setShowShortcuts(false)}><Icon name="x" size={14}/></button>
+            </div>
+            <div className="modal-modern-body" style={{padding:"14px 20px"}}>
+              {[
+                {keys:"⌘ K",desc:"Ask catalog assistant"},
+                {keys:"⌘ 1-6",desc:"Navigate to page"},
+                {keys:"⌘ N",desc:"New product"},
+                {keys:"?",desc:"Toggle this menu"},
+              ].map((s,i,arr)=>(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:i<arr.length-1?"1px solid var(--border-light)":"none"}}>
+                  <span style={{fontSize:13,color:"var(--text-muted)"}}>{s.desc}</span>
+                  <kbd style={{padding:"3px 9px",borderRadius:6,fontSize:10.5,fontFamily:"'SF Mono','Menlo',monospace",background:"var(--hover-bg)",border:"1px solid var(--border-light)",color:"var(--text-dim)",fontWeight:600,letterSpacing:"0.04em"}}>{s.keys}</kbd>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </div>}
+      )}
     </ErrorBoundary>
   );
 }

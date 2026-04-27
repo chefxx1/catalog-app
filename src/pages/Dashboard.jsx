@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { Icon, CopyButton, LoadingDots, ConfirmDialog, safeJsonParse } from "../components/shared";
+import BrandOrb from "../components/BrandOrb";
 import { toast } from "../components/Toast";
 import { getStats, getCatalog, getBrandVoices as apiGetBrandVoices, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, exportProduct, getTags, createTag, deleteTag, setEntryTags, getSavedViews, createSavedView, deleteSavedView, getQualitySuggestions } from "../api";
 import { generateCatalogPdf } from "../utils/pdfExport";
 import VariantManager from "../components/VariantManager";
 
-const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }) => {
+const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, refreshKey }) => {
   const [stats, setStats] = useState(null);
   const [catalog, setCatalog] = useState([]);
   const [voices, setVoices] = useState([]);
@@ -68,7 +69,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
     });
   };
 
-  useEffect(() => { reload(); }, []);
+  useEffect(() => { reload(); }, [refreshKey]);
 
   const sc={Published:"badge-success",Review:"badge-warning",Draft:"badge-neutral",Exported:"badge-primary"};
 
@@ -287,12 +288,15 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
   return (
     <div style={{display:"flex",flexDirection:"column",gap:24,opacity:loading?0:1,transition:"opacity 0.4s ease"}}>
       {/* Welcome + inline stats */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:16}}>
-        <div>
-          <h2 style={{fontSize:22,fontWeight:800,letterSpacing:"-0.02em",marginBottom:4}}>Welcome back{user?.name ? `, ${user.name.split(" ")[0]}` : ""}</h2>
-          <p style={{fontSize:13,color:"var(--text-dim)"}}>
-            {loading ? "Loading your catalog..." : tp === 0 ? "Start by adding your first product." : `${tp} product${tp!==1?"s":""} in catalog${needsAttention > 0 ? ` \u00b7 ${needsAttention} need${needsAttention!==1?"":"s"} attention` : ""}`}
-          </p>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:16}}>
+        <div className="welcome-row">
+          <BrandOrb size="sm" floating />
+          <div>
+            <h2 style={{fontSize:22,fontWeight:800,letterSpacing:"-0.02em",marginBottom:4}}>Welcome back{user?.name ? `, ${user.name.split(" ")[0]}` : ""}</h2>
+            <p style={{fontSize:13,color:"var(--text-dim)"}}>
+              {loading ? "Loading your catalog..." : tp === 0 ? "Start by adding your first product." : `${tp} product${tp!==1?"s":""} in catalog${needsAttention > 0 ? ` \u00b7 ${needsAttention} need${needsAttention!==1?"":"s"} attention` : ""}`}
+            </p>
+          </div>
         </div>
         <button className="btn btn-primary" style={{boxShadow:"0 0 20px rgba(124,58,237,0.2)"}} onClick={onNew}><Icon name="plus" size={14}/> New Product</button>
       </div>
@@ -390,16 +394,13 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
         {loading ? (
           <div style={{padding:"12px 0"}}>{[0,1,2,3].map(i=><div key={i} style={{display:"flex",alignItems:"center",gap:16,padding:"14px 20px",borderBottom:"1px solid var(--border-light)",opacity:1-i*0.15}}><div className="skeleton" style={{height:14,width:"25%",borderRadius:4}}/><div className="skeleton" style={{height:12,width:"14%",borderRadius:4}}/><div className="skeleton" style={{height:6,width:60,borderRadius:3}}/><div className="skeleton" style={{height:22,width:60,borderRadius:20}}/><div className="skeleton" style={{height:12,width:"10%",borderRadius:4}}/><div className="skeleton" style={{height:12,width:80,borderRadius:4}}/></div>)}</div>
         ) : catalog.length === 0 ? (
-          <div style={{padding:"60px 48px",textAlign:"center"}}>
-            <div style={{position:"relative",width:72,height:72,margin:"0 auto 18px"}}>
-              <div style={{position:"absolute",inset:-4,borderRadius:20,background:"conic-gradient(from 0deg, #2563EB, #7C3AED, #10B981, #2563EB)",opacity:0.3,filter:"blur(14px)",animation:"logoSpin 6s linear infinite"}}/>
-              <div style={{position:"relative",width:72,height:72,borderRadius:18,background:"var(--surface)",border:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <Icon name="package" size={30} color="var(--text-dim)"/>
-              </div>
+          <div className="empty-state-modern">
+            <BrandOrb size="lg" floating />
+            <div className="es-title">No catalog entries yet</div>
+            <div className="es-subtitle">Scan a barcode, upload a product image, or ask the AI to add one — your store starts here.</div>
+            <div className="es-actions">
+              <button className="btn btn-primary" style={{padding:"10px 22px"}} onClick={onNew}><Icon name="plus" size={14}/> Add First Product</button>
             </div>
-            <h3 style={{fontWeight:800,fontSize:18,marginBottom:8,letterSpacing:"-0.01em"}}>No catalog entries yet</h3>
-            <p style={{color:"var(--text-dim)",fontSize:13,maxWidth:320,margin:"0 auto",lineHeight:1.6}}>Scan a barcode or upload a product image to start building your catalog.</p>
-            <button className="btn btn-primary" style={{marginTop:22,padding:"10px 22px"}} onClick={onNew}><Icon name="plus" size={14}/> Add First Product</button>
           </div>
         ) : (
           <table style={{width:"100%",borderCollapse:"collapse"}}>
@@ -568,99 +569,117 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
         confirmLabel="Delete" confirmColor="#EF4444" onCancel={() => setShowDeleteDialog(null)} onConfirm={() => handleDelete(showDeleteDialog)} />}
 
       {/* Tag Manager Modal */}
-      {showTagManager && <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setShowTagManager(false)}>
-        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(4px)"}}/>
-        <div className="card animate-scaleIn" style={{position:"relative",width:400,maxWidth:"90vw",padding:24}} onClick={e=>e.stopPropagation()}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-            <h3 style={{fontSize:16,fontWeight:700}}>Manage Tags</h3>
-            <button style={{background:"none",border:"none",cursor:"pointer"}} onClick={()=>setShowTagManager(false)}><Icon name="x" size={16} color="var(--text-dim)"/></button>
+      {showTagManager && (
+        <div className="modal-modern-overlay" onClick={()=>setShowTagManager(false)}>
+          <div className="modal-modern-card size-sm" onClick={e=>e.stopPropagation()}>
+            <div className="modal-modern-blobs" />
+            <div className="modal-modern-header">
+              <div>
+                <h3>Manage Tags</h3>
+                <p>Organize products with custom labels</p>
+              </div>
+              <button className="modal-modern-close" onClick={()=>setShowTagManager(false)}><Icon name="x" size={14}/></button>
+            </div>
+            <div className="modal-modern-body">
+              <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center"}}>
+                <input className="input" placeholder="New tag name..." value={newTagName} onChange={e=>setNewTagName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleCreateTag()} style={{fontSize:13,flex:1}}/>
+                <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                  {["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899"].map(c=>(
+                    <div key={c} onClick={()=>setNewTagColor(c)} style={{width:20,height:20,borderRadius:"50%",background:c,cursor:"pointer",border:newTagColor===c?"2px solid var(--text)":"2px solid transparent",transition:"all 0.15s"}}/>
+                  ))}
+                </div>
+                <button className="btn btn-primary" style={{padding:"6px 12px",fontSize:12}} onClick={handleCreateTag} disabled={!newTagName.trim()}>Add</button>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:250,overflowY:"auto"}}>
+                {tags.length === 0 && <p style={{fontSize:13,color:"var(--text-dim)",textAlign:"center",padding:20}}>No tags yet — create your first one above</p>}
+                {tags.map(t=>(
+                  <div key={t.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:"var(--hover-bg)",borderRadius:8}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <div style={{width:10,height:10,borderRadius:"50%",background:t.color}}/>
+                      <span style={{fontSize:13,fontWeight:600}}>{t.name}</span>
+                      <span style={{fontSize:11,color:"var(--text-dim)"}}>{t.entry_count||0} items</span>
+                    </div>
+                    <button style={{background:"none",border:"none",cursor:"pointer"}} onClick={()=>handleDeleteTag(t.id)}><Icon name="trash" size={12} color="#EF4444"/></button>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-          <div style={{display:"flex",gap:8,marginBottom:16}}>
-            <input className="input" placeholder="New tag name..." value={newTagName} onChange={e=>setNewTagName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleCreateTag()} style={{fontSize:13,flex:1}}/>
-            <div style={{display:"flex",gap:4,alignItems:"center"}}>
-              {["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899"].map(c=>(
-                <div key={c} onClick={()=>setNewTagColor(c)} style={{width:20,height:20,borderRadius:"50%",background:c,cursor:"pointer",border:newTagColor===c?"2px solid var(--text)":"2px solid transparent",transition:"all 0.15s"}}/>
+        </div>
+      )}
+
+      {changelogEntry && (
+        <div className="modal-modern-overlay" onClick={()=>setChangelogEntry(null)}>
+          <div className="modal-modern-card" onClick={e=>e.stopPropagation()}>
+            <div className="modal-modern-blobs" />
+            <div className="modal-modern-header">
+              <div>
+                <h3>Product History</h3>
+                <p>{changelogEntry.custom_name||changelogEntry.name||"Untitled"}</p>
+              </div>
+              <button className="modal-modern-close" onClick={()=>setChangelogEntry(null)}><Icon name="x" size={14}/></button>
+            </div>
+            <div className="modal-modern-body">
+              {changelog.length === 0 ? (
+                <div style={{textAlign:"center",padding:30}}>
+                  <Icon name="clock" size={24} color="var(--text-dim)"/>
+                  <p style={{fontSize:13,color:"var(--text-dim)",marginTop:8}}>No history yet for this product</p>
+                </div>
+              ) : changelog.map((a,i) => (
+                <div key={a.id||i} style={{display:"flex",gap:12,padding:"10px 0",borderBottom:i<changelog.length-1?"1px solid var(--border-light)":"none"}}>
+                  <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}>
+                    <div style={{width:8,height:8,borderRadius:"50%",background:({saved:"#3B82F6",created:"#10B981",updated:"#F59E0B",deleted:"#EF4444",exported:"#8B5CF6"})[a.action]||"#3B82F6"}}/>
+                    {i<changelog.length-1 && <div style={{width:1,flex:1,background:"var(--border-light)",marginTop:4}}/>}
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:12,color:"var(--text-sec)"}}>
+                      <span style={{fontWeight:600}}>{a.user_name}</span> {a.action}
+                      {a.details?.status && <span> status to <span style={{fontWeight:600}}>{a.details.status}</span></span>}
+                      {a.details?.name && <span> name to <span style={{fontWeight:600}}>{a.details.name}</span></span>}
+                      {a.details?.price && <span> price to <span style={{fontWeight:600}}>${a.details.price}</span></span>}
+                      {a.details?.format && <span> as {a.details.platform} {a.details.format}</span>}
+                    </div>
+                    <div style={{fontSize:10,color:"var(--text-dim)",marginTop:2}}>
+                      {new Date(a.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
               ))}
             </div>
-            <button className="btn btn-primary" style={{padding:"6px 12px",fontSize:12}} onClick={handleCreateTag} disabled={!newTagName.trim()}>Add</button>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:250,overflowY:"auto"}}>
-            {tags.length === 0 && <p style={{fontSize:13,color:"var(--text-dim)",textAlign:"center",padding:20}}>No tags yet — create your first one above</p>}
-            {tags.map(t=>(
-              <div key={t.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:"var(--hover-bg)",borderRadius:8}}>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <div style={{width:10,height:10,borderRadius:"50%",background:t.color}}/>
-                  <span style={{fontSize:13,fontWeight:600}}>{t.name}</span>
-                  <span style={{fontSize:11,color:"var(--text-dim)"}}>{t.entry_count||0} items</span>
-                </div>
-                <button style={{background:"none",border:"none",cursor:"pointer"}} onClick={()=>handleDeleteTag(t.id)}><Icon name="trash" size={12} color="#EF4444"/></button>
-              </div>
-            ))}
           </div>
         </div>
-      </div>}
+      )}
 
-      {/* Changelog Modal */}
-      {changelogEntry && <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setChangelogEntry(null)}>
-        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(4px)"}}/>
-        <div className="card animate-scaleIn" style={{position:"relative",width:460,maxWidth:"90vw",padding:24,maxHeight:"80vh",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-            <div>
-              <h3 style={{fontSize:16,fontWeight:700}}>Product History</h3>
-              <p style={{fontSize:12,color:"var(--text-dim)",marginTop:2}}>{changelogEntry.custom_name||changelogEntry.name||"Untitled"}</p>
+      {variantEntry && (
+        <div className="modal-modern-overlay" onClick={()=>{setVariantEntry(null);getCatalog().then(c=>setCatalog(c||[])).catch(()=>{})}}>
+          <div className="modal-modern-card size-lg" onClick={e=>e.stopPropagation()}>
+            <div className="modal-modern-blobs" />
+            <div className="modal-modern-header">
+              <div>
+                <h3>Variants</h3>
+                <p>{variantEntry.custom_name||variantEntry.name}</p>
+              </div>
+              <button className="modal-modern-close" onClick={()=>{setVariantEntry(null);getCatalog().then(c=>setCatalog(c||[])).catch(()=>{})}}><Icon name="x" size={14}/></button>
             </div>
-            <button style={{background:"none",border:"none",cursor:"pointer"}} onClick={()=>setChangelogEntry(null)}><Icon name="x" size={16} color="var(--text-dim)"/></button>
-          </div>
-          <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:0}}>
-            {changelog.length === 0 ? (
-              <div style={{textAlign:"center",padding:30}}>
-                <Icon name="clock" size={24} color="var(--text-dim)"/>
-                <p style={{fontSize:13,color:"var(--text-dim)",marginTop:8}}>No history yet for this product</p>
-              </div>
-            ) : changelog.map((a,i) => (
-              <div key={a.id||i} style={{display:"flex",gap:12,padding:"10px 0",borderBottom:i<changelog.length-1?"1px solid var(--border-light)":"none"}}>
-                <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}>
-                  <div style={{width:8,height:8,borderRadius:"50%",background:({saved:"#3B82F6",created:"#10B981",updated:"#F59E0B",deleted:"#EF4444",exported:"#8B5CF6"})[a.action]||"#3B82F6"}}/>
-                  {i<changelog.length-1 && <div style={{width:1,flex:1,background:"var(--border-light)",marginTop:4}}/>}
-                </div>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:12,color:"var(--text-sec)"}}>
-                    <span style={{fontWeight:600}}>{a.user_name}</span> {a.action}
-                    {a.details?.status && <span> status to <span style={{fontWeight:600}}>{a.details.status}</span></span>}
-                    {a.details?.name && <span> name to <span style={{fontWeight:600}}>{a.details.name}</span></span>}
-                    {a.details?.price && <span> price to <span style={{fontWeight:600}}>${a.details.price}</span></span>}
-                    {a.details?.format && <span> as {a.details.platform} {a.details.format}</span>}
-                  </div>
-                  <div style={{fontSize:10,color:"var(--text-dim)",marginTop:2}}>
-                    {new Date(a.created_at).toLocaleString()}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>}
-
-      {variantEntry && <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{setVariantEntry(null);getCatalog().then(c=>setCatalog(c||[])).catch(()=>{})}}>
-        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(4px)"}}/>
-        <div className="card animate-scaleIn" style={{position:"relative",width:560,maxWidth:"92vw",maxHeight:"85vh",overflow:"auto",padding:24}} onClick={e=>e.stopPropagation()}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
-            <div>
-              <h3 style={{fontSize:17,fontWeight:700,marginBottom:2}}>Variants</h3>
-              <p style={{fontSize:12,color:"var(--text-dim)"}}>{variantEntry.custom_name||variantEntry.name}</p>
+            <div className="modal-modern-body">
+              <VariantManager entryId={variantEntry.id} canEdit={canEdit}/>
             </div>
-            <button className="btn btn-ghost" style={{padding:"6px 10px"}} onClick={()=>{setVariantEntry(null);getCatalog().then(c=>setCatalog(c||[])).catch(()=>{})}}><Icon name="x" size={14}/></button>
           </div>
-          <VariantManager entryId={variantEntry.id} canEdit={canEdit}/>
         </div>
-      </div>}
+      )}
 
-      {showBatchModal && <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{if(!batchExporting)setShowBatchModal(false);}}>
-        <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(4px)"}}/>
-        <div className="card animate-scaleIn" style={{position:"relative",width:440,maxWidth:"90vw",padding:28}} onClick={e=>e.stopPropagation()}>
-          <h3 style={{fontSize:17,fontWeight:700,marginBottom:4}}>Batch Export</h3>
-          <p style={{fontSize:13,color:"var(--text-dim)",marginBottom:20}}>{selected.size} product{selected.size>1?"s":""} selected</p>
-
+      {showBatchModal && (
+        <div className="modal-modern-overlay" onClick={()=>{if(!batchExporting)setShowBatchModal(false);}}>
+          <div className="modal-modern-card size-sm" onClick={e=>e.stopPropagation()}>
+            <div className="modal-modern-blobs" />
+            <div className="modal-modern-header">
+              <div>
+                <h3>Batch Export</h3>
+                <p>{selected.size} product{selected.size>1?"s":""} selected</p>
+              </div>
+              <button className="modal-modern-close" onClick={()=>{if(!batchExporting)setShowBatchModal(false);}} disabled={batchExporting}><Icon name="x" size={14}/></button>
+            </div>
+            <div className="modal-modern-body">
           <div style={{marginBottom:18}}>
             <label style={{fontSize:12,fontWeight:600,color:"var(--text-dim)",marginBottom:8,display:"block",letterSpacing:"0.04em"}}>FORMAT</label>
             <div style={{display:"flex",gap:8,opacity:batchPlat==="PDF Catalog"?0.4:1,pointerEvents:batchPlat==="PDF Catalog"?"none":"auto"}}>{["CSV","JSON","XML"].map(f=><button key={f} onClick={()=>setBatchFmt(f)} className="mono" style={{flex:1,padding:12,borderRadius:8,border:`2px solid ${batchFmt===f?"#3B82F6":"var(--border)"}`,background:batchFmt===f?"rgba(37,99,235,0.1)":"var(--hover-bg)",color:batchFmt===f?"#60A5FA":"var(--text-muted)",fontSize:14,fontWeight:700,cursor:"pointer",transition:"all 0.2s"}}>{f}</button>)}</div>
@@ -684,15 +703,16 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
               <div style={{height:"100%",borderRadius:3,background:"#3B82F6",transition:"width 0.3s",width:`${batchProgress.total?((batchProgress.done/batchProgress.total)*100):0}%`}}/>
             </div>
           </div>}
-
-          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-            <button className="btn btn-ghost" style={{fontSize:13}} disabled={batchExporting} onClick={()=>setShowBatchModal(false)}>Cancel</button>
-            <button className="btn btn-primary" style={{fontSize:13,padding:"8px 20px"}} disabled={batchExporting} onClick={doBatchExport}>
-              <Icon name="download" size={14}/> {batchExporting?`Exporting ${batchProgress.done}/${batchProgress.total}...`:`Export & Download`}
-            </button>
+            </div>
+            <div className="modal-modern-footer">
+              <button className="btn btn-ghost" style={{fontSize:13}} disabled={batchExporting} onClick={()=>setShowBatchModal(false)}>Cancel</button>
+              <button className="btn btn-primary" style={{fontSize:13,padding:"8px 20px"}} disabled={batchExporting} onClick={doBatchExport}>
+                <Icon name="download" size={14}/> {batchExporting?`Exporting ${batchProgress.done}/${batchProgress.total}...`:`Export & Download`}
+              </button>
+            </div>
           </div>
         </div>
-      </div>}
+      )}
 
       {completenessModal && (() => {
         const ci = completenessModal;
@@ -701,14 +721,17 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
         const pColor = pct === 100 ? "#10B981" : pct >= 70 ? "#3B82F6" : pct >= 40 ? "#F59E0B" : "#EF4444";
         const aiTips = qualitySuggestions[ci.product_id];
         return (
-          <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setCompletenessModal(null)}>
-            <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(4px)"}}/>
-            <div className="card animate-scaleIn" style={{position:"relative",width:420,maxWidth:"90vw",padding:28}} onClick={e=>e.stopPropagation()}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
-                <h3 style={{fontSize:16,fontWeight:700}}>{ci.custom_name || ci.name || "Untitled"}</h3>
-                <button style={{background:"none",border:"none",cursor:"pointer",padding:4}} onClick={()=>setCompletenessModal(null)}><Icon name="x" size={16} color="var(--text-dim)"/></button>
+          <div className="modal-modern-overlay" onClick={()=>setCompletenessModal(null)}>
+            <div className="modal-modern-card size-sm" onClick={e=>e.stopPropagation()}>
+              <div className="modal-modern-blobs" />
+              <div className="modal-modern-header">
+                <div>
+                  <h3>{ci.custom_name || ci.name || "Untitled"}</h3>
+                  <p>Quality breakdown · {pct}% complete</p>
+                </div>
+                <button className="modal-modern-close" onClick={()=>setCompletenessModal(null)}><Icon name="x" size={14}/></button>
               </div>
-
+              <div className="modal-modern-body">
               <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:20}}>
                 <div style={{flex:1,height:8,borderRadius:4,background:"var(--hover-bg)",overflow:"hidden"}}>
                   <div style={{height:"100%",borderRadius:4,background:pColor,width:`${pct}%`,transition:"width 0.4s ease"}}/>
@@ -767,6 +790,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user }
                   )}
                 </div>
               )}
+              </div>
             </div>
           </div>
         );
