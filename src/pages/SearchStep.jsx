@@ -185,37 +185,118 @@ const SearchStep = ({ onSearch }) => {
           </div>
         </div>
       </div>}
-      {identified&&<div className="card animate-fadeIn" style={{maxWidth:560,width:"100%",padding:24,border:"1px solid rgba(16,185,129,0.3)"}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}><Icon name="sparkle" size={18} color="#10B981"/><h3 style={{fontWeight:700}}>Product Identified</h3><span className="badge badge-ai">AI</span><span style={{marginLeft:"auto",fontSize:12,color:"#10B981",fontWeight:600}}>{identified.confidence}% confidence</span></div>
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {[["Name",identified.name],["Brand",identified.brand],["Category",identified.category]].filter(([,v])=>v).map(([k,v])=><div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"6px 10px",background:"var(--hover-bg)",borderRadius:6}}><span style={{color:"var(--text-dim)"}}>{k}</span><span style={{fontWeight:600}}>{v}</span></div>)}
-          {identified.description&&<p style={{fontSize:13,color:"var(--text-muted)",lineHeight:1.5,padding:"6px 10px"}}>{identified.description}</p>}
-          {identified.specs&&Object.keys(identified.specs).length>0&&<>
-            <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginTop:4}}>SPECIFICATIONS</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>{Object.entries(identified.specs).filter(([,v])=>v&&v!=="null").map(([k,v])=><div key={k} style={{padding:"5px 10px",background:"var(--hover-bg)",borderRadius:6}}><div style={{fontSize:10,color:"var(--text-dim)"}}>{k}</div><div className="mono" style={{fontSize:12,color:"var(--text-sec)"}}>{v}</div></div>)}</div>
-          </>}
-          {identified.sources?.length>0&&<>
-            <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginTop:4}}>AVAILABLE AT</div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>{identified.sources.map((s,i)=><span key={i} style={{padding:"4px 10px",background:"rgba(37,99,235,0.08)",border:"1px solid rgba(37,99,235,0.2)",borderRadius:6,fontSize:12,color:"#60A5FA"}}>{s.name}{s.price?` · ${s.price}`:""}</span>)}</div>
-          </>}
-          {/* Product Images */}
-          {(searchingImages||productImages.length>0)&&<>
-            <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginTop:4}}>PRODUCT IMAGES <span style={{fontWeight:400,color:"var(--text-dim)"}}> — select the ones you want</span></div>
-            {searchingImages&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0"}}><div style={{width:16,height:16,borderRadius:"50%",border:"2px solid var(--border)",borderTopColor:"#3B82F6",animation:"spin 0.8s linear infinite"}}/><span style={{fontSize:12,color:"var(--text-dim)"}}>Finding product images...</span></div>}
-            <div style={{display:"grid",gridTemplateColumns:"repeat(4, 1fr)",gap:6}}>
-              {productImages.map((img,i)=><div key={i} onClick={()=>setSelectedImages(prev=>{const s=new Set(prev);s.has(i)?s.delete(i):s.add(i);return s;})} style={{position:"relative",borderRadius:6,overflow:"hidden",cursor:"pointer",border:`2px solid ${selectedImages.has(i)?"#10B981":"transparent"}`,opacity:selectedImages.has(i)?1:0.5,transition:"all 0.2s",aspectRatio:"1"}}>
-                <img src={img.thumbnail||img.url} alt="" loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>{e.target.style.display="none";}}/>
-                {selectedImages.has(i)&&<div style={{position:"absolute",top:3,right:3,width:16,height:16,borderRadius:"50%",background:"#10B981",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon name="check" size={10} color="white"/></div>}
-              </div>)}
+      {identified && (() => {
+        const conf = identified.confidence || 0;
+        const confColor = conf >= 80 ? "#10B981" : conf >= 60 ? "#3B82F6" : conf >= 40 ? "#F59E0B" : "#EF4444";
+        return (
+        <div className="identify-card animate-fadeIn">
+          <div className="modal-modern-blobs" />
+          <div style={{ position: "relative" }}>
+            {/* Hero: photo + name + confidence */}
+            <div className="identify-hero">
+              {uploadedImage && (
+                <div className="identify-hero-img">
+                  <img src={uploadedImage} alt="Uploaded" />
+                </div>
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 999, background: "rgba(124,58,237,0.12)", border: "1px solid rgba(124,58,237,0.25)", fontSize: 10, fontWeight: 700, color: "var(--primary-light, #A78BFA)", letterSpacing: "0.08em", marginBottom: 8 }}>
+                  <Icon name="sparkle" size={10} color="var(--primary-light, #A78BFA)" /> AI IDENTIFIED
+                </div>
+                <h2 style={{ fontSize: 19, fontWeight: 800, letterSpacing: "-0.01em", lineHeight: 1.2, marginBottom: 4 }}>{identified.name || "Unknown Product"}</h2>
+                {identified.brand && <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>{identified.brand}{identified.category ? ` · ${identified.category}` : ""}</div>}
+                <div className="identify-conf">
+                  <div className="identify-conf-bar">
+                    <div className="identify-conf-fill" style={{ width: `${conf}%`, background: `linear-gradient(90deg, ${confColor}aa, ${confColor})` }} />
+                  </div>
+                  <span className="mono" style={{ fontSize: 11, fontWeight: 800, color: confColor, minWidth: 38, textAlign: "right" }}>{conf}%</span>
+                </div>
+              </div>
             </div>
-            {productImages.length>0&&<div style={{fontSize:11,color:"var(--text-dim)"}}>{selectedImages.size} image{selectedImages.size!==1?"s":""} selected</div>}
-          </>}
+
+            {identified.description && (
+              <div style={{ padding: "12px 14px", background: "color-mix(in oklab, var(--surface) 60%, transparent)", borderRadius: 10, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.55, marginTop: 14 }}>
+                {identified.description}
+              </div>
+            )}
+
+            {/* Specs grid */}
+            {identified.specs && Object.keys(identified.specs).length > 0 && (
+              <div style={{ marginTop: 14 }}>
+                <div className="export-section-label">Specifications</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 }}>
+                  {Object.entries(identified.specs).filter(([, v]) => v && v !== "null").map(([k, v]) => (
+                    <div key={k} className="identify-spec-item">
+                      <div style={{ fontSize: 9.5, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3, fontWeight: 600 }}>{k}</div>
+                      <div className="mono" style={{ fontSize: 12, color: "var(--text)", fontWeight: 600, lineHeight: 1.3 }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Sources */}
+            {identified.sources?.length > 0 && (
+              <div style={{ marginTop: 14 }}>
+                <div className="export-section-label">Available At</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {identified.sources.map((s, i) => (
+                    <span key={i} className="identify-source-pill">
+                      <span style={{ fontWeight: 700 }}>{s.name}</span>
+                      {s.price && <span style={{ color: "#10B981", fontWeight: 700 }}>· {s.price}</span>}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Product image picker */}
+            {(searchingImages || productImages.length > 0) && (
+              <div style={{ marginTop: 14 }}>
+                <div className="export-section-label" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>Product Images</span>
+                  <span style={{ fontWeight: 400, color: "var(--text-dim)", textTransform: "none", letterSpacing: 0 }}>· tap to select</span>
+                  {!searchingImages && productImages.length > 0 && (
+                    <span style={{ marginLeft: "auto", fontSize: 10, padding: "2px 8px", borderRadius: 999, background: "rgba(16,185,129,0.12)", color: "#10B981", fontWeight: 700, letterSpacing: 0, textTransform: "none" }}>{selectedImages.size} selected</span>
+                  )}
+                </div>
+                {searchingImages && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", background: "color-mix(in oklab, var(--surface) 60%, transparent)", borderRadius: 10, marginTop: 4 }}>
+                    <span className="typing-pulse" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--primary-light, #A78BFA)" }} />
+                    <span style={{ fontSize: 12, color: "var(--text-dim)" }}>Finding product images...</span>
+                  </div>
+                )}
+                {productImages.length > 0 && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                    {productImages.map((img, i) => {
+                      const sel = selectedImages.has(i);
+                      return (
+                        <div key={i} onClick={() => setSelectedImages(prev => { const s = new Set(prev); s.has(i) ? s.delete(i) : s.add(i); return s; })}
+                          className={`identify-img-tile ${sel ? "selected" : ""}`}>
+                          <img src={img.thumbnail || img.url} alt="" loading="lazy" onError={e => { e.target.style.display = "none"; }} />
+                          {sel && (
+                            <>
+                              <div className="identify-img-overlay" />
+                              <div className="identify-img-check"><Icon name="check" size={11} color="white" /></div>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 18, position: "relative" }}>
+              <button className="btn btn-ghost" onClick={() => setIdentified(null)}><Icon name="x" size={14} /> Dismiss</button>
+              <button className="btn" style={{ flex: 1, justifyContent: "center", fontSize: 14, padding: "10px 16px", fontWeight: 700, background: "linear-gradient(135deg, #3B82F6, #7C3AED, #10B981)", color: "white", border: "none", boxShadow: "0 4px 18px rgba(124,58,237,0.4)" }} onClick={handleIdentifiedSearch}>
+                <Icon name="check" size={14} color="white" /> Use This Product
+              </button>
+            </div>
         </div>
-        <div style={{display:"flex",gap:10,marginTop:16}}>
-          <button className="btn btn-primary" style={{flex:1,justifyContent:"center"}} onClick={handleIdentifiedSearch}><Icon name="check" size={14}/> Use This Product</button>
-          <button className="btn btn-ghost" onClick={()=>setIdentified(null)}><Icon name="x" size={14}/> Dismiss</button>
-        </div>
-      </div>}
+        );
+      })()}
       <div style={{width:"100%",maxWidth:560,display:"flex",flexDirection:"column",gap:14}}>
         <div style={{position:"relative"}}>
           <div style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:"var(--text-dim)"}}><Icon name="barcode" size={18}/></div>
