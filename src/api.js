@@ -284,6 +284,21 @@ export const addTrendingToCatalog = async (item) => {
   return handleResponse(res);
 };
 
+// ── CHAT ──
+export const chatSend = async (message, history = []) => {
+  const res = await apiFetch(`${API_URL}/chat`, {
+    method: 'POST', headers: headers(), body: JSON.stringify({ message, history }),
+  });
+  return handleResponse(res);
+};
+
+export const chatExecute = async ({ action, filter, change }) => {
+  const res = await apiFetch(`${API_URL}/chat/execute`, {
+    method: 'POST', headers: headers(), body: JSON.stringify({ action, filter, change }),
+  });
+  return handleResponse(res);
+};
+
 // Stream all 3 AI description tones. Calls onToneChunk(tone, text) per chunk,
 // onDone({Professional, Friendly, Luxury}) at end. Returns a cancel function.
 export const streamDescription = async (payload, { onToneChunk, onDone, onError }) => {

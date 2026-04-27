@@ -12,6 +12,7 @@ const aiRoutes = require('./routes/ai');
 const exportRoutes = require('./routes/export');
 const catalogRoutes = require('./routes/catalog');
 const trendingRoutes = require('./routes/trending');
+const chatRoutes = require('./routes/chat');
 const db = require('./db');
 
 const rateLimit = require('./middleware/rateLimit');
@@ -49,6 +50,8 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/trending', trendingRoutes);
+app.use('/api/chat', rateLimit({ max: 30, windowMs: 60000 }));
+app.use('/api/chat', chatRoutes);
 
 // Health check
 app.get('/api/health', async (req, res) => {
