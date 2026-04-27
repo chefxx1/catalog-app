@@ -4,6 +4,7 @@ import { toast } from "../components/Toast";
 import { searchProduct, identifyProduct, searchProductImages } from "../api";
 import { Html5Qrcode } from "html5-qrcode";
 import CameraScanner from "../components/CameraScanner";
+import BrandOrb from "../components/BrandOrb";
 
 const SearchStep = ({ onSearch }) => {
   const [upc,setUpc]=useState(""); const [loading,setLoading]=useState(false); const [loadingStep,setLoadingStep]=useState(0); const [dragOver,setDragOver]=useState(false); const fileRef=useRef(null);
@@ -94,18 +95,15 @@ const SearchStep = ({ onSearch }) => {
   const scanBarcodeFromFile=(file)=>{setError(null);const html5Qr=new Html5Qrcode("barcode-scanner-temp");html5Qr.scanFile(file,true).then(code=>{setUpc(code);handleSearch(code);}).catch(()=>{handleImageIdentify(file);}).finally(()=>{html5Qr.clear();});};
 
   if(loading) return (
-    <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:30,padding:"60px 20px",minHeight:400}}>
-      <div className="animate-glow" style={{position:"relative",width:120,height:120}}>
-        <div style={{position:"absolute",inset:0,borderRadius:"50%",border:"3px solid rgba(37,99,235,0.2)",borderTop:"3px solid #2563EB",animation:"spin 1s linear infinite"}}/>
-        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon name="cpu" size={36} color="#2563EB"/></div>
-      </div>
+    <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:28,padding:"60px 20px",minHeight:400}}>
+      <BrandOrb size="xl" floating />
       <div style={{textAlign:"center"}}>
-        <h2 style={{fontSize:22,fontWeight:700,marginBottom:8}}>Aggregating Data</h2>
-        <p style={{color:"var(--text-muted)",marginBottom:20}}>{msgs[loadingStep]}</p>
+        <h2 style={{fontSize:22,fontWeight:800,letterSpacing:"-0.01em",marginBottom:6,background:"linear-gradient(135deg,var(--text),var(--text-muted))",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Aggregating Data</h2>
+        <p style={{color:"var(--text-muted)",marginBottom:22,fontSize:13}}>{msgs[loadingStep]}</p>
         <div style={{display:"flex",flexDirection:"column",gap:8,width:320}}>
           {sourceNames.map((s,i)=>(
-            <div key={i} style={{display:"flex",alignItems:"center",gap:10,opacity:i<=loadingStep?1:0.3,transition:"opacity 0.3s"}}>
-              <div style={{width:8,height:8,borderRadius:"50%",background:i<loadingStep?"#10B981":i===loadingStep?"#2563EB":"var(--text-dim)",flexShrink:0}}/>
+            <div key={i} style={{display:"flex",alignItems:"center",gap:10,opacity:i<=loadingStep?1:0.3,transition:"opacity 0.3s",padding:"6px 10px",borderRadius:8,background:i===loadingStep?"rgba(124,58,237,0.06)":"transparent"}}>
+              <div style={{width:8,height:8,borderRadius:"50%",background:i<loadingStep?"#10B981":i===loadingStep?"#7C3AED":"var(--text-dim)",flexShrink:0}}/>
               <span style={{fontSize:13,color:i<=loadingStep?"var(--text)":"var(--text-dim)"}}>{s.name}</span>
               {i<loadingStep&&<Icon name="check" size={12} color="#10B981"/>}
               {i===loadingStep&&<LoadingDots/>}
@@ -113,7 +111,7 @@ const SearchStep = ({ onSearch }) => {
             </div>
           ))}
         </div>
-        <div className="progress-bar" style={{marginTop:20,width:320}}><div className="progress-fill" style={{width:`${((loadingStep+1)/msgs.length)*100}%`,background:"linear-gradient(90deg,#2563EB,#10B981)"}}/></div>
+        <div className="progress-bar" style={{marginTop:20,width:320}}><div className="progress-fill" style={{width:`${((loadingStep+1)/msgs.length)*100}%`,background:"linear-gradient(90deg,#3B82F6,#7C3AED,#10B981)"}}/></div>
       </div>
     </div>
   );
@@ -164,9 +162,29 @@ const SearchStep = ({ onSearch }) => {
           ))}
         </div>
       </div>
-      {notFound&&<div className="card" style={{maxWidth:560,width:"100%",textAlign:"center",padding:24,border:"1px solid rgba(245,158,11,0.3)"}}><Icon name="search" size={28} color="#F59E0B"/><h3 style={{marginTop:10,fontWeight:700}}>Product Not Found</h3><p style={{color:"var(--text-muted)",marginTop:6,fontSize:13}}>No product data found for barcode <span className="mono" style={{color:"var(--text)"}}>{upc}</span>. Try a different barcode.</p></div>}
+      {notFound&&<div className="card" style={{maxWidth:560,width:"100%",padding:"36px 28px",border:"1px solid rgba(245,158,11,0.25)",position:"relative",overflow:"hidden",textAlign:"center"}}>
+        <div className="modal-modern-blobs" style={{borderRadius:"inherit"}}/>
+        <div style={{position:"relative",display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
+          <div style={{width:56,height:56,borderRadius:14,background:"rgba(245,158,11,0.12)",border:"1px solid rgba(245,158,11,0.25)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <Icon name="search" size={26} color="#F59E0B"/>
+          </div>
+          <div>
+            <h3 style={{fontWeight:800,fontSize:17,letterSpacing:"-0.01em",marginBottom:4}}>Product Not Found</h3>
+            <p style={{color:"var(--text-muted)",fontSize:13,lineHeight:1.5,maxWidth:340,margin:"0 auto"}}>No data found for barcode <span className="mono" style={{color:"var(--text)"}}>{upc}</span>. Try a different barcode or upload an image.</p>
+          </div>
+        </div>
+      </div>}
       {error&&<div className="card" style={{maxWidth:560,width:"100%",textAlign:"center",padding:24,border:"1px solid rgba(239,68,68,0.3)"}}><Icon name="warning" size={28} color="#EF4444"/><h3 style={{marginTop:10,fontWeight:700,color:"#EF4444"}}>Search Error</h3><p style={{color:"var(--text-muted)",marginTop:6,fontSize:13}}>{error}</p></div>}
-      {identifying&&<div className="card" style={{maxWidth:560,width:"100%",textAlign:"center",padding:32,border:"1px solid rgba(37,99,235,0.3)"}}><div style={{width:48,height:48,margin:"0 auto 12px",borderRadius:"50%",border:"3px solid var(--border)",borderTopColor:"#3B82F6",animation:"spin 0.8s linear infinite"}}/><h3 style={{fontWeight:700,marginBottom:4}}>AI Identifying Product...</h3><p style={{color:"var(--text-muted)",fontSize:13}}>Analyzing image with Gemini AI</p></div>}
+      {identifying&&<div className="card" style={{maxWidth:560,width:"100%",textAlign:"center",padding:"36px 28px",border:"1px solid rgba(124,58,237,0.25)",background:"color-mix(in oklab, var(--card-bg) 92%, transparent)",backdropFilter:"blur(12px)",position:"relative",overflow:"hidden"}}>
+        <div className="modal-modern-blobs" style={{borderRadius:"inherit"}}/>
+        <div style={{position:"relative",display:"flex",flexDirection:"column",alignItems:"center",gap:14}}>
+          <BrandOrb size="lg" floating/>
+          <div>
+            <h3 style={{fontWeight:800,fontSize:17,letterSpacing:"-0.01em",marginBottom:4}}>AI Identifying Product...</h3>
+            <p style={{color:"var(--text-muted)",fontSize:13}}>Analyzing image with Gemini</p>
+          </div>
+        </div>
+      </div>}
       {identified&&<div className="card animate-fadeIn" style={{maxWidth:560,width:"100%",padding:24,border:"1px solid rgba(16,185,129,0.3)"}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}><Icon name="sparkle" size={18} color="#10B981"/><h3 style={{fontWeight:700}}>Product Identified</h3><span className="badge badge-ai">AI</span><span style={{marginLeft:"auto",fontSize:12,color:"#10B981",fontWeight:600}}>{identified.confidence}% confidence</span></div>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
