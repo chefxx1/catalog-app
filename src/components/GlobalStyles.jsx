@@ -113,6 +113,10 @@ const GlobalStyles = ({ dark }) => (
     .input[type="number"] { -moz-appearance:textfield; }
     .stepper-btn { width:22px; height:22px; border-radius:6px; border:1px solid var(--border); background:var(--surface); color:var(--text-muted); cursor:pointer; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; padding:0; transition:all 0.15s; }
     .stepper-btn:hover { border-color:var(--primary); color:var(--primary); background:rgba(124,58,237,0.08); }
+    @keyframes cursorBlink { 0%, 49% { opacity:1; } 50%, 100% { opacity:0; } }
+    .cursor-blink { animation: cursorBlink 0.9s step-end infinite; }
+    @keyframes typingPulse { 0%, 100% { opacity:0.4; transform:scale(0.9); } 50% { opacity:1; transform:scale(1.1); } }
+    .typing-pulse { animation: typingPulse 0.8s ease-in-out infinite; }
 
     .progress-bar { height:4px; background:var(--surface-light); border-radius:2px; overflow:hidden; }
     .progress-fill { height:100%; border-radius:2px; transition:width 0.5s ease; }

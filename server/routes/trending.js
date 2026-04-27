@@ -1,8 +1,41 @@
 const express = require('express');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const db = require('../db');
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
 const logActivity = require('../helpers/activity');
+
+// AI enrichment for trending products — generates description + specs + SEO from product name
+async function enrichWithAI(name, category) {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return null;
+  try {
+    const genAI = new GoogleGenerativeAI(key);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const prompt = `You are an e-commerce copywriter. Generate marketing data for this product:
+Product: ${name}
+Category: ${category || 'general'}
+
+Return ONLY a JSON object (no markdown, no code fences):
+{
+  "description": "2-sentence neutral product description",
+  "professional": "professional/data-driven 2-3 sentences",
+  "friendly": "warm/conversational 2-3 sentences",
+  "luxury": "elevated/aspirational 2-3 sentences",
+  "specs": { "Key1": "Value1", "Key2": "Value2", "Key3": "Value3", "Key4": "Value4", "Key5": "Value5" },
+  "seoTags": ["tag1", "tag2", "tag3", "tag4", "tag5", "tag6"]
+}
+
+For specs: 5-7 concrete attributes RELEVANT to this product type (e.g. headphones: Driver Size, Battery Life, Connectivity; furniture: Material, Dimensions, Weight Capacity).`;
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
+    const jsonStr = text.replace(/^```json?\s*/i, '').replace(/```\s*$/, '').trim();
+    return JSON.parse(jsonStr);
+  } catch (err) {
+    console.warn('[trending] AI enrichment failed:', err.message);
+    return null;
+  }
+}
 
 const router = express.Router();
 
@@ -194,9 +227,23 @@ router.post('/add', auth, requireRole('Admin', 'Editor'), async (req, res) => {
       if (!isNaN(num) && num > 0) cleanPrice = num;
     }
 
+    // AI enrichment — best-effort, doesn't block the add if it fails
+    const enriched = await enrichWithAI(name, category);
+
     const [productResult] = await db.query(
-      `INSERT INTO products (barcode, name, ai_category_suggestion, cache_expires_at) VALUES (?, ?, ?, ?)`,
-      [barcode, name, category || null, cacheExpiry]
+      `INSERT INTO products (barcode, name, description, ai_description_professional, ai_description_friendly, ai_description_luxury, ai_category_suggestion, ai_attributes, seo_tags, cache_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        barcode,
+        name,
+        enriched?.description || null,
+        enriched?.professional || null,
+        enriched?.friendly || null,
+        enriched?.luxury || null,
+        category || null,
+        enriched?.specs ? JSON.stringify(enriched.specs) : null,
+        enriched?.seoTags ? JSON.stringify(enriched.seoTags) : null,
+        cacheExpiry,
+      ]
     );
     const productId = productResult.insertId;
 

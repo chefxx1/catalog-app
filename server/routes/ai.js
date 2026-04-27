@@ -148,6 +148,125 @@ Return a JSON object with exactly this structure (no markdown, no code fences, j
   }
 });
 
+// POST /api/ai/stream-description — stream all 3 tones in one call via SSE.
+// Output is parsed live for [PROFESSIONAL], [FRIENDLY], [LUXURY] markers and
+// each chunk is routed to the right tone box on the frontend.
+router.post('/stream-description', auth, requireRole('Admin', 'Editor'), async (req, res) => {
+  const { name, brand, category, description, specs, brandVoice, customInstructions: rawInstructions, language } = req.body;
+
+  if (!name) return res.status(400).json({ error: 'Product name is required' });
+  const customInstructions = rawInstructions ? sanitize(rawInstructions).slice(0, 500) : null;
+  const langInstruction = language ? `\n\nWrite all three descriptions in ${language}, not English.` : '';
+  const productInfo = [
+    `Product: ${name}`,
+    brand ? `Brand: ${brand}` : null,
+    category ? `Category: ${category}` : null,
+    description ? `Description: ${description}` : null,
+    specs ? `Specifications: ${JSON.stringify(specs)}` : null,
+  ].filter(Boolean).join('\n');
+  const voiceContext = customInstructions
+    ? `\nCustom instructions: ${customInstructions}`
+    : brandVoice ? `\nBrand voice:\n- Tone: ${brandVoice.tone || 'Professional'}\n- Audience: ${brandVoice.audience || 'General consumers'}\n- Style: ${brandVoice.style || 'Clear and informative'}\n- Include keywords: ${(brandVoice.includeKeywords || []).join(', ') || 'none'}\n- Exclude keywords: ${(brandVoice.excludeKeywords || []).join(', ') || 'none'}` : '';
+
+  const prompt = `You are an expert e-commerce product copywriter.
+${productInfo}
+${voiceContext}${langInstruction}
+
+Write THREE product descriptions for the product, one per tone. Use this EXACT format with the bracketed markers, each on its own line:
+
+[PROFESSIONAL]
+A professional, data-driven description (2-3 sentences). Focus on specifications, value, and credibility.
+
+[FRIENDLY]
+A warm, conversational description (2-3 sentences). Use casual language, contractions, and enthusiasm.
+
+[LUXURY]
+An elevated, aspirational description (2-3 sentences). Emphasize craftsmanship, exclusivity, and sensory experience.
+
+Output ONLY the three markers with their descriptions. No preamble, no closing text, no quotes around the descriptions.`;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  const send = (event, data) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  // State machine: track which tone we're currently writing into.
+  // null = haven't seen any marker yet (or between markers).
+  let currentTone = null;
+  let buffer = '';
+  const accumulated = { Professional: '', Friendly: '', Luxury: '' };
+
+  const TONE_MAP = {
+    '[PROFESSIONAL]': 'Professional',
+    '[FRIENDLY]':     'Friendly',
+    '[LUXURY]':       'Luxury',
+  };
+
+  const flushBuffer = () => {
+    // Look for any tone marker in the buffer
+    while (buffer.length > 0) {
+      const earliestIdx = Object.keys(TONE_MAP)
+        .map(m => ({ m, i: buffer.indexOf(m) }))
+        .filter(x => x.i !== -1)
+        .sort((a, b) => a.i - b.i)[0];
+
+      if (!earliestIdx) {
+        // No marker in buffer — emit text up to last 20 chars (in case marker is split across chunks)
+        const safeEnd = Math.max(0, buffer.length - 20);
+        const emit = buffer.slice(0, safeEnd);
+        buffer = buffer.slice(safeEnd);
+        if (emit && currentTone) {
+          accumulated[currentTone] += emit;
+          send('tone-chunk', { tone: currentTone, text: emit });
+        }
+        break;
+      }
+
+      // Emit anything before the marker
+      const before = buffer.slice(0, earliestIdx.i);
+      if (before && currentTone) {
+        accumulated[currentTone] += before;
+        send('tone-chunk', { tone: currentTone, text: before });
+      }
+      // Switch to new tone
+      currentTone = TONE_MAP[earliestIdx.m];
+      buffer = buffer.slice(earliestIdx.i + earliestIdx.m.length);
+      // Skip leading newlines after the marker
+      buffer = buffer.replace(/^[\r\n]+/, '');
+    }
+  };
+
+  try {
+    const model = getModel();
+    const result = await model.generateContentStream(prompt);
+    for await (const chunk of result.stream) {
+      const text = chunk.text();
+      if (text) {
+        buffer += text;
+        flushBuffer();
+      }
+    }
+    // Flush any remaining buffer at end of stream
+    if (buffer && currentTone) {
+      accumulated[currentTone] += buffer;
+      send('tone-chunk', { tone: currentTone, text: buffer });
+      buffer = '';
+    }
+    // Trim trailing whitespace per tone
+    Object.keys(accumulated).forEach(k => { accumulated[k] = accumulated[k].trim(); });
+    send('done', { tones: accumulated });
+    res.end();
+  } catch (err) {
+    console.error('Stream error:', err.message);
+    send('error', { error: err.message });
+    res.end();
+  }
+});
+
 // POST /api/ai/identify — identify product from image
 router.post('/identify', auth, async (req, res) => {
   try {

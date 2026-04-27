@@ -284,6 +284,50 @@ export const addTrendingToCatalog = async (item) => {
   return handleResponse(res);
 };
 
+// Stream all 3 AI description tones. Calls onToneChunk(tone, text) per chunk,
+// onDone({Professional, Friendly, Luxury}) at end. Returns a cancel function.
+export const streamDescription = async (payload, { onToneChunk, onDone, onError }) => {
+  const controller = new AbortController();
+  (async () => {
+    try {
+      const res = await apiFetch(`${API_URL}/ai/stream-description`, {
+        method: 'POST', headers: headers(), body: JSON.stringify(payload), signal: controller.signal,
+      });
+      if (!res.ok) { onError?.(new Error(`HTTP ${res.status}`)); return; }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split('\n\n');
+        buffer = events.pop() || '';
+        for (const raw of events) {
+          if (!raw.trim()) continue;
+          const lines = raw.split('\n');
+          let eventName = 'message';
+          let dataLine = '';
+          for (const line of lines) {
+            if (line.startsWith('event: ')) eventName = line.slice(7).trim();
+            else if (line.startsWith('data: ')) dataLine += line.slice(6);
+          }
+          if (!dataLine) continue;
+          try {
+            const data = JSON.parse(dataLine);
+            if (eventName === 'tone-chunk') onToneChunk?.(data.tone, data.text || '');
+            else if (eventName === 'done') onDone?.(data.tones || {});
+            else if (eventName === 'error') onError?.(new Error(data.error || 'Stream error'));
+          } catch {}
+        }
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError') onError?.(err);
+    }
+  })();
+  return () => controller.abort();
+};
+
 export const getSearchHistory = async () => {
   const res = await apiFetch(`${API_URL}/analytics/searches`, { headers: headers() });
   return handleResponse(res);
