@@ -21,12 +21,14 @@ const ToastContainer = () => {
   const icons = { success: "check", error: "warning", warning: "warning", info: "sparkle" };
   if (toasts.length === 0) return null;
   return (
-    <div style={{position:"fixed",top:20,right:20,zIndex:99999,display:"flex",flexDirection:"column",gap:8,maxWidth:380}}>
+    <div style={{position:"fixed",top:20,right:20,zIndex:99999,display:"flex",flexDirection:"column",gap:10,maxWidth:380,pointerEvents:"none"}}>
       {toasts.map(t=>(
-        <div key={t.id} className="animate-slideUp" style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",background:"var(--bg-sidebar)",border:`1px solid ${colors[t.type]}40`,borderLeft:`3px solid ${colors[t.type]}`,borderRadius:10,boxShadow:"0 4px 20px rgba(0,0,0,0.3)",fontSize:13,color:"var(--text-sec)"}}>
-          <Icon name={icons[t.type]} size={16} color={colors[t.type]}/>
-          <span style={{flex:1}}>{t.message}</span>
-          <span style={{cursor:"pointer",opacity:0.5,fontSize:16,lineHeight:1}} onClick={()=>setToasts(prev=>prev.filter(x=>x.id!==t.id))}>&times;</span>
+        <div key={t.id} className="toast-glass" style={{pointerEvents:"auto","--toast-c":colors[t.type]}}>
+          <div className="toast-glass-icon">
+            <Icon name={icons[t.type]} size={14} color={colors[t.type]}/>
+          </div>
+          <span style={{flex:1,fontSize:13,color:"var(--text)",lineHeight:1.4}}>{t.message}</span>
+          <button className="toast-glass-close" onClick={()=>setToasts(prev=>prev.filter(x=>x.id!==t.id))}><Icon name="x" size={11} color="var(--text-dim)"/></button>
         </div>
       ))}
     </div>

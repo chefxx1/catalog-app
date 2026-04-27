@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Icon } from "../components/shared";
 import { toast } from "../components/Toast";
+import BrandOrb from "../components/BrandOrb";
 import { getTrending, getTrendingCategories, addTrendingToCatalog } from "../api";
 
 const COUNTRIES = [
@@ -106,12 +107,12 @@ const Trending = ({ user }) => {
       )}
 
       {!loading && items.length === 0 && (
-        <div className="card" style={{ textAlign: "center", padding: 40 }}>
-          <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(245,158,11,0.12)", margin: "0 auto 16px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Icon name="sparkle" size={24} color="#F59E0B" />
+        <div className="card" style={{ padding: 0 }}>
+          <div className="empty-state-modern">
+            <BrandOrb size="lg" floating />
+            <div className="es-title">No trends right now</div>
+            <div className="es-subtitle">Try a different country or category — Google Shopping doesn't have data for every region.</div>
           </div>
-          <h3 style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>No trends right now</h3>
-          <p style={{ fontSize: 12, color: "var(--text-dim)" }}>Try a different country or category.</p>
         </div>
       )}
 

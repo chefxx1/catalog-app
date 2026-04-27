@@ -197,19 +197,22 @@ export const TagInput = ({ tags, onTagsChange, placeholder }) => {
 export const ConfirmDialog = ({ title, message, confirmLabel, confirmColor, onConfirm, onCancel }) => {
   const color = confirmColor || "#EF4444";
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(8px)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={onCancel}>
-      <div className="animate-scaleIn" style={{ padding: 28, maxWidth: 440, width: "100%", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, boxShadow: "0 20px 80px rgba(0,0,0,0.4)", position: "relative", overflow: "hidden" }} onClick={e => e.stopPropagation()}>
-        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${color}, ${color}88)` }} />
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: `${color}15`, border: `1px solid ${color}30`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <Icon name="warning" size={18} color={color} />
+    <div className="modal-modern-overlay" onClick={onCancel}>
+      <div className="modal-modern-card size-sm" onClick={e => e.stopPropagation()} style={{ position: "relative" }}>
+        <div className="modal-modern-blobs" style={{ "--blob-tint": color }} />
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${color}, transparent)`, opacity: 0.6, zIndex: 2 }} />
+        <div className="modal-modern-body" style={{ padding: "26px 24px 18px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 11, background: `${color}18`, border: `1px solid ${color}35`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Icon name="warning" size={18} color={color} />
+            </div>
+            <h3 style={{ fontWeight: 800, fontSize: 16, letterSpacing: "-0.01em", margin: 0 }}>{title}</h3>
           </div>
-          <h3 style={{ fontWeight: 800, fontSize: 16, letterSpacing: "-0.01em" }}>{title}</h3>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6, margin: 0 }}>{message}</p>
         </div>
-        <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6, marginBottom: 22 }}>{message}</p>
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+        <div className="modal-modern-footer">
           <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
-          <button className="btn" style={{ background: color, color: "white", boxShadow: `0 0 20px ${color}40` }} onClick={onConfirm}>{confirmLabel || "Confirm"}</button>
+          <button className="btn" style={{ background: color, color: "white", boxShadow: `0 4px 14px ${color}55` }} onClick={onConfirm}>{confirmLabel || "Confirm"}</button>
         </div>
       </div>
     </div>
