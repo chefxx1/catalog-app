@@ -10,9 +10,13 @@ const CameraScanner = ({ onDetect, onClose, onFilePick, onCapture }) => {
   const [status, setStatus] = useState("starting");
   const [error, setError] = useState(null);
   const [mode, setMode] = useState("barcode");
+  const modeRef = useRef("barcode");
   const fileRef = useRef(null);
   const startedRef = useRef(false);
   const unmountedRef = useRef(false);
+
+  // Keep modeRef in sync so the qr.start callback (registered once) reads the latest mode.
+  useEffect(() => { modeRef.current = mode; }, [mode]);
 
   const killTracks = () => {
     // Aggressively stop tracks on every video element in the document,
@@ -54,7 +58,7 @@ const CameraScanner = ({ onDetect, onClose, onFilePick, onCapture }) => {
         deviceId ? { deviceId: { exact: deviceId } } : { facingMode: "environment" },
         { fps: 10, qrbox: { width: 260, height: 180 }, aspectRatio: 1.333 },
         async (decoded) => {
-          if (mode !== "barcode") return;
+          if (modeRef.current !== "barcode") return;
           unmountedRef.current = true;
           killTracks();
           await stopCamera();

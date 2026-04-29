@@ -15,7 +15,7 @@ const { sanitize, isValidEmail } = require('../middleware/validate');
 // Email transporter
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT || '587'),
+  port: parseInt(process.env.SMTP_PORT || '587', 10),
   secure: false,
   auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
 });
@@ -30,6 +30,12 @@ const COOKIE_OPTS = {
 
 function setAuthCookie(res, token) {
   res.cookie('token', token, COOKIE_OPTS);
+}
+
+// Hash one-time tokens (password resets) before storing so a DB read leak
+// alone doesn't grant takeover. The plain token is mailed to the user once.
+function hashToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
 }
 
 const router = express.Router();
@@ -297,7 +303,7 @@ router.get('/team', auth, requireRole('Admin'), async (req, res) => {
 // Change user role (must be in same store)
 router.patch('/team/:id/role', auth, requireRole('Admin'), async (req, res) => {
   try {
-    const targetId = parseInt(req.params.id);
+    const targetId = parseInt(req.params.id, 10);
     if (targetId === req.user.id) {
       return res.status(400).json({ error: "You can't change your own role" });
     }
@@ -324,7 +330,7 @@ router.patch('/team/:id/role', auth, requireRole('Admin'), async (req, res) => {
 // Remove user from store (cascade deletes their personal data)
 router.delete('/team/:id', auth, requireRole('Admin'), async (req, res) => {
   try {
-    const targetId = parseInt(req.params.id);
+    const targetId = parseInt(req.params.id, 10);
     if (targetId === req.user.id) {
       return res.status(400).json({ error: "You can't remove yourself" });
     }
@@ -445,35 +451,43 @@ router.post('/forgot-password', async (req, res) => {
     // Invalidate any existing tokens for this user
     await db.query('UPDATE password_resets SET used = TRUE WHERE user_id = ?', [user.id]);
 
+    // Store only the hash; plain token goes to the user's email
     await db.query(
       'INSERT INTO password_resets (user_id, token, expires_at) VALUES (?, ?, ?)',
-      [user.id, token, expiresAt]
+      [user.id, hashToken(token), expiresAt]
     );
 
     const resetUrl = `${process.env.CORS_ORIGIN || 'http://localhost:5173'}?reset=${token}`;
     const escHtml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
-      to: email.toLowerCase().trim(),
-      subject: 'CatalogAI — Reset Your Password',
-      html: `
-        <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0F172A;border-radius:12px;color:#E2E8F0;">
-          <div style="text-align:center;margin-bottom:24px;">
-            <div style="display:inline-block;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#2563EB,#10B981);line-height:40px;font-size:18px;color:white;font-weight:bold;">C</div>
-            <h2 style="margin:12px 0 0;font-size:20px;color:#F8FAFC;">CatalogAI</h2>
+    // Don't crash if SMTP isn't configured — log it and still report success
+    // (the email enumeration story stays consistent: caller can't tell the
+    // difference between "no account exists" and "SMTP failed").
+    try {
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        to: email.toLowerCase().trim(),
+        subject: 'CatalogAI — Reset Your Password',
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0F172A;border-radius:12px;color:#E2E8F0;">
+            <div style="text-align:center;margin-bottom:24px;">
+              <div style="display:inline-block;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#2563EB,#10B981);line-height:40px;font-size:18px;color:white;font-weight:bold;">C</div>
+              <h2 style="margin:12px 0 0;font-size:20px;color:#F8FAFC;">CatalogAI</h2>
+            </div>
+            <p style="font-size:15px;color:#94A3B8;">Hi ${escHtml(user.name) || 'there'},</p>
+            <p style="font-size:15px;color:#94A3B8;">We received a request to reset your password. Click the button below to choose a new one:</p>
+            <div style="text-align:center;margin:28px 0;">
+              <a href="${resetUrl}" style="display:inline-block;padding:12px 32px;background:#2563EB;color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Reset Password</a>
+            </div>
+            <p style="font-size:13px;color:#64748B;">This link expires in 1 hour. If you didn't request this, you can safely ignore this email.</p>
+            <hr style="border:none;border-top:1px solid #1E293B;margin:24px 0;" />
+            <p style="font-size:11px;color:#475569;text-align:center;">CatalogAI — AI-Powered Product Data Intelligence</p>
           </div>
-          <p style="font-size:15px;color:#94A3B8;">Hi ${escHtml(user.name) || 'there'},</p>
-          <p style="font-size:15px;color:#94A3B8;">We received a request to reset your password. Click the button below to choose a new one:</p>
-          <div style="text-align:center;margin:28px 0;">
-            <a href="${resetUrl}" style="display:inline-block;padding:12px 32px;background:#2563EB;color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Reset Password</a>
-          </div>
-          <p style="font-size:13px;color:#64748B;">This link expires in 1 hour. If you didn't request this, you can safely ignore this email.</p>
-          <hr style="border:none;border-top:1px solid #1E293B;margin:24px 0;" />
-          <p style="font-size:11px;color:#475569;text-align:center;">CatalogAI — AI-Powered Product Data Intelligence</p>
-        </div>
-      `,
-    });
+        `,
+      });
+    } catch (mailErr) {
+      console.warn('Reset email failed (token still valid):', mailErr.message);
+    }
 
     res.json(successMsg);
   } catch (err) {
@@ -491,7 +505,7 @@ router.post('/reset-password', async (req, res) => {
 
     const [resets] = await db.query(
       'SELECT * FROM password_resets WHERE token = ? AND used = FALSE AND expires_at > NOW()',
-      [token]
+      [hashToken(token)]
     );
     if (resets.length === 0) return res.status(400).json({ error: 'Invalid or expired reset link. Please request a new one.' });
 
@@ -554,29 +568,38 @@ router.post('/invite', auth, requireRole('Admin'), async (req, res) => {
     const inviteUrl = `${process.env.CORS_ORIGIN || 'http://localhost:5173'}?invite=${token}`;
     const escHtml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
-      to: email.toLowerCase().trim(),
-      subject: `CatalogAI — You've been invited to join ${escHtml(storeName)}`,
-      html: `
-        <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0F172A;border-radius:12px;color:#E2E8F0;">
-          <div style="text-align:center;margin-bottom:24px;">
-            <div style="display:inline-block;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#2563EB,#10B981);line-height:40px;font-size:18px;color:white;font-weight:bold;">C</div>
-            <h2 style="margin:12px 0 0;font-size:20px;color:#F8FAFC;">CatalogAI</h2>
+    let emailSent = false;
+    let emailError = null;
+    try {
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM || process.env.SMTP_USER,
+        to: email.toLowerCase().trim(),
+        subject: `CatalogAI — You've been invited to join ${escHtml(storeName)}`,
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0F172A;border-radius:12px;color:#E2E8F0;">
+            <div style="text-align:center;margin-bottom:24px;">
+              <div style="display:inline-block;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#2563EB,#10B981);line-height:40px;font-size:18px;color:white;font-weight:bold;">C</div>
+              <h2 style="margin:12px 0 0;font-size:20px;color:#F8FAFC;">CatalogAI</h2>
+            </div>
+            <p style="font-size:15px;color:#94A3B8;">Hi there,</p>
+            <p style="font-size:15px;color:#94A3B8;"><strong style="color:#F8FAFC;">${escHtml(inviterName)}</strong> has invited you to join <strong style="color:#F8FAFC;">${escHtml(storeName)}</strong> as an <strong style="color:#F8FAFC;">${escHtml(role)}</strong>.</p>
+            <div style="text-align:center;margin:28px 0;">
+              <a href="${inviteUrl}" style="display:inline-block;padding:12px 32px;background:#2563EB;color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Accept Invitation</a>
+            </div>
+            <p style="font-size:13px;color:#64748B;">This invitation expires in 7 days. If you weren't expecting this, you can safely ignore this email.</p>
+            <hr style="border:none;border-top:1px solid #1E293B;margin:24px 0;" />
+            <p style="font-size:11px;color:#475569;text-align:center;">CatalogAI — AI-Powered Product Data Intelligence</p>
           </div>
-          <p style="font-size:15px;color:#94A3B8;">Hi there,</p>
-          <p style="font-size:15px;color:#94A3B8;"><strong style="color:#F8FAFC;">${escHtml(inviterName)}</strong> has invited you to join <strong style="color:#F8FAFC;">${escHtml(storeName)}</strong> as an <strong style="color:#F8FAFC;">${escHtml(role)}</strong>.</p>
-          <div style="text-align:center;margin:28px 0;">
-            <a href="${inviteUrl}" style="display:inline-block;padding:12px 32px;background:#2563EB;color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Accept Invitation</a>
-          </div>
-          <p style="font-size:13px;color:#64748B;">This invitation expires in 7 days. If you weren't expecting this, you can safely ignore this email.</p>
-          <hr style="border:none;border-top:1px solid #1E293B;margin:24px 0;" />
-          <p style="font-size:11px;color:#475569;text-align:center;">CatalogAI — AI-Powered Product Data Intelligence</p>
-        </div>
-      `,
-    });
+        `,
+      });
+      emailSent = true;
+    } catch (mailErr) {
+      // Invite row is already saved — surface the link so admin can share manually
+      emailError = mailErr.message;
+      console.warn('Invite email failed (link still valid):', mailErr.message);
+    }
 
-    res.json({ success: true, message: 'Invitation sent' });
+    res.json({ success: true, emailSent, emailError, inviteUrl, message: emailSent ? 'Invitation sent' : 'Invite created — email could not be sent. Share the link manually.' });
   } catch (err) {
     console.error('Invite error:', err.message);
     res.status(500).json({ error: 'Failed to send invitation' });
@@ -604,40 +627,51 @@ router.get('/invite/:token', async (req, res) => {
 });
 
 // Accept invitation and create account (public — no auth)
+// Uses a transaction with a conditional UPDATE to claim the invite atomically:
+// two concurrent accepts (or accept-during-revocation) cannot both succeed.
 router.post('/invite/:token/accept', async (req, res) => {
+  const conn = await db.getConnection();
   try {
     const { name, password } = req.body;
     if (!name || !password) return res.status(400).json({ error: 'Name and password are required' });
     if (password.length < 8 || password.length > 128) return res.status(400).json({ error: 'Password must be 8-128 characters' });
 
-    const [invites] = await db.query(
-      'SELECT * FROM invitations WHERE token = ? AND accepted = FALSE AND expires_at > NOW()',
+    await conn.beginTransaction();
+
+    // Atomic claim: only one caller wins (affectedRows === 1).
+    const [claim] = await conn.query(
+      'UPDATE invitations SET accepted = TRUE WHERE token = ? AND accepted = FALSE AND expires_at > NOW()',
       [req.params.token]
     );
-    if (invites.length === 0) {
+    if (claim.affectedRows !== 1) {
+      await conn.rollback();
       return res.status(400).json({ error: 'Invalid or expired invitation' });
     }
 
+    const [invites] = await conn.query(
+      'SELECT id, email, role, store_id FROM invitations WHERE token = ?',
+      [req.params.token]
+    );
     const invite = invites[0];
 
     // Check if email already registered
-    const [existing] = await db.query('SELECT id FROM users WHERE email = ?', [invite.email]);
+    const [existing] = await conn.query('SELECT id FROM users WHERE email = ?', [invite.email]);
     if (existing.length > 0) {
+      await conn.rollback();
       return res.status(409).json({ error: 'An account with this email already exists' });
     }
 
     const password_hash = await bcrypt.hash(password, 12);
-    const [result] = await db.query(
+    const [result] = await conn.query(
       'INSERT INTO users (name, email, password_hash, role, store_id) VALUES (?, ?, ?, ?, ?)',
       [sanitize(name).slice(0, 100), invite.email, password_hash, invite.role, invite.store_id]
     );
 
-    // Mark invitation as accepted
-    await db.query('UPDATE invitations SET accepted = TRUE WHERE id = ?', [invite.id]);
-
     // Get store name
-    const [stores] = await db.query('SELECT name FROM stores WHERE id = ?', [invite.store_id]);
+    const [stores] = await conn.query('SELECT name FROM stores WHERE id = ?', [invite.store_id]);
     const storeName = stores[0]?.name || 'My Store';
+
+    await conn.commit();
 
     const token = jwt.sign(
       { id: result.insertId, email: invite.email, role: invite.role, store_id: invite.store_id },
@@ -651,8 +685,11 @@ router.post('/invite/:token/accept', async (req, res) => {
       user: { id: result.insertId, name: name.trim(), email: invite.email, role: invite.role, store_id: invite.store_id, store_name: storeName }
     });
   } catch (err) {
+    try { await conn.rollback(); } catch {}
     console.error('Accept invite error:', err.message);
     res.status(500).json({ error: 'Failed to create account' });
+  } finally {
+    conn.release();
   }
 });
 

@@ -49,6 +49,8 @@ const BulkImportView = ({ onDone, user }) => {
     return { headers: hdrs, rows };
   };
 
+  const MAX_ROWS = 500;
+
   const handleFile = (f) => {
     if (!f) return;
     const ext = f.name.split('.').pop().toLowerCase();
@@ -64,8 +66,14 @@ const BulkImportView = ({ onDone, user }) => {
         toast.error("Could not parse file — check the format");
         return;
       }
+      // Cap at MAX_ROWS — backend rejects above this anyway, no point uploading more.
+      let useRows = rows;
+      if (rows.length > MAX_ROWS) {
+        toast.warning(`File has ${rows.length} rows. Only the first ${MAX_ROWS} will be imported (server limit).`);
+        useRows = rows.slice(0, MAX_ROWS);
+      }
       setHeaders(hdrs);
-      setParsedRows(rows);
+      setParsedRows(useRows);
       // Auto-map by matching header names
       const autoMap = {};
       const nameMatches = ["name", "product", "title", "product name", "product_name", "item"];
@@ -243,8 +251,9 @@ const BulkImportView = ({ onDone, user }) => {
     <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:24,padding:"80px 20px"}}>
       <div style={{width:64,height:64,borderRadius:"50%",border:"3px solid var(--border)",borderTopColor:"var(--primary)",animation:"spin 0.8s linear infinite"}}/>
       <div style={{textAlign:"center"}}>
-        <h2 style={{fontSize:20,fontWeight:700,marginBottom:6}}>Importing Products...</h2>
-        <p style={{color:"var(--text-muted)",fontSize:13}}>Processing {parsedRows.length} rows. This may take a moment.</p>
+        <h2 style={{fontSize:20,fontWeight:700,marginBottom:6}}>Importing {validRows.length} Product{validRows.length !== 1 ? "s" : ""}...</h2>
+        <p style={{color:"var(--text-muted)",fontSize:13}}>Processing {parsedRows.length} rows. Don't close this tab.</p>
+        <p style={{color:"var(--text-dim)",fontSize:11,marginTop:8}}>Approx. {Math.max(2, Math.ceil(validRows.length * 0.04))}s — depends on server load</p>
       </div>
     </div>
   );

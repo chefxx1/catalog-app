@@ -391,7 +391,8 @@ router.post('/execute', auth, requireRole('Admin', 'Editor'), async (req, res) =
         if (!isNaN(p) && p >= 0) productPrice = p;
       }
 
-      // Fetch image + AI enrichment in parallel
+      // Fetch image + AI enrichment in parallel (outside the transaction so
+      // long network calls don't hold a DB connection).
       const [imageUrl, enriched] = await Promise.all([
         fetchProductImage(productName),
         enrichWithAI(productName, productCategory),
@@ -400,37 +401,51 @@ router.post('/execute', auth, requireRole('Admin', 'Editor'), async (req, res) =
       const barcode = `CHAT-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
       const cacheExpiry = new Date(); cacheExpiry.setDate(cacheExpiry.getDate() + 30);
 
-      const [productResult] = await db.query(
-        `INSERT INTO products (barcode, name, description, ai_description_professional, ai_description_friendly, ai_description_luxury, ai_category_suggestion, ai_attributes, seo_tags, cache_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          barcode, productName,
-          enriched?.description || null,
-          enriched?.professional || null,
-          enriched?.friendly || null,
-          enriched?.luxury || null,
-          productCategory || null,
-          enriched?.specs ? JSON.stringify(enriched.specs) : null,
-          enriched?.seoTags ? JSON.stringify(enriched.seoTags) : null,
-          cacheExpiry,
-        ]
-      );
-      const productId = productResult.insertId;
+      // Wrap product + image + catalog entry inserts in a transaction so a
+      // partial failure can't leave an orphan product without a catalog entry.
+      const conn = await db.getConnection();
+      let entryResultId;
+      try {
+        await conn.beginTransaction();
 
-      if (imageUrl && !imageUrl.startsWith('data:')) {
-        try {
-          await db.query(
+        const [productResult] = await conn.query(
+          `INSERT INTO products (barcode, name, description, ai_description_professional, ai_description_friendly, ai_description_luxury, ai_category_suggestion, ai_attributes, seo_tags, cache_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            barcode, productName,
+            enriched?.description || null,
+            enriched?.professional || null,
+            enriched?.friendly || null,
+            enriched?.luxury || null,
+            productCategory || null,
+            enriched?.specs ? JSON.stringify(enriched.specs) : null,
+            enriched?.seoTags ? JSON.stringify(enriched.seoTags) : null,
+            cacheExpiry,
+          ]
+        );
+        const productId = productResult.insertId;
+
+        if (imageUrl && /^https?:\/\//i.test(imageUrl)) {
+          await conn.query(
             'INSERT INTO product_images (product_id, source_name, image_url, quality_score, sort_order) VALUES (?, ?, ?, ?, ?)',
             [productId, 'Google Images', imageUrl, 75, 0]
           );
-        } catch {}
+        }
+
+        const [entryResult] = await conn.query(
+          `INSERT INTO catalog_entries (store_id, user_id, product_id, status, custom_name, custom_price) VALUES (?, ?, ?, 'Draft', ?, ?)`,
+          [req.user.store_id, req.user.id, productId, productName, productPrice]
+        );
+        entryResultId = entryResult.insertId;
+
+        await conn.commit();
+      } catch (txErr) {
+        try { await conn.rollback(); } catch {}
+        throw txErr;
+      } finally {
+        conn.release();
       }
 
-      const [entryResult] = await db.query(
-        `INSERT INTO catalog_entries (store_id, user_id, product_id, status, custom_name, custom_price) VALUES (?, ?, ?, 'Draft', ?, ?)`,
-        [req.user.store_id, req.user.id, productId, productName, productPrice]
-      );
-
-      logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'created', entity_type: 'catalog_entry', entity_id: entryResult.insertId, entity_name: productName, details: { source: 'chat', enriched: !!enriched, image: !!imageUrl } });
+      logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'created', entity_type: 'catalog_entry', entity_id: entryResultId, entity_name: productName, details: { source: 'chat', enriched: !!enriched, image: !!imageUrl } });
       affected = 1;
     }
 

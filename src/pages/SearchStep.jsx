@@ -6,16 +6,42 @@ import { Html5Qrcode } from "html5-qrcode";
 import CameraScanner from "../components/CameraScanner";
 import BrandOrb from "../components/BrandOrb";
 
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB
+
 const SearchStep = ({ onSearch }) => {
   const [upc,setUpc]=useState(""); const [loading,setLoading]=useState(false); const [loadingStep,setLoadingStep]=useState(0); const [dragOver,setDragOver]=useState(false); const fileRef=useRef(null);
   const [error,setError]=useState(null); const [notFound,setNotFound]=useState(false);
   const [scannerOpen,setScannerOpen]=useState(false);
   const msgs=["Checking Open Food Facts...","Scanning UPC Database..."];
   const sourceNames=[{name:"Open Food Facts",icon:"database",trustScore:75,color:"#10B981"},{name:"UPC Database",icon:"barcode",trustScore:80,color:"#6366F1"}];
-  const handleSearch=(code)=>{const barcode=code||upc.trim();if(!barcode||loading)return;setError(null);setNotFound(false);setLoading(true);setLoadingStep(0);let s=0;const apiPromise=searchProduct(barcode);const iv=setInterval(()=>{s++;if(s>=msgs.length){clearInterval(iv);}else setLoadingStep(s);},800);apiPromise.then(data=>{clearInterval(iv);setLoadingStep(msgs.length-1);setTimeout(()=>{setLoading(false);if(!data.product){setNotFound(true);}else{onSearch(data);}},600);}).catch(err=>{clearInterval(iv);setLoading(false);setError(err.message||"Search failed");});};
+  // Monotonic id used to ignore stale in-flight searches when the user kicks off a new one.
+  const searchSeqRef = useRef(0);
+  const handleSearch=(code)=>{
+    const barcode=code||upc.trim();
+    if(!barcode||loading) return;
+    setError(null); setNotFound(false); setLoading(true); setLoadingStep(0);
+    const myId = ++searchSeqRef.current;
+    let s=0;
+    const iv=setInterval(()=>{ s++; if(s>=msgs.length){clearInterval(iv);} else setLoadingStep(s); },800);
+    searchProduct(barcode).then(data=>{
+      clearInterval(iv);
+      if (myId !== searchSeqRef.current) return; // a newer search superseded us
+      setLoadingStep(msgs.length-1);
+      setTimeout(()=>{
+        if (myId !== searchSeqRef.current) return;
+        setLoading(false);
+        if(!data.product){ setNotFound(true); } else { onSearch(data); }
+      },600);
+    }).catch(err=>{
+      clearInterval(iv);
+      if (myId !== searchSeqRef.current) return;
+      setLoading(false);
+      setError(err.message||"Search failed");
+    });
+  };
   const [identifying, setIdentifying] = useState(false);
   const [identified, setIdentified] = useState(null);
-  const compressImage = (file, maxSize = 800) => new Promise((resolve) => {
+  const compressImage = (file, maxSize = 800) => new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
@@ -30,8 +56,10 @@ const SearchStep = ({ onSearch }) => {
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
         resolve(canvas.toDataURL('image/jpeg', 0.8));
       };
+      img.onerror = () => reject(new Error("Could not decode image — try a different file"));
       img.src = e.target.result;
     };
+    reader.onerror = () => reject(new Error("Could not read file"));
     reader.readAsDataURL(file);
   });
   const [productImages, setProductImages] = useState([]);
@@ -51,9 +79,13 @@ const SearchStep = ({ onSearch }) => {
         }).catch(() => { toast.warning("Could not load product images"); }).finally(() => setSearchingImages(false));
       }
     } catch (err) { setError(err.message || "Image identification failed"); }
-    setIdentifying(false);
+    finally { setIdentifying(false); }
   };
   const handleImageIdentify = async (file) => {
+    if (file.size > MAX_IMAGE_BYTES) {
+      setError(`Image is too large (${Math.round(file.size / 1024 / 1024)} MB). Max 10 MB.`);
+      return;
+    }
     setError(null); setIdentifying(true); setIdentified(null); setProductImages([]); setSelectedImages(new Set());
     try {
       const base64 = await compressImage(file);
@@ -70,8 +102,9 @@ const SearchStep = ({ onSearch }) => {
       }
     } catch (err) {
       setError(err.message || "Image identification failed");
+    } finally {
+      setIdentifying(false);
     }
-    setIdentifying(false);
   };
   const [uploadedImage, setUploadedImage] = useState(null);
   const handleIdentifiedSearch = () => {
@@ -92,7 +125,18 @@ const SearchStep = ({ onSearch }) => {
       sources: aiSources, images: aiImages, conflicts: [],
     });
   };
-  const scanBarcodeFromFile=(file)=>{setError(null);const html5Qr=new Html5Qrcode("barcode-scanner-temp");html5Qr.scanFile(file,true).then(code=>{setUpc(code);handleSearch(code);}).catch(()=>{handleImageIdentify(file);}).finally(()=>{html5Qr.clear();});};
+  const scanBarcodeFromFile=(file)=>{
+    if (file.size > MAX_IMAGE_BYTES) {
+      setError(`Image is too large (${Math.round(file.size / 1024 / 1024)} MB). Max 10 MB.`);
+      return;
+    }
+    setError(null);
+    const html5Qr=new Html5Qrcode("barcode-scanner-temp");
+    html5Qr.scanFile(file,true)
+      .then(code=>{setUpc(code);handleSearch(code);})
+      .catch(()=>{handleImageIdentify(file);})
+      .finally(()=>{ try { html5Qr.clear(); } catch { /* library may already have cleared */ } });
+  };
 
   if(loading) return (
     <div className="animate-fadeIn" style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:28,padding:"60px 20px",minHeight:400}}>

@@ -51,7 +51,7 @@ DB_PASS=
 DB_NAME=catalogai
 DB_PORT=3306
 
-JWT_SECRET=<REDACTED>
+JWT_SECRET=<generate-a-random-32+-char-string>   # e.g. `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`
 JWT_EXPIRES_IN=30d
 
 PORT=3000

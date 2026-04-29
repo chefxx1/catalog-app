@@ -247,7 +247,7 @@ router.post('/add', auth, requireRole('Admin', 'Editor'), async (req, res) => {
     );
     const productId = productResult.insertId;
 
-    if (image && !image.startsWith('data:')) {
+    if (image && /^https?:\/\//i.test(image)) {
       await db.query(
         'INSERT INTO product_images (product_id, source_name, image_url, quality_score, sort_order) VALUES (?, ?, ?, ?, ?)',
         [productId, source || 'Google Shopping', image, 75, 0]

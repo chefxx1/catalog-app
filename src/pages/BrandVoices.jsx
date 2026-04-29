@@ -70,11 +70,14 @@ const BrandVoices = ({ user }) => {
 
   const deleteVoice = async (id) => {
     try { await apiDeleteBrandVoice(id); } catch (err) { toast.error("Failed to delete voice"); return; }
-    setVoices(prev => prev.filter(v => v.id !== id)); setShowDeleteDialog(null);
+    setVoices(prev => prev.filter(v => v.id !== id));
+    setShowDeleteDialog(null);
+    toast.success("Voice deleted");
   };
   const setDefault = async (id) => {
     try { await apiUpdateBrandVoice(id, { is_default: true }); } catch (err) { toast.error("Failed to set default"); return; }
     setVoices(prev => prev.map(v => ({ ...v, isDefault: v.id === id })));
+    toast.success("Default voice updated");
   };
 
   // ── EDITOR VIEW ──
@@ -183,44 +186,167 @@ const BrandVoices = ({ user }) => {
   // ── LIST VIEW ──
   return (
     <div className="animate-fadeIn" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h3 style={{ fontSize: 18, fontWeight: 700 }}>Brand Voice Profiles</h3>
-          <p style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 4 }}>Manage tone and vocabulary presets for AI-generated descriptions</p>
+          <h2 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 4 }}>
+            <span style={{ background: "linear-gradient(135deg,#3B82F6,#8B5CF6,#EC4899)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Brand Voices</span>
+          </h2>
+          <p style={{ fontSize: 13, color: "var(--text-dim)" }}>
+            Tone, vocabulary, and style presets that shape every AI-generated description.
+            {voices.length > 0 && <span style={{ marginLeft: 8, fontSize: 11, padding: "2px 9px", borderRadius: 999, background: "var(--hover-bg)", color: "var(--text-muted)", fontWeight: 600 }}>{voices.length} {voices.length === 1 ? "voice" : "voices"}</span>}
+          </p>
         </div>
-        {canEdit && <button className="btn btn-primary" onClick={openCreateNew}><Icon name="plus" size={14} /> New Voice</button>}
+        {canEdit && (
+          <button className="btn" onClick={openCreateNew} style={{
+            padding: "9px 16px", fontSize: 13, fontWeight: 700,
+            background: "linear-gradient(135deg,#3B82F6,#8B5CF6,#EC4899)",
+            color: "white", border: "none",
+            boxShadow: "0 4px 16px rgba(139,92,246,0.32)",
+            transition: "all 0.18s",
+          }}
+            onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 6px 20px rgba(139,92,246,0.45)"; }}
+            onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(139,92,246,0.32)"; }}>
+            <Icon name="plus" size={14} color="white" /> New Voice
+          </button>
+        )}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
-        {voices.map((voice, i) => (
-          <div key={voice.id} className="card animate-slideUp" style={{ cursor: canEdit ? "pointer" : "default", animationDelay: `${i * 0.06}s`, padding: 18, borderLeft: `3px solid ${voice.color}` }}
-            onClick={() => canEdit && openEditor(voice)}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-              <span style={{ fontWeight: 700, fontSize: 14 }}>{voice.name}</span>
-              {voice.isDefault && <span className="badge badge-success" style={{ fontSize: 10, padding: "2px 7px" }}>Default</span>}
+      {voicesLoading ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="skeleton-card" style={{ height: 200 }} />
+          ))}
+        </div>
+      ) : voices.length === 0 ? (
+        <div className="card" style={{ position: "relative", textAlign: "center", padding: 48, overflow: "hidden" }}>
+          <div className="modal-modern-blobs" style={{ borderRadius: "inherit" }} />
+          <div style={{ position: "relative" }}>
+            <div style={{ width: 64, height: 64, borderRadius: 16, background: "linear-gradient(135deg, rgba(59,130,246,0.12), rgba(139,92,246,0.12), rgba(236,72,153,0.12))", border: "1px solid rgba(139,92,246,0.25)", display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+              <Icon name="tag" size={28} color="#8B5CF6" />
             </div>
-            <span className="badge badge-primary" style={{ marginBottom: 8, fontSize: 10, padding: "2px 8px" }}>{voice.tone}</span>
-            {voice.description && <p style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 10 }}>{voice.description}</p>}
-            {canEdit && (
-              <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: "auto" }}>
-                {!voice.isDefault && <button className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 8px" }} onClick={e => { e.stopPropagation(); setDefault(voice.id); }}>Set Default</button>}
-                <button className="btn btn-ghost" style={{ fontSize: 11, padding: "3px 6px", marginLeft: "auto" }} onClick={e => { e.stopPropagation(); setShowDeleteDialog(voice.id); }}>
-                  <Icon name="trash" size={12} color="#EF4444" />
-                </button>
-              </div>
-            )}
+            <h3 style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>No Brand Voices Yet</h3>
+            <p style={{ color: "var(--text-dim)", fontSize: 13, maxWidth: 320, margin: "0 auto", lineHeight: 1.5 }}>Create your first voice profile to give every AI description a consistent tone and vocabulary.</p>
+            {canEdit && <button className="btn btn-primary" style={{ marginTop: 20 }} onClick={openCreateNew}><Icon name="plus" size={14} /> Create Your First Voice</button>}
           </div>
-        ))}
-      </div>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: 14 }}>
+          {voices.map((voice, i) => {
+            const c = voice.color;
+            const totalKw = (voice.includeKeywords?.length || 0) + (voice.excludeKeywords?.length || 0);
+            return (
+              <div key={voice.id} className="animate-slideUp"
+                style={{
+                  position: "relative", borderRadius: 14, overflow: "hidden",
+                  background: "color-mix(in oklab, var(--card-bg) 85%, transparent)",
+                  border: "1px solid var(--border-light)",
+                  backdropFilter: "blur(10px)",
+                  cursor: canEdit ? "pointer" : "default",
+                  animationDelay: `${i * 0.05}s`,
+                  display: "flex", flexDirection: "column",
+                  transition: "transform 0.22s cubic-bezier(0.16,1,0.3,1), box-shadow 0.22s, border-color 0.22s",
+                }}
+                onClick={() => canEdit && openEditor(voice)}
+                onMouseEnter={e => {
+                  e.currentTarget.style.transform = "translateY(-3px)";
+                  e.currentTarget.style.boxShadow = `0 14px 32px color-mix(in oklab, ${c} 22%, transparent)`;
+                  e.currentTarget.style.borderColor = `color-mix(in oklab, ${c} 50%, var(--border-light))`;
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow = "none";
+                  e.currentTarget.style.borderColor = "var(--border-light)";
+                }}>
+                {/* Color gradient header strip */}
+                <div style={{ position: "relative", height: 64, background: `linear-gradient(135deg, ${c}33, ${c}11)`, borderBottom: `1px solid color-mix(in oklab, ${c} 18%, var(--border-light))`, overflow: "hidden" }}>
+                  {/* Decorative blob */}
+                  <div style={{ position: "absolute", top: -20, right: -20, width: 80, height: 80, borderRadius: "50%", background: `radial-gradient(circle, ${c}55, transparent 70%)`, filter: "blur(20px)" }} />
+                  {/* Voice initial badge */}
+                  <div style={{
+                    position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)",
+                    width: 38, height: 38, borderRadius: 11,
+                    background: `linear-gradient(135deg, ${c}, color-mix(in oklab, ${c} 60%, #000))`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontWeight: 800, fontSize: 16, color: "white",
+                    boxShadow: `0 3px 12px ${c}66`,
+                    fontFamily: "'Sora',sans-serif",
+                  }}>
+                    {(voice.name || "V")[0].toUpperCase()}
+                  </div>
+                  {voice.isDefault && (
+                    <div style={{
+                      position: "absolute", top: 10, right: 10, padding: "3px 9px", borderRadius: 999,
+                      background: "rgba(16,185,129,0.95)", color: "white",
+                      fontSize: 10, fontWeight: 800, letterSpacing: "0.04em",
+                      display: "inline-flex", alignItems: "center", gap: 4,
+                      boxShadow: "0 2px 8px rgba(16,185,129,0.4)",
+                    }}>
+                      <Icon name="check" size={10} color="white" /> DEFAULT
+                    </div>
+                  )}
+                </div>
 
-      {voices.length === 0 && (
-        <div className="card" style={{ textAlign: "center", padding: 48 }}>
-          <div style={{width:64,height:64,borderRadius:16,background:"rgba(139,92,246,0.08)",border:"1px solid rgba(139,92,246,0.15)",display:"inline-flex",alignItems:"center",justifyContent:"center",marginBottom:16}}>
-            <Icon name="tag" size={28} color="#8B5CF6" />
-          </div>
-          <h3 style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>No Brand Voices</h3>
-          <p style={{ color: "var(--text-dim)", fontSize: 13, maxWidth: 300, margin: "0 auto", lineHeight: 1.5 }}>Create your first voice profile to customize AI-generated descriptions</p>
-          {canEdit && <button className="btn btn-primary" style={{ marginTop: 20 }} onClick={openCreateNew}><Icon name="plus" size={14} /> Create Voice</button>}
+                {/* Body */}
+                <div style={{ padding: "14px 16px 16px", display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.01em", marginBottom: 4 }}>{voice.name}</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 9px", borderRadius: 999, background: `${c}1a`, color: c, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.03em" }}>
+                        <Icon name="sparkle" size={9} color={c} />
+                        {voice.tone}
+                      </span>
+                      {totalKw > 0 && (
+                        <span style={{ padding: "2px 8px", borderRadius: 999, background: "var(--hover-bg)", color: "var(--text-muted)", fontSize: 10.5, fontWeight: 600 }}>
+                          {totalKw} keyword{totalKw === 1 ? "" : "s"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {voice.description ? (
+                    <p style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.55, margin: 0, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{voice.description}</p>
+                  ) : voice.audience ? (
+                    <p style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.55, margin: 0, fontStyle: "italic" }}>For: {voice.audience}</p>
+                  ) : null}
+
+                  {/* Sample keywords inline */}
+                  {voice.includeKeywords?.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                      {voice.includeKeywords.slice(0, 4).map((k, idx) => (
+                        <span key={idx} style={{ padding: "1.5px 7px", borderRadius: 6, background: "rgba(16,185,129,0.1)", color: "#10B981", fontSize: 10, fontWeight: 600 }}>+ {k}</span>
+                      ))}
+                      {voice.includeKeywords.length > 4 && (
+                        <span style={{ padding: "1.5px 7px", borderRadius: 6, background: "var(--hover-bg)", color: "var(--text-dim)", fontSize: 10, fontWeight: 600 }}>+{voice.includeKeywords.length - 4}</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  {canEdit && (
+                    <div style={{ marginTop: "auto", paddingTop: 8, display: "flex", gap: 6, alignItems: "center", borderTop: "1px solid var(--border-light)" }}>
+                      {!voice.isDefault ? (
+                        <button className="btn btn-ghost" style={{ fontSize: 11, padding: "4px 10px" }}
+                          onClick={e => { e.stopPropagation(); setDefault(voice.id); }}>
+                          <Icon name="check" size={11} /> Set Default
+                        </button>
+                      ) : (
+                        <span style={{ fontSize: 11, color: "var(--text-dim)", fontWeight: 600 }}>Active default</span>
+                      )}
+                      <button className="btn btn-ghost" title="Edit" style={{ fontSize: 11, padding: "4px 8px", marginLeft: "auto" }}
+                        onClick={e => { e.stopPropagation(); openEditor(voice); }}>
+                        <Icon name="edit" size={11} />
+                      </button>
+                      <button className="btn btn-ghost" title="Delete" style={{ fontSize: 11, padding: "4px 8px" }}
+                        onClick={e => { e.stopPropagation(); setShowDeleteDialog(voice.id); }}>
+                        <Icon name="trash" size={11} color="#EF4444" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

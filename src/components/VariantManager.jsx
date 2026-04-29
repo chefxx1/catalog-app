@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Icon } from "./shared";
+import { Icon, ConfirmDialog } from "./shared";
 import { toast } from "./Toast";
 import { getVariants, createVariant, updateVariant, deleteVariant } from "../api";
 
@@ -12,6 +12,7 @@ const VariantManager = ({ entryId, canEdit = true, compact = false }) => {
   const [editingId, setEditingId] = useState(null);
   const [optionKey, setOptionKey] = useState("");
   const [optionVal, setOptionVal] = useState("");
+  const [deletingVariant, setDeletingVariant] = useState(null);
 
   const load = async () => {
     if (!entryId) { setVariants([]); setLoading(false); return; }
@@ -69,7 +70,6 @@ const VariantManager = ({ entryId, canEdit = true, compact = false }) => {
   const cancelEdit = () => { setForm(emptyForm); setEditingId(null); };
 
   const remove = async (id) => {
-    if (!confirm("Delete this variant?")) return;
     try {
       await deleteVariant(id);
       toast.success("Variant deleted");
@@ -101,12 +101,23 @@ const VariantManager = ({ entryId, canEdit = true, compact = false }) => {
               {canEdit && (
                 <div style={{ display: "flex", gap: 4 }}>
                   <button className="btn btn-ghost" style={{ padding: "4px 8px", fontSize: 11 }} onClick={() => startEdit(v)}><Icon name="edit" size={12} /></button>
-                  <button className="btn btn-ghost" style={{ padding: "4px 8px", fontSize: 11, color: "#EF4444" }} onClick={() => remove(v.id)}><Icon name="trash" size={12} color="#EF4444" /></button>
+                  <button className="btn btn-ghost" style={{ padding: "4px 8px", fontSize: 11, color: "#EF4444" }} onClick={() => setDeletingVariant(v)}><Icon name="trash" size={12} color="#EF4444" /></button>
                 </div>
               )}
             </div>
           ))}
         </div>
+      )}
+
+      {deletingVariant && (
+        <ConfirmDialog
+          title="Delete Variant"
+          message={`Permanently delete "${deletingVariant.variant_name}"? This cannot be undone.`}
+          confirmLabel="Delete"
+          confirmColor="#EF4444"
+          onCancel={() => setDeletingVariant(null)}
+          onConfirm={async () => { await remove(deletingVariant.id); setDeletingVariant(null); }}
+        />
       )}
 
       {canEdit && (

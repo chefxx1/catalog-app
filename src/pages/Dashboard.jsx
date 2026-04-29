@@ -2,12 +2,11 @@ import React, { useState, useEffect } from "react";
 import { Icon, CopyButton, LoadingDots, ConfirmDialog, safeJsonParse } from "../components/shared";
 import BrandOrb from "../components/BrandOrb";
 import { toast } from "../components/Toast";
-import { getStats, getCatalog, getBrandVoices as apiGetBrandVoices, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, exportProduct, getTags, createTag, deleteTag, setEntryTags, getSavedViews, createSavedView, deleteSavedView, getQualitySuggestions } from "../api";
+import { getCatalog, getBrandVoices as apiGetBrandVoices, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, exportProduct, getTags, createTag, deleteTag, setEntryTags as apiSetEntryTags, getSavedViews, createSavedView, deleteSavedView, getQualitySuggestions } from "../api";
 import { generateCatalogPdf } from "../utils/pdfExport";
 import VariantManager from "../components/VariantManager";
 
-const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, refreshKey }) => {
-  const [stats, setStats] = useState(null);
+const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, refreshKey, pendingFilter, onPendingFilterConsumed }) => {
   const [catalog, setCatalog] = useState([]);
   const [voices, setVoices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -51,14 +50,21 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
 
   const reload = () => {
     Promise.all([
-      getStats().catch(() => { toast.error("Failed to load stats"); return {}; }),
       getCatalog().catch(() => { toast.error("Failed to load catalog"); return []; }),
       apiGetBrandVoices().catch(() => []),
       getTags().catch(() => ({ tags: [] })),
       getSavedViews().catch(() => ({ views: [] })),
-    ]).then(([s, c, v, t, sv]) => {
-      setStats(s);
+    ]).then(([c, v, t, sv]) => {
       setCatalog(c);
+      // Backend now returns tag_ids per entry — hydrate the entryTags map so
+      // chips and the tag filter work after a fresh page load.
+      const tagsByEntry = {};
+      for (const entry of (c || [])) {
+        if (Array.isArray(entry.tag_ids) && entry.tag_ids.length > 0) {
+          tagsByEntry[entry.id] = entry.tag_ids;
+        }
+      }
+      setEntryTags(tagsByEntry);
       setVoices(v.map(voice => {
         const meta = safeJsonParse(voice.metadata, {});
         return { id: voice.id, name: voice.name, tone: voice.tone || 'Professional', color: meta.color || '#3B82F6' };
@@ -70,6 +76,27 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
   };
 
   useEffect(() => { reload(); }, [refreshKey]);
+
+  // Apply a filter pushed in from the Command Palette ("Open in Catalog").
+  // One-shot consume: parent clears the prop after we notify it, so the
+  // setState-in-effect pattern here is intentional and runs at most once per push.
+  useEffect(() => {
+    if (!pendingFilter) return;
+    const next = { status: "", tag: "", minPrice: "", maxPrice: "", completeness: "" };
+    if (pendingFilter.status) next.status = pendingFilter.status;
+    if (pendingFilter.tag) {
+      const t = tags.find(x => x.name?.toLowerCase() === String(pendingFilter.tag).toLowerCase());
+      if (t) next.tag = String(t.id);
+    }
+    if (pendingFilter.minPrice != null) next.minPrice = String(pendingFilter.minPrice);
+    if (pendingFilter.maxPrice != null) next.maxPrice = String(pendingFilter.maxPrice);
+    if (pendingFilter.needsAttention) next.completeness = "needs-work";
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFilters(next);
+    setShowFilters(true);
+    if (pendingFilter.name) setSearchFilter(String(pendingFilter.name));
+    onPendingFilterConsumed?.();
+  }, [pendingFilter, tags, onPendingFilterConsumed]);
 
   const sc={Published:"badge-success",Review:"badge-warning",Draft:"badge-neutral",Exported:"badge-primary"};
 
@@ -119,7 +146,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
 
   const handleSetEntryTags = async (entryId, tagIds) => {
     try {
-      await setEntryTags(entryId, tagIds);
+      await apiSetEntryTags(entryId, tagIds);
       setEntryTags(prev => ({ ...prev, [entryId]: tagIds }));
     } catch (err) { toast.error(err.message); }
   };
@@ -174,8 +201,6 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
       setSelected(prev => { const n = new Set(prev); n.delete(id); return n; });
       setShowDeleteDialog(null);
       toast.success("Entry deleted");
-      // Refresh stats
-      getStats().then(s => setStats(s)).catch(() => { toast.warning("Could not refresh stats"); });
     } catch (err) { toast.error(err.message); }
   };
 
@@ -281,8 +306,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
     } else { toast.error("Batch export failed"); }
   };
 
-  const tp = stats?.total_products || 0;
-  const ep = stats?.published || 0;
+  const tp = catalog.length;
   const needsAttention = catalog.filter(c => (c.completeness ?? 0) < 70).length;
 
   return (
@@ -300,23 +324,6 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
         </div>
         <button className="btn btn-primary" style={{boxShadow:"0 0 20px rgba(124,58,237,0.2)"}} onClick={onNew}><Icon name="plus" size={14}/> New Product</button>
       </div>
-
-      {/* Compact stats row */}
-      {!loading && stats && (
-        <div style={{display:"flex",gap:24,padding:"14px 0",borderTop:"1px solid var(--border-light)",borderBottom:"1px solid var(--border-light)",flexWrap:"wrap"}}>
-          {[
-            {label:"Products",value:tp,grad:"linear-gradient(135deg,#3B82F6,#8B5CF6)"},
-            {label:"Exported",value:ep,grad:"linear-gradient(135deg,#10B981,#3B82F6)"},
-            {label:"Searches",value:stats.total_searches||0,grad:"linear-gradient(135deg,#8B5CF6,#EC4899)"},
-            {label:"Cache Hit",value:`${stats.cache_hit_rate||0}%`,grad:"linear-gradient(135deg,#F59E0B,#EF4444)"},
-          ].map((s,i)=>(
-            <div key={i} style={{display:"flex",alignItems:"baseline",gap:8}}>
-              <span className="mono" style={{fontSize:20,fontWeight:800,background:s.grad,WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>{s.value}</span>
-              <span style={{fontSize:11,color:"var(--text-dim)",fontWeight:500}}>{s.label}</span>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Catalog table */}
       <div>
