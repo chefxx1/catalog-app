@@ -30,6 +30,7 @@ export default function App() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [catalogRefreshKey, setCatalogRefreshKey] = useState(0);
+  const [pendingDashboardFilter, setPendingDashboardFilter] = useState(null);
 
   useEffect(() => {
     setOnUnauthorized(() => {
@@ -40,7 +41,7 @@ export default function App() {
 
   useEffect(() => {
     getMe().then(u => {
-      if (u) setUser({ id: u.id, email: u.email, name: u.name, role: u.role, store_id: u.store_id, store: u.store_name });
+      if (u) setUser({ id: u.id, email: u.email, name: u.name, role: u.role, store_id: u.store_id, store_name: u.store_name });
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
@@ -209,7 +210,7 @@ export default function App() {
           </div>
 
           <div className="main-content" style={{ flex: 1, overflow: "auto", padding: "24px 32px" }}>
-              {view === "dashboard" && <Dashboard user={user} refreshKey={catalogRefreshKey} onNew={() => { setStep(0); setProductData(null); setView("catalog"); }} onViewVoices={() => setView("voices")}
+              {view === "dashboard" && <Dashboard user={user} refreshKey={catalogRefreshKey} pendingFilter={pendingDashboardFilter} onPendingFilterConsumed={() => setPendingDashboardFilter(null)} onNew={() => { setStep(0); setProductData(null); setView("catalog"); }} onViewVoices={() => setView("voices")}
                 onViewProduct={async (productId, step) => {
                   try {
                     const data = await getProductById(productId);
@@ -246,8 +247,8 @@ export default function App() {
                       <BulkImportView user={user} onDone={() => { setCatalogMode("single"); setView("dashboard"); }} />
                     </>
                   )}
-                  {step === 1 && <><StepIndicator currentStep={step} /><ReviewStep onExport={(enrichedData) => { setProductData(enrichedData); setStep(2); }} onSave={() => { setStep(0); setProductData(null); setView("dashboard"); }} productData={productData} user={user} /></>}
-                  {step === 2 && <><StepIndicator currentStep={step} /><ExportStep onComplete={() => { setStep(0); setView("dashboard"); }} productData={productData} user={user} /></>}
+                  {step === 1 && <><StepIndicator currentStep={step} /><ReviewStep onExport={(enrichedData) => { setProductData(enrichedData); setStep(2); }} onSave={() => { setStep(0); setProductData(null); setView("dashboard"); setCatalogRefreshKey(k => k + 1); }} productData={productData} user={user} /></>}
+                  {step === 2 && <><StepIndicator currentStep={step} /><ExportStep onComplete={() => { setStep(0); setView("dashboard"); setCatalogRefreshKey(k => k + 1); }} productData={productData} user={user} /></>}
                 </div>
               )}
               {view === "trending" && <Trending user={user} />}
@@ -258,7 +259,7 @@ export default function App() {
         </div>
       </div>
 
-      <CommandPalette open={paletteOpen} onClose={()=>setPaletteOpen(false)} user={user} onCatalogChanged={()=>setCatalogRefreshKey(k=>k+1)} />
+      <CommandPalette open={paletteOpen} onClose={()=>setPaletteOpen(false)} user={user} onCatalogChanged={()=>setCatalogRefreshKey(k=>k+1)} onApplyFilter={(f)=>{ setPendingDashboardFilter(f); setView("dashboard"); }} />
 
       {showShortcuts && (
         <div className="modal-modern-overlay" onClick={()=>setShowShortcuts(false)}>

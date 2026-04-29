@@ -1,5 +1,7 @@
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const dns = require('dns').promises;
+const net = require('net');
 const auth = require('../middleware/auth');
 const db = require('../db');
 
@@ -7,6 +9,53 @@ const requireRole = require('../middleware/requireRole');
 const { sanitize } = require('../middleware/validate');
 
 const router = express.Router();
+
+// Reject IPs in private/loopback/link-local/CGNAT/multicast/reserved ranges (SSRF guard)
+function isPrivateIp(ip) {
+  const fam = net.isIP(ip);
+  if (fam === 4) {
+    const [a, b] = ip.split('.').map(Number);
+    if (a === 10) return true;
+    if (a === 127) return true;
+    if (a === 0) return true;
+    if (a === 169 && b === 254) return true; // link-local (incl. AWS metadata)
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+    if (a >= 224) return true; // multicast + reserved
+    return false;
+  }
+  if (fam === 6) {
+    const norm = ip.toLowerCase();
+    if (norm === '::1' || norm === '::') return true;
+    if (norm.startsWith('fc') || norm.startsWith('fd')) return true; // ULA
+    if (norm.startsWith('fe80')) return true; // link-local
+    if (norm.startsWith('::ffff:')) return isPrivateIp(norm.slice(7)); // IPv4-mapped
+    return false;
+  }
+  return false;
+}
+
+// Throws if the URL is not safe to fetch (SSRF guard for image URLs)
+async function assertSafeImageUrl(rawUrl) {
+  let parsed;
+  try { parsed = new URL(rawUrl); } catch { throw new Error('Invalid image URL'); }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Only http(s) image URLs allowed');
+  }
+  const host = parsed.hostname;
+  if (!host) throw new Error('Invalid image URL');
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) {
+    throw new Error('Image host not allowed');
+  }
+  if (net.isIP(host)) {
+    if (isPrivateIp(host)) throw new Error('Image host not allowed');
+    return;
+  }
+  const records = await dns.lookup(host, { all: true }).catch(() => []);
+  if (records.length === 0) throw new Error('Could not resolve image host');
+  if (records.some(r => isPrivateIp(r.address))) throw new Error('Image host resolves to private network');
+}
 
 // Validate base64 image: MIME type whitelist + size limit
 function validateBase64Image(data) {
@@ -598,6 +647,7 @@ async function generateImageEdit(imageUrl, prompt) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('GEMINI_API_KEY not configured');
 
+  await assertSafeImageUrl(imageUrl);
   const imgResponse = await fetch(imageUrl);
   if (!imgResponse.ok) throw new Error('Failed to fetch source image');
   const imgBuffer = Buffer.from(await imgResponse.arrayBuffer());

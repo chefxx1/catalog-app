@@ -111,7 +111,7 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
         for (let i = 0; i < productData.images.length; i++) {
           const img = productData.images[i];
           const url = img.image_url || img.url;
-          if (url && !url.startsWith('data:')) {
+          if (url && /^https?:\/\//i.test(url)) {
             await db.query(
               'INSERT INTO product_images (product_id, source_name, image_url, quality_score, sort_order) VALUES (?, ?, ?, ?, ?)',
               [newProductId, img.source_name || 'Web', url, img.quality_score || 80, i]
@@ -548,12 +548,17 @@ router.post('/shopify-sync', auth, requireRole('Admin', 'Editor'), async (req, r
     const domain = `${shop}.myshopify.com`;
     const results = { synced: 0, failed: 0, skipped: 0, errors: [] };
 
-    // Fetch existing Shopify products to detect duplicates (by title)
+    // Fetch existing Shopify products to detect duplicates (by title).
+    // Surface auth failures explicitly — silently breaking made it look like
+    // every push failed for unrelated reasons.
     const existingTitles = new Set();
     try {
       let pageUrl = `https://${domain}/admin/api/2025-01/products.json?limit=250&fields=id,title`;
       while (pageUrl) {
         const listRes = await fetch(pageUrl, { headers: { 'X-Shopify-Access-Token': accessToken } });
+        if (listRes.status === 401 || listRes.status === 403) {
+          return res.status(401).json({ error: 'Shopify rejected the credentials. Verify your Client ID, Client Secret, and that the app has the products write scope.' });
+        }
         if (!listRes.ok) break;
         const { products } = await listRes.json();
         products.forEach(p => existingTitles.add(p.title.toLowerCase().trim()));

@@ -348,12 +348,14 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
       }
     }
 
-    // Save images
+    // Save images — only persist http(s) URLs, reject data:/javascript:/etc.
     if (images && images.length > 0) {
       for (let i = 0; i < images.length; i++) {
+        const url = images[i].image_url;
+        if (!url || !/^https?:\/\//i.test(url)) continue;
         await db.query(
           'INSERT INTO product_images (product_id, source_name, image_url, quality_score, sort_order) VALUES (?, ?, ?, ?, ?)',
-          [productId, images[i].source_name, images[i].image_url, images[i].quality_score, i]
+          [productId, images[i].source_name, url, images[i].quality_score, i]
         );
       }
     }
@@ -437,7 +439,8 @@ router.post('/save-for-later', auth, requireRole('Admin', 'Editor'), async (req,
       await db.query('DELETE FROM product_images WHERE product_id = ?', [productId]);
       for (let i = 0; i < images.length; i++) {
         const url = images[i].image_url || images[i].url;
-        if (url && !url.startsWith('data:')) {
+        // Only persist http(s) URLs — reject data:, javascript:, etc.
+        if (url && /^https?:\/\//i.test(url)) {
           await db.query(
             'INSERT INTO product_images (product_id, source_name, image_url, quality_score, sort_order) VALUES (?, ?, ?, ?, ?)',
             [productId, images[i].source_name || 'Web', url, images[i].quality_score || 80, i]
@@ -491,6 +494,13 @@ router.post('/save-for-later', auth, requireRole('Admin', 'Editor'), async (req,
 // Resolve a conflict
 router.patch('/conflicts/:id/resolve', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
+    const [allowed] = await db.query(
+      `SELECT c.id FROM conflicts c
+       JOIN catalog_entries ce ON ce.product_id = c.product_id
+       WHERE c.id = ? AND ce.store_id = ?`,
+      [req.params.id, req.user.store_id]
+    );
+    if (allowed.length === 0) return res.status(404).json({ error: 'Conflict not found' });
     const chosen_value = req.body.chosen_value ? sanitize(String(req.body.chosen_value)).slice(0, 500) : null;
     await db.query(
       'UPDATE conflicts SET is_resolved = TRUE, chosen_value = ?, resolved_by = ?, resolved_at = NOW() WHERE id = ?',
@@ -502,10 +512,17 @@ router.patch('/conflicts/:id/resolve', auth, requireRole('Admin', 'Editor'), asy
   }
 });
 
-// Force refresh (ignore cache)
+// Force refresh (ignore cache) — only for products in caller's catalog or unclaimed cache
 router.post('/refresh/:barcode', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
-    await db.query('UPDATE products SET cache_expires_at = NOW() WHERE barcode = ?', [req.params.barcode]);
+    const [allowed] = await db.query(
+      `SELECT p.id FROM products p
+       LEFT JOIN catalog_entries ce ON ce.product_id = p.id AND ce.store_id = ?
+       WHERE p.barcode = ? AND (ce.id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM catalog_entries WHERE product_id = p.id))`,
+      [req.user.store_id, req.params.barcode]
+    );
+    if (allowed.length === 0) return res.status(404).json({ error: 'Product not found' });
+    await db.query('UPDATE products SET cache_expires_at = NOW() WHERE id = ?', [allowed[0].id]);
     res.json({ success: true, message: 'Cache cleared — next search will fetch fresh data' });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -554,9 +571,28 @@ router.get('/catalog', auth, async (req, res) => {
        ORDER BY ce.updated_at DESC`,
       [req.user.store_id]
     );
+
+    // Bulk-load tag assignments per entry so the dashboard can render tag chips
+    // and the tag-filter pill without N+1 round trips.
+    const entryIds = entries.map(e => e.id);
+    const tagMap = {};
+    if (entryIds.length > 0) {
+      const [tagRows] = await db.query(
+        `SELECT cet.catalog_entry_id, cet.tag_id
+         FROM catalog_entry_tags cet
+         JOIN tags t ON t.id = cet.tag_id
+         WHERE t.store_id = ? AND cet.catalog_entry_id IN (?)`,
+        [req.user.store_id, entryIds]
+      );
+      for (const r of tagRows) {
+        if (!tagMap[r.catalog_entry_id]) tagMap[r.catalog_entry_id] = [];
+        tagMap[r.catalog_entry_id].push(r.tag_id);
+      }
+    }
+
     const enriched = entries.map(e => {
       const { score, issues } = calcCompleteness(e);
-      return { ...e, completeness: score, completeness_issues: issues };
+      return { ...e, completeness: score, completeness_issues: issues, tag_ids: tagMap[e.id] || [] };
     });
     res.json({ entries: enriched });
   } catch (err) {
@@ -615,7 +651,7 @@ router.patch('/catalog/:id', auth, requireRole('Admin', 'Editor'), async (req, r
     if (rawName !== undefined) changes.name = sanitize(rawName).slice(0, 200);
     if (custom_price !== undefined) changes.price = custom_price;
     if (stock_quantity !== undefined) changes.stock_quantity = stock_quantity;
-    logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'updated', entity_type: 'catalog_entry', entity_id: parseInt(req.params.id), entity_name: rawName || null, details: changes });
+    logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'updated', entity_type: 'catalog_entry', entity_id: parseInt(req.params.id, 10), entity_name: rawName || null, details: changes });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -626,7 +662,7 @@ router.patch('/catalog/:id', auth, requireRole('Admin', 'Editor'), async (req, r
 router.delete('/catalog/:id', auth, requireRole('Admin'), async (req, res) => {
   try {
     await db.query('DELETE FROM catalog_entries WHERE id = ? AND store_id = ?', [req.params.id, req.user.store_id]);
-    logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'deleted', entity_type: 'catalog_entry', entity_id: parseInt(req.params.id) });
+    logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'deleted', entity_type: 'catalog_entry', entity_id: parseInt(req.params.id, 10) });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -735,7 +771,11 @@ router.post('/bulk-import', auth, requireRole('Admin', 'Editor'), async (req, re
         const name = (row[mapping.name] || '').trim();
         const barcode = (row[mapping.barcode] || '').trim();
         const description = mapping.description ? (row[mapping.description] || '').trim() : null;
-        const price = mapping.price ? parseFloat(String(row[mapping.price]).replace(/[^0-9.]/g, '')) || null : null;
+        let price = null;
+        if (mapping.price) {
+          const parsed = parseFloat(String(row[mapping.price]).replace(/[^0-9.]/g, ''));
+          if (!isNaN(parsed) && parsed >= 0) price = parsed;
+        }
         const brand = mapping.brand ? (row[mapping.brand] || '').trim() : null;
         const category = mapping.category ? (row[mapping.category] || '').trim() : null;
 
@@ -775,10 +815,12 @@ router.post('/bulk-import', auth, requireRole('Admin', 'Editor'), async (req, re
         );
 
         if (existingEntry.length > 0) {
-          // Update existing
+          // Update existing — sanitize like the INSERT branch does
+          const safeName = name ? sanitize(name).slice(0, 255) : null;
+          const safeDesc = description ? sanitize(description).slice(0, 5000) : null;
           await db.query(
             `UPDATE catalog_entries SET custom_name = COALESCE(?, custom_name), custom_description = COALESCE(?, custom_description), custom_price = COALESCE(?, custom_price), updated_at = NOW() WHERE id = ?`,
-            [name || null, description || null, price, existingEntry[0].id]
+            [safeName, safeDesc, price, existingEntry[0].id]
           );
         } else {
           await db.query(
@@ -805,7 +847,13 @@ router.post('/bulk-import', auth, requireRole('Admin', 'Editor'), async (req, re
 // Get product by ID (for catalog view/edit) — must be after /catalog to avoid conflict
 router.get('/:id', auth, async (req, res) => {
   try {
-    const [product] = await db.query('SELECT * FROM products WHERE id = ?', [req.params.id]);
+    // Allow only if the product is in this store's catalog, or still uncalimed in global cache.
+    const [product] = await db.query(
+      `SELECT p.* FROM products p
+       LEFT JOIN catalog_entries ce ON ce.product_id = p.id AND ce.store_id = ?
+       WHERE p.id = ? AND (ce.id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM catalog_entries WHERE product_id = p.id))`,
+      [req.user.store_id, req.params.id]
+    );
     if (!product[0]) return res.status(404).json({ error: 'Product not found' });
     const [sources] = await db.query('SELECT * FROM product_sources WHERE product_id = ?', [req.params.id]);
     const [images] = await db.query('SELECT * FROM product_images WHERE product_id = ? ORDER BY sort_order', [req.params.id]);

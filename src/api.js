@@ -1,4 +1,9 @@
-const API_URL = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:3000/api`;
+// Resolve API URL: prefer the build-time env var, else derive from current host,
+// else fall back to localhost (handles file:// and contexts where hostname is empty).
+const API_URL = import.meta.env.VITE_API_URL
+  || (typeof window !== 'undefined' && window.location?.hostname
+    ? `http://${window.location.hostname}:3000/api`
+    : 'http://localhost:3000/api');
 
 // Token management
 let token = localStorage.getItem('catalogai_token');
@@ -49,8 +54,7 @@ export const signUp = async (name, email, password, store_name) => {
     headers: headers(),
     body: JSON.stringify({ name, email, password, store_name }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
+  const data = await handleResponse(res);
   setToken(data.token);
   return data;
 };
@@ -61,8 +65,7 @@ export const signIn = async (email, password) => {
     headers: headers(),
     body: JSON.stringify({ email, password }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
+  const data = await handleResponse(res);
   setToken(data.token);
   return data;
 };
@@ -70,7 +73,10 @@ export const signIn = async (email, password) => {
 export const getMe = async () => {
   if (!token) return null;
   const res = await apiFetch(`${API_URL}/auth/me`, { headers: headers() });
-  if (!res.ok) { setToken(null); return null; }
+  // Only treat 401 as expired session — server errors (500, network) shouldn't
+  // log the user out, since the token may still be valid.
+  if (res.status === 401) { setToken(null); return null; }
+  if (!res.ok) return null;
   const data = await res.json();
   return data.user;
 };
@@ -79,26 +85,20 @@ export const forgotPassword = async (email) => {
   const res = await apiFetch(`${API_URL}/auth/forgot-password`, {
     method: 'POST', headers: headers(), body: JSON.stringify({ email }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
-  return data;
+  return handleResponse(res);
 };
 
 export const resetPassword = async (token, password) => {
   const res = await apiFetch(`${API_URL}/auth/reset-password`, {
     method: 'POST', headers: headers(), body: JSON.stringify({ token, password }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
-  return data;
+  return handleResponse(res);
 };
 
 // ── PRODUCTS ──
 export const searchProduct = async (barcode) => {
   const res = await apiFetch(`${API_URL}/products/search/${barcode}`, { headers: headers() });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
-  return data;
+  return handleResponse(res);
 };
 
 export const saveProduct = async (productData) => {
@@ -107,9 +107,7 @@ export const saveProduct = async (productData) => {
     headers: headers(),
     body: JSON.stringify(productData),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
-  return data;
+  return handleResponse(res);
 };
 
 export const resolveConflict = async (conflictId, chosenValue) => {
@@ -121,14 +119,6 @@ export const resolveConflict = async (conflictId, chosenValue) => {
   return handleResponse(res);
 };
 
-export const refreshProduct = async (barcode) => {
-  const res = await apiFetch(`${API_URL}/products/refresh/${barcode}`, {
-    method: 'POST',
-    headers: headers(),
-  });
-  return handleResponse(res);
-};
-
 // ── CATALOG ──
 export const saveForLater = async (productData) => {
   const res = await apiFetch(`${API_URL}/products/save-for-later`, {
@@ -136,22 +126,17 @@ export const saveForLater = async (productData) => {
     headers: headers(),
     body: JSON.stringify(productData),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
-  return data;
+  return handleResponse(res);
 };
 
 export const getProductById = async (id) => {
   const res = await apiFetch(`${API_URL}/products/${id}`, { headers: headers() });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
-  return data;
+  return handleResponse(res);
 };
 
 export const getCatalog = async () => {
   const res = await apiFetch(`${API_URL}/products/catalog`, { headers: headers() });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
+  const data = await handleResponse(res);
   return data.entries;
 };
 
@@ -170,9 +155,7 @@ export const updateCatalogEntry = async (id, fields) => {
     headers: headers(),
     body: JSON.stringify(fields),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Update failed');
-  return data;
+  return handleResponse(res);
 };
 
 export const updateCatalogStatus = async (id, status) => {
@@ -210,9 +193,7 @@ export const deleteCatalogEntry = async (id) => {
     method: 'DELETE',
     headers: headers(),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Delete failed');
-  return data;
+  return handleResponse(res);
 };
 
 export const deleteAllData = async () => {
@@ -220,9 +201,7 @@ export const deleteAllData = async () => {
     method: 'DELETE',
     headers: headers(),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to delete data');
-  return data;
+  return handleResponse(res);
 };
 
 export const deleteAccount = async () => {
@@ -230,9 +209,7 @@ export const deleteAccount = async () => {
     method: 'DELETE',
     headers: headers(),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to delete account');
-  return data;
+  return handleResponse(res);
 };
 
 export const clearSearchHistory = async () => {
@@ -240,9 +217,7 @@ export const clearSearchHistory = async () => {
     method: 'DELETE',
     headers: headers(),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to clear history');
-  return data;
+  return handleResponse(res);
 };
 
 // ── ANALYTICS ──
@@ -355,9 +330,7 @@ export const changePassword = async (currentPassword, newPassword) => {
     headers: headers(),
     body: JSON.stringify({ currentPassword, newPassword }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
-  return data;
+  return handleResponse(res);
 };
 
 export const updateProfile = async (profileData) => {
@@ -366,16 +339,12 @@ export const updateProfile = async (profileData) => {
     headers: headers(),
     body: JSON.stringify(profileData),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
-  return data;
+  return handleResponse(res);
 };
 
 export const getSettings = async () => {
   const res = await apiFetch(`${API_URL}/auth/settings`, { headers: headers() });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
-  return data;
+  return handleResponse(res);
 };
 
 export const updateSettings = async (settings) => {
@@ -384,16 +353,13 @@ export const updateSettings = async (settings) => {
     headers: headers(),
     body: JSON.stringify(settings),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
-  return data;
+  return handleResponse(res);
 };
 
 // ── BRAND VOICES ──
 export const getBrandVoices = async () => {
   const res = await apiFetch(`${API_URL}/brand-voices`, { headers: headers() });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
+  const data = await handleResponse(res);
   return data.voices;
 };
 
@@ -403,8 +369,7 @@ export const createBrandVoice = async (voice) => {
     headers: headers(),
     body: JSON.stringify(voice),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
+  const data = await handleResponse(res);
   return data.voice;
 };
 
@@ -414,8 +379,7 @@ export const updateBrandVoice = async (id, voice) => {
     headers: headers(),
     body: JSON.stringify(voice),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
+  const data = await handleResponse(res);
   return data.voice;
 };
 
@@ -424,9 +388,7 @@ export const deleteBrandVoice = async (id) => {
     method: 'DELETE',
     headers: headers(),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
-  return data;
+  return handleResponse(res);
 };
 
 // ── AI ──
@@ -436,9 +398,7 @@ export const generateAIContent = async (productData) => {
     headers: headers(),
     body: JSON.stringify(productData),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
-  return data;
+  return handleResponse(res);
 };
 
 export const recolorImage = async (imageUrl, color, productName) => {
@@ -447,9 +407,7 @@ export const recolorImage = async (imageUrl, color, productName) => {
     headers: headers(),
     body: JSON.stringify({ imageUrl, color, productName }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
-  return data;
+  return handleResponse(res);
 };
 
 export const aiStudio = async (imageUrl, mode, productName) => {
@@ -458,9 +416,7 @@ export const aiStudio = async (imageUrl, mode, productName) => {
     headers: headers(),
     body: JSON.stringify({ imageUrl, mode, productName }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
-  return data;
+  return handleResponse(res);
 };
 
 export const identifyProduct = async (imageBase64) => {
@@ -469,9 +425,7 @@ export const identifyProduct = async (imageBase64) => {
     headers: headers(),
     body: JSON.stringify({ image: imageBase64 }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
-  return data;
+  return handleResponse(res);
 };
 
 export const getQualitySuggestions = async (productId) => {
@@ -480,8 +434,7 @@ export const getQualitySuggestions = async (productId) => {
     headers: headers(),
     body: JSON.stringify({ productId }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
+  const data = await handleResponse(res);
   return data.suggestions;
 };
 
@@ -491,8 +444,7 @@ export const searchProductImages = async (query) => {
     headers: headers(),
     body: JSON.stringify({ query }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
+  const data = await handleResponse(res);
   return data.images;
 };
 
@@ -502,23 +454,18 @@ export const exportProduct = async (format, platform, barcode, productData, prod
     headers: headers(),
     body: JSON.stringify({ format, platform, barcode, productData, productId }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
-  return data;
+  return handleResponse(res);
 };
 
 export const getExportHistory = async () => {
   const res = await apiFetch(`${API_URL}/export/history`, { headers: headers() });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
+  const data = await handleResponse(res);
   return data.exports;
 };
 
 export const downloadExport = async (exportId) => {
   const res = await apiFetch(`${API_URL}/export/history/${exportId}/download`, { headers: headers() });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
-  return data;
+  return handleResponse(res);
 };
 
 export const googleSignIn = async (credential) => {
@@ -527,8 +474,7 @@ export const googleSignIn = async (credential) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ credential }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
+  const data = await handleResponse(res);
   setToken(data.token);
   return data;
 };
@@ -567,9 +513,7 @@ export const sendInvite = async (email, role) => {
 
 export const getInviteInfo = async (token) => {
   const res = await apiFetch(`${API_URL}/auth/invite/${token}`);
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
-  return data;
+  return handleResponse(res);
 };
 
 export const acceptInvite = async (token, name, password) => {
@@ -577,8 +521,7 @@ export const acceptInvite = async (token, name, password) => {
     method: 'POST', headers: headers(),
     body: JSON.stringify({ name, password }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
+  const data = await handleResponse(res);
   setToken(data.token);
   return data;
 };

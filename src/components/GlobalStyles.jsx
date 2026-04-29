@@ -136,6 +136,7 @@ const GlobalStyles = ({ dark }) => (
     @keyframes orbRotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     @keyframes exampleFade { 0%, 30% { opacity:0; transform: translateY(6px); } 8%, 22% { opacity:1; transform: translateY(0); } }
     @keyframes blobShift { 0%, 100% { transform: translate(0,0) scale(1); } 33% { transform: translate(20px,-15px) scale(1.1); } 66% { transform: translate(-15px,10px) scale(0.95); } }
+    @keyframes cardFadeIn { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
 
     .palette-overlay { position:fixed; inset:0; z-index:10000; display:flex; align-items:flex-start; justify-content:center; padding-top:7vh; background:rgba(0,0,0,0.6); backdrop-filter:blur(12px); animation: paletteFadeIn 0.2s ease-out; }
     .palette-card { width:100%; max-width:720px; max-height:84vh; background: color-mix(in oklab, var(--card-bg) 90%, transparent); border:1px solid var(--border); border-radius:20px; overflow:hidden; display:flex; flex-direction:column; box-shadow: 0 30px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04) inset, 0 1px 0 rgba(255,255,255,0.08) inset; position:relative; animation: paletteScaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1); backdrop-filter: blur(20px); }

@@ -1,3 +1,5 @@
+const crypto = require('crypto');
+
 const store = new Map();
 
 // Clean up expired entries every 5 minutes
@@ -8,9 +10,21 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
+// Per-token keying (without verifying the JWT — it's just for bucket isolation,
+// not auth). If the cookie is missing we fall back to IP. This way one client
+// behind a shared proxy IP doesn't get throttled by another's traffic.
+function tokenFingerprint(req) {
+  const cookie = req.cookies?.token;
+  const header = req.headers.authorization;
+  const raw = cookie || (header && header.startsWith('Bearer ') ? header.slice(7) : null);
+  if (!raw) return null;
+  return crypto.createHash('sha256').update(raw).digest('hex').slice(0, 16);
+}
+
 function rateLimit({ max = 60, windowMs = 60000, message = 'Too many requests, please try again later' } = {}) {
   return (req, res, next) => {
-    const key = `${req.ip}:${req.baseUrl}`;
+    const id = tokenFingerprint(req) || `ip:${req.ip}`;
+    const key = `${id}:${req.baseUrl}`;
     const now = Date.now();
     let record = store.get(key);
 

@@ -48,7 +48,13 @@ const ExportStep = ({ onComplete, productData, user }) => {
         if (r.productCount === 0) throw new Error("No published products to export");
         result = { content: r.content, filename: r.filename, contentType: "application/xml" };
       } else if (plat === "PDF Catalog") {
-        try { await saveForLater(productData); } catch (e) { console.warn("saveForLater failed:", e?.message); }
+        try {
+          await saveForLater(productData);
+        } catch (e) {
+          // Surface the failure — silent skip made users think the PDF was
+          // saved to their catalog when it wasn't.
+          toast.warning("PDF generated, but could not save to catalog: " + (e?.message || "unknown error"));
+        }
         let variants = [];
         try {
           const entries = await getCatalog();
@@ -85,7 +91,9 @@ const ExportStep = ({ onComplete, productData, user }) => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = exportedFile.filename; a.click();
-    URL.revokeObjectURL(url);
+    // Some browsers (Safari, older Firefox) abort the download if the URL
+    // is revoked synchronously after click. Defer revoke to the next tick.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const handlePreview = async () => {
@@ -122,7 +130,7 @@ const ExportStep = ({ onComplete, productData, user }) => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url; a.download = data.filename; a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) { toast.error("Download failed: " + err.message); }
   };
 

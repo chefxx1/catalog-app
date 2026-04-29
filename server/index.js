@@ -20,6 +20,11 @@ const rateLimit = require('./middleware/rateLimit');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust the first proxy hop so req.ip reflects the real client IP behind
+// nginx / a load balancer. Single integer is the common safe default;
+// don't use `true` (trusts everything) in prod.
+app.set('trust proxy', 1);
+
 // Security headers (CSP, X-Frame-Options, HSTS, etc.)
 app.use(helmet({
   contentSecurityPolicy: false, // off because we inline styles; turn on in prod with a proper policy

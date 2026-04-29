@@ -108,6 +108,9 @@ const ShaderBackground = () => {
       }
       geometry.dispose();
       material.dispose();
+      // Force the WebGL context loss before dispose so rapid mount/unmount
+      // (e.g. auth flicker) doesn't exhaust the browser's ~16-context budget.
+      try { renderer.forceContextLoss(); } catch {}
       renderer.dispose();
     };
   }, []);

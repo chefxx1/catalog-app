@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { Icon } from "./shared";
 
 // Global toast system
@@ -12,11 +12,26 @@ const toast = {
 
 const ToastContainer = () => {
   const [toasts, setToasts] = useState([]);
+  // Track active timers so we can clear them on unmount and avoid setState
+  // calls on a stale component (React dev warning).
+  const timersRef = useRef(new Set());
+
   _showToast = useCallback((message, type = "info") => {
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+    const timer = setTimeout(() => {
+      timersRef.current.delete(timer);
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4000);
+    timersRef.current.add(timer);
   }, []);
+
+  useEffect(() => () => {
+    for (const t of timersRef.current) clearTimeout(t);
+    timersRef.current.clear();
+    _showToast = () => {};
+  }, []);
+
   const colors = { success: "#10B981", error: "#EF4444", warning: "#F59E0B", info: "#3B82F6" };
   const icons = { success: "check", error: "warning", warning: "warning", info: "sparkle" };
   if (toasts.length === 0) return null;

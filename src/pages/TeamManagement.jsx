@@ -12,6 +12,8 @@ const TeamManagement = ({ currentUserId }) => {
   const [invRole, setInvRole] = useState("Editor");
   const [invSending, setInvSending] = useState(false);
   const [pendingInvites, setPendingInvites] = useState([]);
+  // Holds the invite link if SMTP failed, so admin can copy it manually.
+  const [invFallbackLink, setInvFallbackLink] = useState(null);
 
   const refreshTeam = () => {
     getTeamUsers().then(d => { setTeamUsers(d.users || []); setTeamLoading(false); }).catch(() => { setTeamLoading(false); toast.error("Failed to load team members"); });
@@ -29,8 +31,14 @@ const TeamManagement = ({ currentUserId }) => {
     if (!invEmail.trim()) return toast.error("Enter an email address");
     setInvSending(true);
     try {
-      await sendInvite(invEmail.trim(), invRole);
-      toast.success("Invitation sent!");
+      const r = await sendInvite(invEmail.trim(), invRole);
+      if (r?.emailSent === false && r?.inviteUrl) {
+        // Email failed — show the link so admin can share it manually
+        setInvFallbackLink({ email: invEmail.trim(), url: r.inviteUrl, error: r.emailError });
+        toast.warning("Invite created — email could not be sent. Copy the link to share manually.");
+      } else {
+        toast.success("Invitation sent!");
+      }
       setInvEmail(""); setShowInviteForm(false);
       getPendingInvites().then(d => setPendingInvites((d.invites || []).filter(i => !i.accepted))).catch(() => { toast.warning("Could not refresh invites list"); });
     } catch (err) { toast.error(err.message); }
@@ -190,6 +198,43 @@ const TeamManagement = ({ currentUserId }) => {
         onCancel={() => setShowRemoveDialog(null)}
         onConfirm={() => handleRemove(showRemoveDialog.id)}
       />}
+
+      {invFallbackLink && (
+        <div className="modal-modern-overlay" onClick={() => setInvFallbackLink(null)}>
+          <div className="modal-modern-card size-sm" onClick={e => e.stopPropagation()}>
+            <div className="modal-modern-blobs" />
+            <div className="modal-modern-header">
+              <div>
+                <h3>Invite Created — Share Manually</h3>
+                <p style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 4 }}>
+                  We couldn't send the email to <strong>{invFallbackLink.email}</strong>. The invite is still valid for 7 days. Copy the link below and send it however you like.
+                </p>
+              </div>
+            </div>
+            <div className="modal-modern-body" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ padding: "10px 12px", borderRadius: 8, background: "var(--hover-bg)", border: "1px solid var(--border)", fontSize: 12, fontFamily: "monospace", wordBreak: "break-all", color: "var(--text)" }}>
+                {invFallbackLink.url}
+              </div>
+              {invFallbackLink.error && (
+                <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                  Email error: <span className="mono">{invFallbackLink.error}</span>
+                </div>
+              )}
+            </div>
+            <div className="modal-modern-footer" style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button className="btn btn-ghost" onClick={() => setInvFallbackLink(null)}>Close</button>
+              <button className="btn btn-primary" onClick={() => {
+                navigator.clipboard.writeText(invFallbackLink.url).then(
+                  () => toast.success("Invite link copied"),
+                  () => toast.error("Could not copy — select and copy manually")
+                );
+              }}>
+                <Icon name="copy" size={13} /> Copy Link
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

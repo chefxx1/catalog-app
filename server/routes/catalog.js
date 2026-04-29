@@ -78,10 +78,22 @@ router.post('/entries/:entryId/tags', auth, requireRole('Admin', 'Editor'), asyn
     const [entry] = await db.query('SELECT id FROM catalog_entries WHERE id = ? AND store_id = ?', [req.params.entryId, req.user.store_id]);
     if (entry.length === 0) return res.status(404).json({ error: 'Entry not found' });
 
+    // Verify every tag belongs to this store before linking
+    const parsedIds = tagIds.map(tid => parseInt(tid, 10)).filter(n => !isNaN(n));
+    if (parsedIds.length > 0) {
+      const [validTags] = await db.query(
+        'SELECT id FROM tags WHERE store_id = ? AND id IN (?)',
+        [req.user.store_id, parsedIds]
+      );
+      if (validTags.length !== parsedIds.length) {
+        return res.status(400).json({ error: 'One or more tags do not belong to this store' });
+      }
+    }
+
     // Clear existing and re-assign
     await db.query('DELETE FROM catalog_entry_tags WHERE catalog_entry_id = ?', [req.params.entryId]);
-    if (tagIds.length > 0) {
-      const values = tagIds.map(tid => [parseInt(req.params.entryId), parseInt(tid)]);
+    if (parsedIds.length > 0) {
+      const values = parsedIds.map(tid => [parseInt(req.params.entryId, 10), tid]);
       await db.query('INSERT INTO catalog_entry_tags (catalog_entry_id, tag_id) VALUES ?', [values]);
     }
     res.json({ success: true });
@@ -93,9 +105,16 @@ router.post('/entries/:entryId/tags', auth, requireRole('Admin', 'Editor'), asyn
 // Get tags for a catalog entry
 router.get('/entries/:entryId/tags', auth, async (req, res) => {
   try {
+    // Verify entry belongs to caller's store before returning tags
+    const [entry] = await db.query(
+      'SELECT id FROM catalog_entries WHERE id = ? AND store_id = ?',
+      [req.params.entryId, req.user.store_id]
+    );
+    if (entry.length === 0) return res.status(404).json({ error: 'Entry not found' });
+
     const [tags] = await db.query(
-      'SELECT t.* FROM tags t JOIN catalog_entry_tags cet ON cet.tag_id = t.id WHERE cet.catalog_entry_id = ?',
-      [req.params.entryId]
+      'SELECT t.* FROM tags t JOIN catalog_entry_tags cet ON cet.tag_id = t.id WHERE cet.catalog_entry_id = ? AND t.store_id = ?',
+      [req.params.entryId, req.user.store_id]
     );
     res.json({ tags });
   } catch (err) {
@@ -151,7 +170,7 @@ router.delete('/views/:id', auth, requireRole('Admin', 'Editor'), async (req, re
 // Get recent activity for store
 router.get('/activity', auth, async (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || 30, 100);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 30, 100);
     const entityType = req.query.entity_type || null;
     const entityId = req.query.entity_id || null;
 

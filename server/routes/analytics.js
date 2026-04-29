@@ -128,7 +128,7 @@ router.get('/completeness', auth, async (req, res) => {
   }
 });
 
-// Low stock alerts
+// Low stock alerts — only for catalog entries the user actually intends to sell
 router.get('/low-stock', auth, async (req, res) => {
   try {
     const [entries] = await db.query(
@@ -136,6 +136,7 @@ router.get('/low-stock', auth, async (req, res) => {
        FROM catalog_entries ce
        JOIN products p ON ce.product_id = p.id
        WHERE ce.store_id = ?
+         AND ce.status IN ('Published', 'Exported')
          AND ce.stock_quantity IS NOT NULL
          AND ce.low_stock_threshold IS NOT NULL
          AND ce.stock_quantity <= ce.low_stock_threshold

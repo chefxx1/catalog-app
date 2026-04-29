@@ -58,10 +58,13 @@ const AuthPage = ({ onLogin, dark }) => {
   const clear = () => { setError(""); setSuccess(""); };
   const switchMode = (m) => { clear(); setMode(m); };
 
-  // Initialize Google Sign-In button (always works, no cooldown)
+  // Initialize Google Sign-In button. Stops polling after 50 attempts (~5s)
+  // so a blocked Google script doesn't run setInterval indefinitely.
   useEffect(() => {
     if (mode !== "signin" || !googleBtnRef.current) return;
+    let attempts = 0;
     let interval = setInterval(() => {
+      attempts++;
       if (window.google?.accounts?.id) {
         clearInterval(interval);
         interval = null;
@@ -72,7 +75,7 @@ const AuthPage = ({ onLogin, dark }) => {
             try {
               const data = await googleSignIn(response.credential);
               setLoading(false);
-              onLogin({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store_id: data.user.store_id, store: data.user.store_name });
+              onLogin({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store_id: data.user.store_id, store_name: data.user.store_name });
             } catch (err) { setLoading(false); setError(err.message); }
           },
         });
@@ -84,6 +87,9 @@ const AuthPage = ({ onLogin, dark }) => {
           text: "continue_with",
           shape: "pill",
         });
+      } else if (attempts >= 50) {
+        clearInterval(interval);
+        interval = null;
       }
     }, 100);
     return () => clearInterval(interval);
@@ -91,6 +97,7 @@ const AuthPage = ({ onLogin, dark }) => {
 
   // ── SIGN IN ──
   const handleSignIn = async () => {
+    if (loading) return;
     clear();
     if (!siEmail.trim()) return setError("Please enter your email address.");
     if (!siPassword) return setError("Please enter your password.");
@@ -99,7 +106,7 @@ const AuthPage = ({ onLogin, dark }) => {
     try {
       const data = await apiSignIn(siEmail, siPassword);
       setLoading(false);
-      onLogin({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store_id: data.user.store_id, store: data.user.store_name });
+      onLogin({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store_id: data.user.store_id, store_name: data.user.store_name });
     } catch (err) {
       setLoading(false);
       setError(err.message);
@@ -108,6 +115,7 @@ const AuthPage = ({ onLogin, dark }) => {
 
   // ── SIGN UP ──
   const handleSignUp = async () => {
+    if (loading) return;
     clear();
     if (!suName.trim()) return setError("Please enter your full name.");
     if (!suEmail.trim()) return setError("Please enter your email address.");
@@ -121,7 +129,7 @@ const AuthPage = ({ onLogin, dark }) => {
     try {
       const data = await apiSignUp(suName, suEmail, suPassword, suStore || "My Store");
       setLoading(false);
-      onLogin({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store_id: data.user.store_id, store: data.user.store_name });
+      onLogin({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store_id: data.user.store_id, store_name: data.user.store_name });
     } catch (err) {
       setLoading(false);
       setError(err.message);
@@ -130,6 +138,7 @@ const AuthPage = ({ onLogin, dark }) => {
 
   // ── ACCEPT INVITE ──
   const handleAcceptInvite = async () => {
+    if (loading) return;
     clear();
     if (!inviteName.trim()) return setError("Please enter your full name.");
     if (!invitePassword) return setError("Please choose a password.");
@@ -141,7 +150,7 @@ const AuthPage = ({ onLogin, dark }) => {
       setLoading(false);
       // Clean the URL
       window.history.replaceState({}, '', window.location.pathname);
-      onLogin({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store_id: data.user.store_id, store: data.user.store_name });
+      onLogin({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store_id: data.user.store_id, store_name: data.user.store_name });
     } catch (err) {
       setLoading(false);
       setError(err.message);
@@ -150,6 +159,7 @@ const AuthPage = ({ onLogin, dark }) => {
 
   // ── FORGOT PASSWORD ──
   const handleForgot = async () => {
+    if (loading) return;
     clear();
     if (!forgotEmail.trim()) return setError("Please enter your email address.");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail)) return setError("Please enter a valid email.");
@@ -166,6 +176,7 @@ const AuthPage = ({ onLogin, dark }) => {
   const [newPass, setNewPass] = useState("");
   const [confirmPass, setConfirmPass] = useState("");
   const handleReset = async () => {
+    if (loading) return;
     clear();
     if (!newPass || newPass.length < 8) return setError("Password must be at least 8 characters.");
     if (newPass !== confirmPass) return setError("Passwords do not match.");

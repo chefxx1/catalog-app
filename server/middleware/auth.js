@@ -18,11 +18,14 @@ const auth = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    // Backfill store_id for old JWTs that don't have it
-    if (!decoded.store_id) {
-      const [rows] = await db.query('SELECT store_id FROM users WHERE id = ?', [decoded.id]);
-      if (rows.length) decoded.store_id = rows[0].store_id;
+    // Always re-verify the user exists. A token outliving its user (deleted
+    // account, removed team member) must not silently scope queries to NULL.
+    const [rows] = await db.query('SELECT id, store_id FROM users WHERE id = ?', [decoded.id]);
+    if (rows.length === 0) {
+      return res.status(401).json({ error: 'Account no longer exists' });
     }
+    // Backfill store_id from DB (covers old JWTs without it, and keeps it fresh)
+    decoded.store_id = rows[0].store_id;
     req.user = decoded;
     next();
   } catch {
