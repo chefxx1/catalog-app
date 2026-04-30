@@ -145,9 +145,29 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
     }).catch(() => { toast.warning("Could not load brand voices"); });
   }, []);
 
-  const handleRegenerate=async(voice, lang)=>{
+  // Per-voice/language cache so switching tabs doesn't re-burn Gemini quota.
+  // Keyed by `${voiceId}:${language}:${customPrompt}`. Force fresh via forceFresh=true.
+  const descCacheRef = useRef({});
+
+  const handleRegenerate=async(voice, lang, forceFresh = false)=>{
     const bv = voice || selectedVoice;
     const useLang = lang || selectedLang;
+    const cacheKey = `${bv?.id || "none"}:${useLang}:${useCustom ? customPrompt.trim() : ""}`;
+
+    // Cache hit — restore previously generated tones without calling the API
+    if (!forceFresh && descCacheRef.current[cacheKey]) {
+      const cached = descCacheRef.current[cacheKey];
+      setAiDescs(cached.aiDescs);
+      setEditedDesc(cached.aiDescs[selectedDesc]?.text || cached.aiDescs[0]?.text || "");
+      if (cached.seoTags) setSeoTags(cached.seoTags);
+      if (cached.metaTitle) setMetaTitle(cached.metaTitle);
+      if (cached.metaDescription) setMetaDescription(cached.metaDescription);
+      if (cached.aiCategory) setAiCategory(cached.aiCategory);
+      setTranslatedSpecs(cached.translatedSpecs || null);
+      setTranslatedName(cached.translatedName || null);
+      return;
+    }
+
     setRegenerating(true); setAiError(null);
 
     const basePayload = {
@@ -208,6 +228,16 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
         setTranslatedSpecs(result.translatedSpecs || null);
         setTranslatedName(result.translatedName || null);
       }
+      // Cache the result so switching back to this voice/language hits memory, not Gemini
+      descCacheRef.current[cacheKey] = {
+        aiDescs: newDescs,
+        seoTags: result?.seoTags?.length ? result.seoTags : undefined,
+        metaTitle: result?.metaTitle,
+        metaDescription: result?.metaDescription,
+        aiCategory: result?.category,
+        translatedSpecs: result?.translatedSpecs || null,
+        translatedName: result?.translatedName || null,
+      };
     } catch (err) {
       setAiError(err.message);
       toast.error("AI generation failed: " + (err.message || "Unknown error"));
@@ -443,7 +473,7 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
         <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",display:"flex",flexDirection:"column",gap:8}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div style={{display:"flex",alignItems:"center",gap:8}}><Icon name="sparkle" size={16} color="#10B981"/><span style={{fontWeight:700,fontSize:14}}>AI-Generated Content</span><span className="badge badge-ai">AI</span></div>
-            <button className="btn btn-ghost" style={{fontSize:11,padding:"4px 12px"}} onClick={()=>handleRegenerate()} disabled={regenerating}><Icon name="refresh" size={12}/> {regenerating?"Generating...":"Regenerate"}</button>
+            <button className="btn btn-ghost" style={{fontSize:11,padding:"4px 12px"}} onClick={()=>handleRegenerate(null, null, true)} disabled={regenerating}><Icon name="refresh" size={12}/> {regenerating?"Generating...":"Regenerate"}</button>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:6}}>
             <span style={{fontSize:10,color:"var(--text-dim)",fontWeight:600}}>Language:</span>
