@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <linearGradient id="brand" x1="2" y1="2" x2="30" y2="30" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="50%" stop-color="#8B5CF6"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Dark rounded square frame -->
+  <rect width="32" height="32" rx="7" fill="#09090B"/>
+
+  <!-- Outlined hexagonal cube — same as in-app logo, scaled up -->
+  <g transform="translate(4 4) scale(1)" stroke="url(#brand)" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" fill="none">
+    <path d="M12 2L2 7v10l10 5 10-5V7L12 2z"/>
+    <path d="M12 22V12"/>
+    <path d="M2 7l10 5 10-5"/>
+  </g>
+
+  <!-- Center core circle, gradient-filled with subtle white edge -->
+  <circle cx="16" cy="16" r="3" fill="url(#brand)" opacity="0.95"/>
+  <circle cx="16" cy="16" r="3" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="0.6"/>
+</svg>

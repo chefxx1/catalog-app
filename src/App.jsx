@@ -92,7 +92,24 @@ export default function App() {
     <ErrorBoundary>
       <GlobalStyles dark={dark} />
       <ToastContainer />
-      <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg)", transition: "background 0.35s, color 0.35s" }}>
+      {/* Ambient single-tint glow — one color, very subtle, no rainbow */}
+      <div style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none", overflow: "hidden" }}>
+        <div style={{
+          position: "absolute", top: "-20%", left: "-10%",
+          width: "60vw", height: "60vw", borderRadius: "50%",
+          background: "radial-gradient(circle, rgba(40,20,90,0.025), transparent 65%)",
+          filter: "blur(60px)",
+          animation: "ambientBreathe1 22s ease-in-out infinite",
+        }} />
+        <div style={{
+          position: "absolute", bottom: "-25%", right: "-15%",
+          width: "55vw", height: "55vw", borderRadius: "50%",
+          background: "radial-gradient(circle, rgba(30,15,80,0.02), transparent 65%)",
+          filter: "blur(60px)",
+          animation: "ambientBreathe2 28s ease-in-out infinite",
+        }} />
+      </div>
+      <div style={{ display: "flex", minHeight: "100vh", background: "transparent", transition: "background 0.35s, color 0.35s", position: "relative", zIndex: 1 }}>
         <div className={`sidebar-overlay${sidebarOpen?" open":""}`} onClick={()=>setSidebarOpen(false)}/>
 
         {/* Sidebar */}
