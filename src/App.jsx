@@ -144,25 +144,43 @@ export default function App() {
           </div>
 
           <nav style={{ display: "flex", flexDirection: "column", flex: 1, padding: sidebarCollapsed ? "8px 8px" : "8px 10px", overflowY: "auto", transition: "padding 0.25s" }}>
-            {!sidebarCollapsed && <div className="nav-label">Main</div>}
-            {navItems.slice(0, 3).map(item => (
-              <div key={item.id} className={`nav-item ${view === item.id ? "active" : ""}`}
-                style={sidebarCollapsed ? { justifyContent: "center", padding: "10px 0" } : {}}
-                title={sidebarCollapsed ? item.label : undefined}
-                onClick={() => { setView(item.id); if (item.id === "catalog") setStep(0); setSidebarOpen(false); }}>
-                <Icon name={item.icon} size={15} /> {!sidebarCollapsed && item.label}
+            {!sidebarCollapsed && (
+              <div className="nav-section-label">
+                <span className="dot" style={{ color: "#3B82F6", background: "#3B82F6" }} />
+                <span className="text">Main</span>
+                <span className="line" />
               </div>
-            ))}
-            {!sidebarCollapsed && <div className="nav-label">Workspace</div>}
+            )}
+            {navItems.slice(0, 3).map(item => {
+              const isActive = view === item.id;
+              return (
+                <div key={item.id} className={`nav-item ${isActive ? "active" : ""}`}
+                  style={sidebarCollapsed ? { justifyContent: "center", padding: "10px 0" } : {}}
+                  title={sidebarCollapsed ? item.label : undefined}
+                  onClick={() => { setView(item.id); if (item.id === "catalog") setStep(0); setSidebarOpen(false); }}>
+                  <Icon name={item.icon} size={15} color={isActive ? "var(--primary-light, #A78BFA)" : undefined} /> {!sidebarCollapsed && item.label}
+                </div>
+              );
+            })}
+            {!sidebarCollapsed && (
+              <div className="nav-section-label">
+                <span className="dot" style={{ color: "#10B981", background: "#10B981" }} />
+                <span className="text">Workspace</span>
+                <span className="line" />
+              </div>
+            )}
             {sidebarCollapsed && <div style={{ height: 1, background: "var(--border-light)", margin: "6px 4px" }} />}
-            {navItems.slice(3).map(item => (
-              <div key={item.id} className={`nav-item ${view === item.id ? "active" : ""}`}
-                style={sidebarCollapsed ? { justifyContent: "center", padding: "10px 0" } : {}}
-                title={sidebarCollapsed ? item.label : undefined}
-                onClick={() => { setView(item.id); if (item.id === "catalog") setStep(0); setSidebarOpen(false); }}>
-                <Icon name={item.icon} size={15} /> {!sidebarCollapsed && item.label}
-              </div>
-            ))}
+            {navItems.slice(3).map(item => {
+              const isActive = view === item.id;
+              return (
+                <div key={item.id} className={`nav-item ${isActive ? "active" : ""}`}
+                  style={sidebarCollapsed ? { justifyContent: "center", padding: "10px 0" } : {}}
+                  title={sidebarCollapsed ? item.label : undefined}
+                  onClick={() => { setView(item.id); if (item.id === "catalog") setStep(0); setSidebarOpen(false); }}>
+                  <Icon name={item.icon} size={15} color={isActive ? "var(--primary-light, #A78BFA)" : undefined} /> {!sidebarCollapsed && item.label}
+                </div>
+              );
+            })}
           </nav>
 
           <div style={{ padding: sidebarCollapsed ? "10px 8px" : "10px 10px", borderTop: "1px solid var(--border-light)", transition: "padding 0.25s" }}>
@@ -177,18 +195,27 @@ export default function App() {
                 <ThemeToggle dark={dark} onToggle={() => setDark(d => !d)} />
               </div>
             )}
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: sidebarCollapsed ? "8px 0" : "10px 12px", borderRadius: 10, background: sidebarCollapsed ? "transparent" : "var(--hover-bg)", cursor: "pointer", transition: "all 0.2s", justifyContent: sidebarCollapsed ? "center" : "flex-start" }} onClick={() => setView("settings")} title={sidebarCollapsed ? user.name || user.email : undefined}>
-              <div style={{ width: 32, height: 32, borderRadius: "50%", background: "linear-gradient(135deg,#3B82F6,#8B5CF6,#10B981)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "white", flexShrink: 0 }}>
-                {(user.name || user.email || "U")[0].toUpperCase()}
+            <div className="user-card"
+              style={sidebarCollapsed ? { justifyContent: "center", padding: "8px 0", background: "transparent", border: "none" } : {}}
+              onClick={() => setView("settings")}
+              title={sidebarCollapsed ? user.name || user.email : undefined}>
+              <div className="user-avatar-ring">
+                <div className="user-avatar-inner">
+                  {(user.name || user.email || "U")[0].toUpperCase()}
+                </div>
               </div>
               {!sidebarCollapsed && <>
-                <div style={{ flex: 1, overflow: "hidden" }}>
+                <div style={{ flex: 1, overflow: "hidden", minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {user.name || user.email.split("@")[0]}
                   </div>
-                  <div style={{ fontSize: 10, color: "var(--text-dim)" }}>{user.role}</div>
+                  <div style={{ marginTop: 2 }}>
+                    <span className={`role-pill ${user.role.toLowerCase()}`}>
+                      {user.role.toUpperCase()}
+                    </span>
+                  </div>
                 </div>
-                <button className="btn btn-ghost" style={{ padding: 4, border: "none" }} title="Sign Out" onClick={(e) => { e.stopPropagation(); handleLogout(); }}>
+                <button className="btn btn-ghost" style={{ padding: "5px 6px", border: "none", borderRadius: 6 }} title="Sign Out" onClick={(e) => { e.stopPropagation(); handleLogout(); }}>
                   <Icon name="logout" size={14} color="var(--text-dim)" />
                 </button>
               </>}
