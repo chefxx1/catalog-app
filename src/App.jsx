@@ -16,6 +16,7 @@ import BrandVoices from "./pages/BrandVoices";
 import Settings from "./pages/Settings";
 import Trending from "./pages/Trending";
 import CommandPalette from "./components/CommandPalette";
+import SparklesBg from "./components/SparklesBg";
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -84,7 +85,7 @@ export default function App() {
     <>
       <GlobalStyles dark={dark} />
       <ToastContainer />
-      <AuthPage onLogin={setUser} dark={dark} />
+      <AuthPage onLogin={setUser} />
     </>
   );
 
@@ -92,7 +93,7 @@ export default function App() {
     <ErrorBoundary>
       <GlobalStyles dark={dark} />
       <ToastContainer />
-      {/* Ambient single-tint glow — one color, very subtle, no rainbow */}
+      {/* Ambient layer: subtle dark purple glow + drifting sparkle particles */}
       <div style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none", overflow: "hidden" }}>
         <div style={{
           position: "absolute", top: "-20%", left: "-10%",
@@ -108,6 +109,7 @@ export default function App() {
           filter: "blur(60px)",
           animation: "ambientBreathe2 28s ease-in-out infinite",
         }} />
+        {(view === "catalog" || view === "dashboard") && <SparklesBg />}
       </div>
       <div style={{ display: "flex", minHeight: "100vh", background: "transparent", transition: "background 0.35s, color 0.35s", position: "relative", zIndex: 1 }}>
         <div className={`sidebar-overlay${sidebarOpen?" open":""}`} onClick={()=>setSidebarOpen(false)}/>

@@ -155,7 +155,7 @@ const ExportStep = ({ onComplete, productData, user }) => {
           { l: "Platform", v: plat, c: platMeta.color },
           { l: "Format", v: fmt, c: "#7C3AED" },
         ].map((s, i) => (
-          <div key={i} style={{ padding: "16px 10px", background: "color-mix(in oklab, var(--card-bg) 80%, transparent)", border: "1px solid var(--border-light)", borderRadius: 12, backdropFilter: "blur(10px)", textAlign: "center" }}>
+          <div key={i} style={{ padding: "16px 10px", background: "var(--card-bg)", border: "1px solid var(--border-light)", borderRadius: 12, backdropFilter: "blur(10px)", textAlign: "center" }}>
             <div className="mono" style={{ fontSize: 15, fontWeight: 800, color: s.c, lineHeight: 1.2 }}>{s.v}</div>
             <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 4, letterSpacing: "0.04em", textTransform: "uppercase", fontWeight: 600 }}>{s.l}</div>
           </div>
@@ -250,7 +250,7 @@ const ExportStep = ({ onComplete, productData, user }) => {
       </div>
 
       {/* Summary */}
-      <div style={{ padding: 14, background: "color-mix(in oklab, var(--card-bg) 60%, transparent)", borderRadius: 12, border: "1px solid var(--border-light)", backdropFilter: "blur(10px)" }}>
+      <div style={{ padding: 14, background: "var(--card-bg)", borderRadius: 12, border: "1px solid var(--border-light)", backdropFilter: "blur(10px)" }}>
         <div className="export-section-label" style={{ marginBottom: 10 }}>SUMMARY</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 18px" }}>
           {[
@@ -261,9 +261,9 @@ const ExportStep = ({ onComplete, productData, user }) => {
             ["Description", (product.ai_description_professional || product.edited_description) ? "AI-Generated" : "Standard"],
             ["Price", productData?.enriched?.price || "Not set"],
           ].map(([k, v]) => (
-            <div key={k} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "2px 0" }}>
-              <span style={{ color: "var(--text-dim)" }}>{k}</span>
-              <span className={k === "Format" ? "mono" : ""} style={{ color: "var(--text)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginLeft: 8 }}>{v}</span>
+            <div key={k} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "2px 0", gap: 8, minWidth: 0 }}>
+              <span style={{ color: "var(--text-dim)", flexShrink: 0 }}>{k}</span>
+              <span className={k === "Format" ? "mono" : ""} title={String(v)} style={{ color: "var(--text)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{v}</span>
             </div>
           ))}
         </div>
@@ -351,7 +351,7 @@ const ExportStep = ({ onComplete, productData, user }) => {
       </div>
 
       {/* History */}
-      <div style={{ padding: "12px 14px", background: "color-mix(in oklab, var(--card-bg) 50%, transparent)", borderRadius: 12, border: "1px solid var(--border-light)" }}>
+      <div style={{ padding: "12px 14px", background: "var(--card-bg)", borderRadius: 12, border: "1px solid var(--border-light)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", userSelect: "none" }} onClick={() => setShowHistory(!showHistory)}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Icon name="clock" size={12} color="var(--text-dim)" />

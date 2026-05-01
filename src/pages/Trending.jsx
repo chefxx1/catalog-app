@@ -126,7 +126,7 @@ const Trending = ({ user }) => {
             return (
               <div key={i} className="card" style={{
                 padding: 0, overflow: "hidden", display: "flex", flexDirection: "column",
-                background: "color-mix(in oklab, var(--card-bg) 92%, transparent)",
+                background: "var(--card-bg)",
                 transition: "border-color 0.18s",
                 animation: `cardFadeIn 0.42s cubic-bezier(0.16,1,0.3,1) ${Math.min(i, 12) * 0.045}s both`,
               }}
