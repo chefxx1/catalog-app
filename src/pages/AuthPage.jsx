@@ -4,7 +4,7 @@ import { signIn as apiSignIn, signUp as apiSignUp, googleSignIn, getInviteInfo, 
 import ShaderBackground from "../components/ShaderBackground";
 
 // ============================================================
-const AuthPage = ({ onLogin, dark }) => {
+const AuthPage = ({ onLogin }) => {
   const [mode, setMode] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('reset')) return "reset";
@@ -29,6 +29,7 @@ const AuthPage = ({ onLogin, dark }) => {
   const [suConfirm, setSuConfirm] = useState("");
   const [suStore, setSuStore] = useState("");
   const [agreedTerms, setAgreedTerms] = useState(false);
+  const [legalModal, setLegalModal] = useState(null); // "terms" | "privacy" | null
 
   // Forgot
   const [forgotEmail, setForgotEmail] = useState("");
@@ -372,8 +373,11 @@ const AuthPage = ({ onLogin, dark }) => {
                 border: `2px solid ${agreedTerms ? "#2563EB" : "var(--border)"}`,
                 display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s"
               }}>{agreedTerms && <Icon name="check" size={11} color="white" />}</div>
-              <span style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5, cursor: "pointer" }} onClick={() => setAgreedTerms(v => !v)}>
-                I agree to the <span style={{ color: "#3B82F6", fontWeight: 600 }}>Terms of Service</span> and <span style={{ color: "#3B82F6", fontWeight: 600 }}>Privacy Policy</span>
+              <span style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                <span style={{ cursor: "pointer" }} onClick={() => setAgreedTerms(v => !v)}>I agree to the </span>
+                <span style={{ color: "#3B82F6", fontWeight: 600, cursor: "pointer" }} onClick={() => setLegalModal("terms")}>Terms of Service</span>
+                <span style={{ cursor: "pointer" }} onClick={() => setAgreedTerms(v => !v)}> and </span>
+                <span style={{ color: "#3B82F6", fontWeight: 600, cursor: "pointer" }} onClick={() => setLegalModal("privacy")}>Privacy Policy</span>
               </span>
             </div>
 
@@ -503,21 +507,59 @@ const AuthPage = ({ onLogin, dark }) => {
           </div>
         )}
 
-        {/* Feature pills */}
-        <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-          {[
-            { icon: "shield", text: "256-bit encryption", color: "#3B82F6" },
-            { icon: "zap", text: "5 data sources", color: "#F59E0B" },
-            { icon: "sparkle", text: "AI-powered", color: "#10B981" },
-          ].map((f, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 12px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 20, backdropFilter: "blur(10px)" }}>
-              <Icon name={f.icon} size={11} color={f.color} />
-              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.45)" }}>{f.text}</span>
-            </div>
-          ))}
-        </div>
-
       </div>
+
+      {/* ── LEGAL MODAL (Terms of Service / Privacy Policy) ── */}
+      {legalModal && (
+        <div className="modal-modern-overlay" onClick={() => setLegalModal(null)}>
+          <div className="modal-modern-card size-lg" onClick={e => e.stopPropagation()}>
+            <div className="modal-modern-blobs" />
+            <div className="modal-modern-header">
+              <div>
+                <h3>{legalModal === "terms" ? "Terms of Service" : "Privacy Policy"}</h3>
+                <p>Last updated: April 2026</p>
+              </div>
+              <button className="modal-modern-close" onClick={() => setLegalModal(null)}>
+                <Icon name="x" size={14} />
+              </button>
+            </div>
+            <div className="modal-modern-body" style={{ fontSize: 13, lineHeight: 1.65, color: "var(--text-muted)" }}>
+              {legalModal === "terms" ? (
+                <>
+                  <p style={{ marginBottom: 12 }}>Welcome to CatalogAI. By creating an account, you agree to use this service responsibly and in compliance with applicable laws.</p>
+                  <h4 style={{ color: "var(--text)", fontSize: 13, fontWeight: 700, marginTop: 14, marginBottom: 6 }}>1. Account & Access</h4>
+                  <p style={{ marginBottom: 10 }}>You're responsible for keeping your credentials secure and for any activity that occurs under your account. Notify us immediately of any unauthorized use.</p>
+                  <h4 style={{ color: "var(--text)", fontSize: 13, fontWeight: 700, marginTop: 14, marginBottom: 6 }}>2. Use of Service</h4>
+                  <p style={{ marginBottom: 10 }}>CatalogAI is provided to help you manage product catalogs, generate descriptions, and export to e-commerce platforms. You may not use it to violate any third-party terms (e.g., scraping data sources in violation of their ToS).</p>
+                  <h4 style={{ color: "var(--text)", fontSize: 13, fontWeight: 700, marginTop: 14, marginBottom: 6 }}>3. AI-Generated Content</h4>
+                  <p style={{ marginBottom: 10 }}>Product descriptions, images, and metadata generated by our AI features are provided as-is. You're responsible for reviewing accuracy before publishing to your storefront.</p>
+                  <h4 style={{ color: "var(--text)", fontSize: 13, fontWeight: 700, marginTop: 14, marginBottom: 6 }}>4. Termination</h4>
+                  <p style={{ marginBottom: 10 }}>We may suspend or terminate your account if you misuse the service. You can delete your account at any time from Settings → Danger Zone.</p>
+                  <h4 style={{ color: "var(--text)", fontSize: 13, fontWeight: 700, marginTop: 14, marginBottom: 6 }}>5. Liability</h4>
+                  <p>This service is provided as-is without warranties. We're not liable for losses arising from use of the service or generated content.</p>
+                </>
+              ) : (
+                <>
+                  <p style={{ marginBottom: 12 }}>This Privacy Policy explains what data CatalogAI collects, how we use it, and your rights.</p>
+                  <h4 style={{ color: "var(--text)", fontSize: 13, fontWeight: 700, marginTop: 14, marginBottom: 6 }}>1. Data We Collect</h4>
+                  <p style={{ marginBottom: 10 }}>We collect your name, email, store information, and the product data you add to your catalog. We also log search history and AI generation activity for analytics.</p>
+                  <h4 style={{ color: "var(--text)", fontSize: 13, fontWeight: 700, marginTop: 14, marginBottom: 6 }}>2. How We Use It</h4>
+                  <p style={{ marginBottom: 10 }}>To provide the service, improve features, and surface analytics in your dashboard. We never sell your data to third parties.</p>
+                  <h4 style={{ color: "var(--text)", fontSize: 13, fontWeight: 700, marginTop: 14, marginBottom: 6 }}>3. Third-Party Services</h4>
+                  <p style={{ marginBottom: 10 }}>Product enrichment uses Google Gemini, Groq, and Serper. Image search results come from Google. These providers process queries you submit and may store them per their own policies.</p>
+                  <h4 style={{ color: "var(--text)", fontSize: 13, fontWeight: 700, marginTop: 14, marginBottom: 6 }}>4. Data Storage</h4>
+                  <p style={{ marginBottom: 10 }}>Data is stored in our database. Passwords are hashed with bcrypt. Reset tokens are stored as one-way hashes.</p>
+                  <h4 style={{ color: "var(--text)", fontSize: 13, fontWeight: 700, marginTop: 14, marginBottom: 6 }}>5. Your Rights</h4>
+                  <p>You can export, delete, or correct your data at any time from Settings. Account deletion is permanent and removes all associated catalog data.</p>
+                </>
+              )}
+            </div>
+            <div className="modal-modern-footer">
+              <button className="btn btn-ghost" onClick={() => setLegalModal(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -66,7 +66,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
       }
       setEntryTags(tagsByEntry);
       setVoices(v.map(voice => {
-        const meta = safeJsonParse(voice.metadata, {});
+        const meta = safeJsonParse(voice.metadata, {}) || {};
         return { id: voice.id, name: voice.name, tone: voice.tone || 'Professional', color: meta.color || '#3B82F6' };
       }));
       setTags(t.tags || []);
@@ -410,7 +410,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
             </div>
           </div>
         ) : (
-          <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",background:"var(--card-bg)",borderRadius:10,overflow:"hidden",border:"1px solid var(--border-light)"}}>
             <thead><tr style={{borderBottom:"1px solid var(--border)",position:"sticky",top:0,background:"var(--surface)",zIndex:2}}>
               {[
                 {k:"product",l:"PRODUCT"},{k:"barcode",l:"BARCODE"},{k:"completeness",l:"QUALITY"},{k:"stock",l:"STOCK"},{k:"status",l:"STATUS"},{k:"tags",l:"TAGS"},{k:"date",l:"DATE"},{k:"actions",l:"ACTIONS"}

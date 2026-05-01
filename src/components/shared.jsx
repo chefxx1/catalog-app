@@ -3,7 +3,11 @@ import React, { useState } from "react";
 // Safe JSON parse — returns fallback on malformed data
 export const safeJsonParse = (val, fallback = null) => {
   if (typeof val !== 'string') return val ?? fallback;
-  try { return JSON.parse(val); } catch { return fallback; }
+  try {
+    const parsed = JSON.parse(val);
+    // Treat parsed `null` as missing and return the fallback
+    return parsed ?? fallback;
+  } catch { return fallback; }
 };
 
 // ============================================================

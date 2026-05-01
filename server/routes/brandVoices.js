@@ -67,10 +67,15 @@ router.put('/:id', auth, requireRole('Admin', 'Editor'), async (req, res) => {
       await db.query('UPDATE brand_voices SET is_default = FALSE WHERE user_id = ?', [req.user.id]);
     }
 
+    // Preserve existing metadata if the request didn't include one (partial updates
+    // like "Set Default" should not wipe audience/style/keywords/color).
+    const metadataValue = metadata !== undefined
+      ? JSON.stringify(metadata)
+      : existing[0].metadata;
     await db.query(
       'UPDATE brand_voices SET name = ?, tone = ?, description = ?, is_default = ?, metadata = ? WHERE id = ? AND user_id = ?',
       [name || existing[0].name, tone || existing[0].tone, description ?? existing[0].description,
-       is_default ?? existing[0].is_default, JSON.stringify(metadata || null), req.params.id, req.user.id]
+       is_default ?? existing[0].is_default, metadataValue, req.params.id, req.user.id]
     );
 
     const [updated] = await db.query('SELECT * FROM brand_voices WHERE id = ?', [req.params.id]);

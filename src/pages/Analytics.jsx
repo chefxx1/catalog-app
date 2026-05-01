@@ -16,7 +16,7 @@ const SectionLabel = ({ children, accent = "var(--text-dim)" }) => (
 const KpiTile = ({ label, value, sublabel, icon, color, gradient }) => (
   <div style={{
     position: "relative", padding: "16px 18px", borderRadius: 12,
-    background: "color-mix(in oklab, var(--card-bg) 80%, transparent)",
+    background: "var(--card-bg)",
     border: "1px solid var(--border-light)",
     backdropFilter: "blur(10px)",
     overflow: "hidden",

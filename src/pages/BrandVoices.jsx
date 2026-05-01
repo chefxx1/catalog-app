@@ -25,7 +25,7 @@ const BrandVoices = ({ user }) => {
   useEffect(() => {
     apiGetBrandVoices().then(dbVoices => {
       setVoices(dbVoices.map(v => {
-        const meta = safeJsonParse(v.metadata, {});
+        const meta = safeJsonParse(v.metadata, {}) || {};
         return { id: v.id, name: v.name, tone: v.tone || 'Professional', color: meta.color || '#3B82F6', audience: meta.audience || '', style: meta.style || '', includeKeywords: meta.includeKeywords || [], excludeKeywords: meta.excludeKeywords || [], description: v.description || '', isDefault: !!v.is_default };
       }));
       setVoicesLoading(false);
@@ -58,7 +58,7 @@ const BrandVoices = ({ user }) => {
     try {
       if (isCreating) {
         const created = await apiCreateBrandVoice({ name: editorName, tone: editorTone, description: desc, is_default: false, metadata });
-        const meta = safeJsonParse(created.metadata, metadata);
+        const meta = safeJsonParse(created.metadata, metadata) || metadata;
         setVoices(prev => [...prev, { id: created.id, name: created.name, tone: created.tone, color: meta.color || editorColor, audience: meta.audience || '', style: meta.style || '', includeKeywords: meta.includeKeywords || [], excludeKeywords: meta.excludeKeywords || [], description: created.description || desc, isDefault: !!created.is_default }]);
       } else {
         await apiUpdateBrandVoice(editingVoice.id, { name: editorName, tone: editorTone, description: desc, is_default: editingVoice.isDefault, metadata });
@@ -239,7 +239,7 @@ const BrandVoices = ({ user }) => {
               <div key={voice.id} className="animate-slideUp"
                 style={{
                   position: "relative", borderRadius: 14, overflow: "hidden",
-                  background: "color-mix(in oklab, var(--card-bg) 85%, transparent)",
+                  background: "var(--card-bg)",
                   border: "1px solid var(--border-light)",
                   backdropFilter: "blur(10px)",
                   cursor: canEdit ? "pointer" : "default",
