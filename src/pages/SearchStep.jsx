@@ -112,7 +112,7 @@ const SearchStep = ({ onSearch }) => {
     // Map AI sources to display format
     const aiSources = (identified.sources || []).map(s => ({
       source_name: s.name, trust_score: s.trustScore || 75, price: s.price?.replace(/[^0-9.]/g, '') || null,
-      currency: 'USD', description: s.url || null,
+      currency: 'USD', source_url: s.url || null,
     }));
     // Build images: uploaded photo + selected product images
     const aiImages = [];

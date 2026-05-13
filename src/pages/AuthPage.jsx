@@ -59,8 +59,19 @@ const AuthPage = ({ onLogin }) => {
   const clear = () => { setError(""); setSuccess(""); };
   const switchMode = (m) => { clear(); setMode(m); };
 
-  // Initialize Google Sign-In button. Stops polling after 50 attempts (~5s)
-  // so a blocked Google script doesn't run setInterval indefinitely.
+  // ESC closes any open legal modal
+  useEffect(() => {
+    if (!legalModal) return;
+    const onKey = (e) => { if (e.key === "Escape") setLegalModal(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [legalModal]);
+
+  // Initialize Google Sign-In once per page load. Re-rendering the button
+  // when the sign-in tab becomes active is fine, but `initialize()` should
+  // only run a single time — calling it repeatedly produces a GSI warning
+  // ("initialize() called multiple times").
+  const gsiInitialized = useRef(false);
   useEffect(() => {
     if (mode !== "signin" || !googleBtnRef.current) return;
     let attempts = 0;
@@ -69,17 +80,20 @@ const AuthPage = ({ onLogin }) => {
       if (window.google?.accounts?.id) {
         clearInterval(interval);
         interval = null;
-        window.google.accounts.id.initialize({
-          client_id: '1000676280585-tkh1mrc4ldc9atpaqr5vsg89vqoe2ahg.apps.googleusercontent.com',
-          callback: async (response) => {
-            clear(); setLoading(true);
-            try {
-              const data = await googleSignIn(response.credential);
-              setLoading(false);
-              onLogin({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store_id: data.user.store_id, store_name: data.user.store_name });
-            } catch (err) { setLoading(false); setError(err.message); }
-          },
-        });
+        if (!gsiInitialized.current) {
+          window.google.accounts.id.initialize({
+            client_id: '1000676280585-tkh1mrc4ldc9atpaqr5vsg89vqoe2ahg.apps.googleusercontent.com',
+            callback: async (response) => {
+              clear(); setLoading(true);
+              try {
+                const data = await googleSignIn(response.credential);
+                setLoading(false);
+                onLogin({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store_id: data.user.store_id, store_name: data.user.store_name });
+              } catch (err) { setLoading(false); setError(err.message); }
+            },
+          });
+          gsiInitialized.current = true;
+        }
         window.google.accounts.id.renderButton(googleBtnRef.current, {
           type: "standard",
           theme: "filled_black",

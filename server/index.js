@@ -116,6 +116,12 @@ async function autoMigrate() {
       await db.query(`ALTER TABLE catalog_entries ADD COLUMN low_stock_threshold INT NULL DEFAULT 5`);
     }
 
+    // AI description language column on products (for locale-aware cache invalidation)
+    const [langCols] = await db.query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'ai_description_language'`);
+    if (langCols.length === 0) {
+      await db.query(`ALTER TABLE products ADD COLUMN ai_description_language VARCHAR(32) NULL DEFAULT 'English'`);
+    }
+
     // Product variants
     await db.query(`CREATE TABLE IF NOT EXISTS product_variants (
       id INT AUTO_INCREMENT PRIMARY KEY, catalog_entry_id INT NOT NULL, variant_name VARCHAR(255) NOT NULL, option_values JSON NULL, sku VARCHAR(100) NULL, price DECIMAL(10,2) NULL, stock_quantity INT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -132,6 +138,23 @@ async function autoMigrate() {
     console.error('Auto-migrate error:', err.message);
   }
 }
+
+// Global error handler — never leak stack traces or file paths to clients.
+// Body-parser, malformed JSON, and unhandled route errors land here. Without
+// this, Express's default HTML page reveals C:\path\to\node_modules\... etc.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err.message);
+  // body-parser sets err.type for JSON / payload errors
+  if (err.type === 'entity.parse.failed' || err instanceof SyntaxError) {
+    return res.status(400).json({ error: 'Invalid JSON body' });
+  }
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Payload too large' });
+  }
+  const status = err.status || err.statusCode || 500;
+  res.status(status).json({ error: status === 500 ? 'Internal server error' : (err.message || 'Request failed') });
+});
 
 app.listen(PORT, () => {
   console.log(`CatalogAI API running on http://localhost:${PORT}`);

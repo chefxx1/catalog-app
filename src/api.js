@@ -96,8 +96,8 @@ export const resetPassword = async (token, password) => {
 };
 
 // ── PRODUCTS ──
-export const searchProduct = async (barcode) => {
-  const res = await apiFetch(`${API_URL}/products/search/${barcode}`, { headers: headers() });
+export const searchProduct = async (barcode, lang = 'English') => {
+  const res = await apiFetch(`${API_URL}/products/search/${barcode}?lang=${encodeURIComponent(lang)}`, { headers: headers() });
   return handleResponse(res);
 };
 

@@ -53,27 +53,18 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
     if (!validFormats.includes(format)) return res.status(400).json({ error: 'Invalid export format' });
     if (!validPlatforms.includes(platform)) return res.status(400).json({ error: 'Invalid platform' });
 
-    // Fetch product data from DB (verify store ownership via catalog_entries)
+    // Fetch product from shared cache (products is a global cache; per-store
+    // ownership is on catalog_entries, not products itself).
     let product;
     if (barcode) {
-      const [rows] = await db.query(
-        `SELECT p.* FROM products p
-         LEFT JOIN catalog_entries ce ON ce.product_id = p.id AND ce.store_id = ?
-         WHERE p.barcode = ? AND (ce.id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM catalog_entries WHERE product_id = p.id))`,
-        [req.user.store_id, barcode]
-      );
+      const [rows] = await db.query('SELECT * FROM products WHERE barcode = ?', [barcode]);
       product = rows[0];
     } else if (productId) {
-      const [rows] = await db.query(
-        `SELECT p.* FROM products p
-         LEFT JOIN catalog_entries ce ON ce.product_id = p.id AND ce.store_id = ?
-         WHERE p.id = ? AND (ce.id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM catalog_entries WHERE product_id = p.id))`,
-        [req.user.store_id, productId]
-      );
+      const [rows] = await db.query('SELECT * FROM products WHERE id = ?', [productId]);
       product = rows[0];
     }
 
-    // If not in DB, auto-save from frontend productData
+    // If not in cache, save from frontend productData (UPSERT on duplicate barcode)
     if (!product && productData?.product) {
       const p = productData.product;
       const generatedBarcode = p.barcode || `AI-${Date.now()}`;
@@ -83,13 +74,24 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
       const [result] = await db.query(
         `INSERT INTO products (barcode, name, brand, description,
          ai_description_professional, ai_description_friendly, ai_description_luxury,
-         ai_category_suggestion, ai_attributes, seo_tags, cache_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ai_category_suggestion, ai_attributes, seo_tags, cache_expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           name = VALUES(name), brand = VALUES(brand), description = VALUES(description),
+           ai_description_professional = COALESCE(VALUES(ai_description_professional), ai_description_professional),
+           ai_description_friendly = COALESCE(VALUES(ai_description_friendly), ai_description_friendly),
+           ai_description_luxury = COALESCE(VALUES(ai_description_luxury), ai_description_luxury),
+           ai_category_suggestion = COALESCE(VALUES(ai_category_suggestion), ai_category_suggestion),
+           ai_attributes = COALESCE(VALUES(ai_attributes), ai_attributes),
+           seo_tags = COALESCE(VALUES(seo_tags), seo_tags),
+           cached_at = NOW(), cache_expires_at = VALUES(cache_expires_at)`,
         [generatedBarcode, p.name, p.brand, p.description,
          p.ai_description_professional || null, p.ai_description_friendly || null, p.ai_description_luxury || null,
          p.ai_category_suggestion || null, p.attributes ? JSON.stringify(p.attributes) : null,
          p.seo_tags ? JSON.stringify(p.seo_tags) : null, cacheExpiry]
       );
-      const newProductId = result.insertId;
+      const [foundRows] = await db.query('SELECT id FROM products WHERE barcode = ?', [generatedBarcode]);
+      const newProductId = foundRows[0]?.id || result.insertId;
 
       // Save sources
       if (productData.sources?.length > 0) {
@@ -212,7 +214,7 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
       }
     } catch (catErr) {
       console.error('Failed to save catalog entry:', catErr.message, { price, cleanPrice, safeName });
-      return res.status(500).json({ error: 'Export saved to file but failed to add to catalog: ' + catErr.message });
+      return res.status(500).json({ error: 'Export saved to file but could not be added to your catalog. Please try again.' });
     }
 
     // Save to export history
@@ -230,7 +232,12 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
     res.json({ content, contentType, filename });
   } catch (err) {
     console.error('Export error:', err.message);
-    res.status(500).json({ error: 'Export failed: ' + err.message });
+    // MySQL error codes / messages leaked to the client are confusing and
+    // sometimes reveal schema; collapse them to a friendly hint.
+    const friendly = err.code === 'ER_DUP_ENTRY'
+      ? 'This product is already saved. Try refreshing and exporting again.'
+      : 'Export failed. Please try again.';
+    res.status(500).json({ error: friendly });
   }
 });
 

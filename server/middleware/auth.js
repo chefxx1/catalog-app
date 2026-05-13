@@ -17,7 +17,7 @@ const auth = async (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     // Always re-verify the user exists. A token outliving its user (deleted
     // account, removed team member) must not silently scope queries to NULL.
     const [rows] = await db.query('SELECT id, store_id FROM users WHERE id = ?', [decoded.id]);
