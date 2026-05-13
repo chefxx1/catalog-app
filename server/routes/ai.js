@@ -10,6 +10,66 @@ const { sanitize } = require('../middleware/validate');
 
 const router = express.Router();
 
+// Map a retailer name (as Gemini returns it) to its canonical domain so we can
+// build a real Google search URL instead of relying on Gemini-hallucinated
+// product URLs (which 404 in front of demo judges).
+const RETAILER_DOMAINS = {
+  'amazon': 'amazon.com',
+  'ebay': 'ebay.com',
+  'walmart': 'walmart.com',
+  'target': 'target.com',
+  'best buy': 'bestbuy.com',
+  'bestbuy': 'bestbuy.com',
+  'home depot': 'homedepot.com',
+  'lowes': 'lowes.com',
+  "lowe's": 'lowes.com',
+  'wayfair': 'wayfair.com',
+  'ikea': 'ikea.com',
+  'costco': 'costco.com',
+  'sams club': 'samsclub.com',
+  "sam's club": 'samsclub.com',
+  'etsy': 'etsy.com',
+  'rei': 'rei.com',
+  'newegg': 'newegg.com',
+  'b&h': 'bhphotovideo.com',
+  'micro center': 'microcenter.com',
+  'apple': 'apple.com',
+  'nike': 'nike.com',
+  'adidas': 'adidas.com',
+  'sephora': 'sephora.com',
+  'ulta': 'ulta.com',
+  'shopify': 'shopify.com',
+  'aliexpress': 'aliexpress.com',
+};
+
+function buildSourceUrl(retailerName, productName) {
+  const q = (productName || '').trim();
+  if (!q) return 'https://www.google.com/search';
+  const domain = RETAILER_DOMAINS[String(retailerName || '').toLowerCase().trim()];
+  const query = domain ? `site:${domain} ${q}` : q;
+  return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+}
+
+// Map raw Gemini SDK errors to short user-facing strings. Gemini returns a
+// stringified blob with quota/rate-limit details that we don't want to render
+// directly in the AI description card.
+function friendlyAiError(err) {
+  const msg = String(err?.message || err || '');
+  if (/429|too many requests|quota|rate.?limit/i.test(msg)) {
+    return 'AI is temporarily unavailable — try again in a minute.';
+  }
+  if (/api.?key|invalid.?key|permission.?denied|unauthor/i.test(msg)) {
+    return 'AI service is not configured. Please contact support.';
+  }
+  if (/network|fetch failed|timeout|ECONNRESET|ENOTFOUND/i.test(msg)) {
+    return 'Could not reach the AI service. Check your connection and try again.';
+  }
+  if (/safety|blocked/i.test(msg)) {
+    return 'The AI declined to generate content for this product.';
+  }
+  return 'AI generation failed. Please try again.';
+}
+
 // Reject IPs in private/loopback/link-local/CGNAT/multicast/reserved ranges (SSRF guard)
 function isPrivateIp(ip) {
   const fam = net.isIP(ip);
@@ -195,7 +255,7 @@ Return a JSON object with exactly this structure (no markdown, no code fences, j
     if (err.message.includes('GEMINI_API_KEY')) {
       return res.status(400).json({ error: 'AI API key not configured. Add your Gemini API key in Settings.' });
     }
-    res.status(500).json({ error: 'AI generation failed: ' + err.message });
+    res.status(500).json({ error: friendlyAiError(err) });
   }
 });
 
@@ -313,7 +373,7 @@ Output ONLY the three markers with their descriptions. No preamble, no closing t
     res.end();
   } catch (err) {
     console.error('Stream error:', err.message);
-    send('error', { error: err.message });
+    send('error', { error: friendlyAiError(err) });
     res.end();
   }
 });
@@ -341,7 +401,7 @@ Return a JSON object with exactly this structure (no markdown, no code fences, j
     "key": "value"
   },
   "sources": [
-    {"name": "Store Name", "trustScore": 85, "price": "$XX.XX", "url": "https://..."}
+    {"name": "Store Name", "trustScore": 85, "price": "$XX.XX"}
   ]
 }
 
@@ -353,7 +413,7 @@ IMPORTANT for specs: Generate 5-8 specifications that are RELEVANT to this speci
 - Headphones/Audio: Driver Size, Frequency Response, Battery Life, Connectivity, Weight
 Do NOT include specs from other product types (e.g. no "Battery Life" for a chair).
 
-For sources: Suggest 3-5 real retailers where this type of product is commonly sold (e.g. Amazon, IKEA, Walmart, Wayfair, Best Buy, Target, etc). Estimate realistic prices and trust scores (60-95).
+For sources: Suggest 3-5 real retailers where this type of product is commonly sold (e.g. Amazon, IKEA, Walmart, Wayfair, Best Buy, Target, etc). Estimate realistic prices and trust scores (60-95). Do NOT include URLs — the system generates them.
 
 Be as specific as possible. If you can identify the exact product model, include it. Set confidence 0-100 based on how certain you are.`;
 
@@ -376,13 +436,22 @@ Be as specific as possible. If you can identify the exact product model, include
       return res.status(500).json({ error: 'Failed to parse AI response' });
     }
 
+    // Replace any Gemini-suggested source URLs with real Google search URLs
+    // scoped to each retailer's domain. Always-resolves > fake-product-page.
+    if (Array.isArray(parsed.sources)) {
+      parsed.sources = parsed.sources.map(s => ({
+        ...s,
+        url: buildSourceUrl(s?.name, parsed.name),
+      }));
+    }
+
     res.json(parsed);
   } catch (err) {
     console.error('AI identify error:', err.message);
     if (err.message.includes('GEMINI_API_KEY')) {
       return res.status(400).json({ error: 'AI API key not configured.' });
     }
-    res.status(500).json({ error: 'Image identification failed: ' + err.message });
+    res.status(500).json({ error: friendlyAiError(err) });
   }
 });
 

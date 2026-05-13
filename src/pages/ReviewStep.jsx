@@ -19,7 +19,12 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
   const displaySources = dbSources.length > 0 ? dbSources.map(s => ({
     name: s.source_name, icon: s.source_name === "Open Food Facts" ? "database" : "store",
     trustScore: s.trust_score || 70, color: sourceColors[s.source_name] || "#3B82F6",
-    data: { ...(s.price ? { price: `$${s.price}` } : {}), ...(s.weight ? { weight: s.weight } : {}), ...(s.description ? { url: s.description } : {}) }
+    data: {
+      ...(s.source_url ? { url: s.source_url } : {}),
+      ...(s.price ? { price: `$${s.price}` } : {}),
+      ...(s.weight ? { weight: s.weight } : {}),
+      ...(s.description ? { description: s.description } : {}),
+    }
   })) : [];
 
   const displayImages = dbImages.length > 0 ? dbImages.map((img, i) => ({
@@ -422,7 +427,20 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
                 <Icon name={expandedSource===s.name?"chevronDown":"chevronRight"} size={14} color="var(--text-dim)"/>
               </div>
               {expandedSource===s.name&&<div className="animate-slideUp" style={{padding:"0 14px 12px",display:"flex",flexDirection:"column",gap:4}}>
-                {Object.entries(s.data).map(([k,v])=><div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:12}}><span style={{color:"var(--text-dim)"}}>{k}</span><span className="mono" style={{color:"var(--text-sec)"}}>{String(v)}</span></div>)}
+                {Object.entries(s.data).map(([k,v])=>{
+                  const str = String(v);
+                  const isUrl = /^https?:\/\//i.test(str);
+                  return (
+                    <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:12,gap:8}}>
+                      <span style={{color:"var(--text-dim)",flexShrink:0}}>{k}</span>
+                      {isUrl ? (
+                        <a href={str} target="_blank" rel="noopener noreferrer" className="mono" style={{color:"var(--primary-light)",textDecoration:"underline",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",direction:"rtl",textAlign:"left"}}>{str}</a>
+                      ) : (
+                        <span className="mono" style={{color:"var(--text-sec)"}}>{str}</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>}
             </div>)}
           </div>}
@@ -485,7 +503,12 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
           </div>
         </div>
         <div className="split-panel" style={{padding:16,display:"flex",flexDirection:"column",gap:14}}>
-          {aiError&&<div style={{padding:"8px 12px",background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:8,fontSize:12,color:"#F87171",display:"flex",alignItems:"center",gap:6}}><Icon name="warning" size={14} color="#EF4444"/>{aiError}</div>}
+          {aiError&&<div style={{padding:"8px 12px",background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:8,fontSize:12,color:"#F87171",display:"flex",alignItems:"center",gap:6}}><Icon name="warning" size={14} color="#EF4444"/>{(() => {
+            const m = String(aiError);
+            if (/429|too many requests|quota|rate.?limit/i.test(m)) return 'AI is temporarily unavailable — try again in a minute.';
+            if (m.length > 200) return 'AI generation failed. Please try again.';
+            return m;
+          })()}</div>}
           <div><div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:8}}>BRAND VOICE</div>
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
               {brandVoices.map(v=><button key={v.id} onClick={()=>{setUseCustom(false);setSelectedVoice(v);if(!regenerating)handleRegenerate(v);}} className={`btn ${!useCustom&&selectedVoice?.id===v.id?"btn-primary":"btn-ghost"}`} style={{fontSize:11,padding:"5px 14px",borderRadius:20}}><Icon name="tag" size={10}/> {v.name}</button>)}
@@ -567,6 +590,7 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
                 sources: dbSources,
                 images: dbImages,
                 enriched: { price: editPrice },
+                language: selectedLang,
               });
               setSaved(true);
               toast.success("Product saved to catalog");

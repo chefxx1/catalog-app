@@ -13,7 +13,7 @@ const CACHE_DAYS = 30;
 // Fetch product data from Open Food Facts API
 async function fetchFromOpenFoodFacts(barcode) {
   try {
-    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`);
+    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json?lc=en&cc=us`);
     if (!res.ok) return null;
     const data = await res.json();
     if (data.status !== 1 || !data.product) return null;
@@ -36,7 +36,7 @@ async function fetchFromOpenFoodFacts(barcode) {
     if (p.packaging) specs['Packaging'] = p.packaging;
     if (p.labels) specs['Labels'] = p.labels;
     if (p.origins) specs['Origin'] = p.origins;
-    if (p.ingredients_text || p.ingredients_text_en) specs['Ingredients'] = p.ingredients_text || p.ingredients_text_en;
+    if (p.ingredients_text_en || p.ingredients_text) specs['Ingredients'] = p.ingredients_text_en || p.ingredients_text;
     if (p.nutriscore_grade) specs['Nutri-Score'] = p.nutriscore_grade.toUpperCase();
     if (p.nova_group) specs['NOVA Group'] = String(p.nova_group);
     if (p.ecoscore_grade && p.ecoscore_grade !== 'not-applicable') specs['Eco-Score'] = p.ecoscore_grade.toUpperCase();
@@ -49,16 +49,16 @@ async function fetchFromOpenFoodFacts(barcode) {
     if (n.salt_100g != null) specs['Salt (100g)'] = `${n.salt_100g}g`;
 
     return {
-      name: p.product_name || p.product_name_en || null,
+      name: p.product_name_en || p.product_name || null,
       brand: p.brands || null,
-      description: p.generic_name || p.generic_name_en || null,
-      category: p.categories || null,
+      description: p.generic_name_en || p.generic_name || null,
+      category: p.categories_en || p.categories || null,
       quantity: p.quantity || null,
       source: {
         source_name: 'Open Food Facts',
         source_url: `https://world.openfoodfacts.org/product/${barcode}`,
         weight: p.quantity || null,
-        description: p.generic_name || p.generic_name_en || null,
+        description: p.generic_name_en || p.generic_name || null,
         trust_score: 75,
         specs: Object.keys(specs).length > 0 ? specs : null,
       },
@@ -181,8 +181,18 @@ router.get('/search/:barcode', auth, async (req, res) => {
         [req.user.store_id, req.user.id, barcode, 'barcode', true, Date.now() - startTime]
       );
 
+      // Strip cached AI descriptions if language doesn't match the user's locale.
+      // Frontend auto-regenerates when ai_description_professional is null.
+      const requestedLang = (req.query.lang || 'English').toString();
+      const cachedProduct = { ...cached[0] };
+      if (cachedProduct.ai_description_language && cachedProduct.ai_description_language !== requestedLang) {
+        cachedProduct.ai_description_professional = null;
+        cachedProduct.ai_description_friendly = null;
+        cachedProduct.ai_description_luxury = null;
+      }
+
       return res.json({
-        product: cached[0],
+        product: cachedProduct,
         sources,
         images,
         conflicts,
@@ -298,13 +308,15 @@ router.get('/search/:barcode', auth, async (req, res) => {
 // Save product (after API fetch — stores in cache)
 router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
-    const { barcode, name, brand, description, category, sources, images, ai_descriptions, seo_tags } = req.body;
+    const { barcode, name, brand, description, category, sources, images, ai_descriptions, seo_tags, language } = req.body;
 
     if (!barcode) return res.status(400).json({ error: 'Barcode is required' });
 
     // Insert or update product
     const cacheExpiry = new Date();
     cacheExpiry.setDate(cacheExpiry.getDate() + CACHE_DAYS);
+
+    const aiLang = language || 'English';
 
     const [existing] = await db.query('SELECT id FROM products WHERE barcode = ?', [barcode]);
 
@@ -314,10 +326,12 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
       await db.query(
         `UPDATE products SET name = ?, brand = ?, description = ?,
          ai_description_professional = ?, ai_description_friendly = ?, ai_description_luxury = ?,
+         ai_description_language = ?,
          seo_tags = ?, search_count = search_count + 1, cached_at = NOW(), cache_expires_at = ?
          WHERE id = ?`,
         [name, brand, description,
          ai_descriptions?.professional, ai_descriptions?.friendly, ai_descriptions?.luxury,
+         aiLang,
          JSON.stringify(seo_tags), cacheExpiry, productId]
       );
       // Clear old sources/images/conflicts for refresh
@@ -328,9 +342,11 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
       const [result] = await db.query(
         `INSERT INTO products (barcode, name, brand, description,
          ai_description_professional, ai_description_friendly, ai_description_luxury,
-         seo_tags, cache_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ai_description_language,
+         seo_tags, cache_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [barcode, name, brand, description,
          ai_descriptions?.professional, ai_descriptions?.friendly, ai_descriptions?.luxury,
+         aiLang,
          JSON.stringify(seo_tags), cacheExpiry]
       );
       productId = result.insertId;
@@ -398,12 +414,13 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
 // Save for later (saves product + creates catalog entry with Review status)
 router.post('/save-for-later', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
-    const { product: p, sources, images, enriched } = req.body;
+    const { product: p, sources, images, enriched, language } = req.body;
     if (!p?.name) return res.status(400).json({ error: 'Product name is required' });
 
     const barcode = p.barcode || `AI-${Date.now()}`;
     const cacheExpiry = new Date();
     cacheExpiry.setDate(cacheExpiry.getDate() + CACHE_DAYS);
+    const aiLang = language || 'English';
 
     // Insert or update product
     const [existing] = await db.query('SELECT id FROM products WHERE barcode = ?', [barcode]);
@@ -414,10 +431,12 @@ router.post('/save-for-later', auth, requireRole('Admin', 'Editor'), async (req,
       await db.query(
         `UPDATE products SET name = ?, brand = ?, description = ?,
          ai_description_professional = ?, ai_description_friendly = ?, ai_description_luxury = ?,
+         ai_description_language = ?,
          ai_category_suggestion = ?, ai_attributes = ?, seo_tags = ?, cached_at = NOW(), cache_expires_at = ?
          WHERE id = ?`,
         [p.name, p.brand, p.description,
          p.ai_description_professional || null, p.ai_description_friendly || null, p.ai_description_luxury || null,
+         aiLang,
          p.ai_category_suggestion || null, p.attributes ? JSON.stringify(p.attributes) : null,
          p.seo_tags ? JSON.stringify(p.seo_tags) : null, cacheExpiry, productId]
       );
@@ -425,9 +444,11 @@ router.post('/save-for-later', auth, requireRole('Admin', 'Editor'), async (req,
       const [result] = await db.query(
         `INSERT INTO products (barcode, name, brand, description,
          ai_description_professional, ai_description_friendly, ai_description_luxury,
-         ai_category_suggestion, ai_attributes, seo_tags, cache_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ai_description_language,
+         ai_category_suggestion, ai_attributes, seo_tags, cache_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [barcode, p.name, p.brand, p.description,
          p.ai_description_professional || null, p.ai_description_friendly || null, p.ai_description_luxury || null,
+         aiLang,
          p.ai_category_suggestion || null, p.attributes ? JSON.stringify(p.attributes) : null,
          p.seo_tags ? JSON.stringify(p.seo_tags) : null, cacheExpiry]
       );
