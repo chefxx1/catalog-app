@@ -305,7 +305,7 @@ export default function App() {
         </div>
       </div>
 
-      <CommandPalette open={paletteOpen} onClose={()=>setPaletteOpen(false)} user={user} onCatalogChanged={()=>setCatalogRefreshKey(k=>k+1)} onApplyFilter={(f)=>{ setPendingDashboardFilter(f); setView("dashboard"); }} />
+      <CommandPalette open={paletteOpen} onClose={()=>setPaletteOpen(false)} user={user} onCatalogChanged={()=>setCatalogRefreshKey(k=>k+1)} onApplyFilter={(f)=>{ setPendingDashboardFilter(f); setView("dashboard"); }} onNavigate={(v)=>{ setView(v); if (v === "catalog") setStep(0); }} />
 
       {showShortcuts && (
         <div className="modal-modern-overlay" onClick={()=>setShowShortcuts(false)}>

@@ -64,69 +64,94 @@ Specs: 5-7 attributes RELEVANT to this product type.`;
 
 const SYSTEM_PROMPT = `You are CatalogAI's catalog assistant. You help users query and manage their product catalog using natural language.
 
-Output ONLY a JSON object (no markdown, no code fences). Choose ONE of three response types:
+Output ONLY a JSON object (no markdown, no code fences). Choose ONE of these response types:
 
 1. FILTER (read-only — find products):
-{ "type": "filter", "filter": { ...criteria }, "summary": "short human-readable summary of what you're showing" }
+{ "type": "filter", "filter": { ...criteria }, "summary": "short human-readable summary" }
 
-Filter fields available (combine any):
-- name: substring search on product name (e.g. "headphones")
-- status: one of "Draft", "Review", "Published", "Exported"
-- category: substring on category (e.g. "fashion")
-- tag: tag name to match
+Filter fields (combine any):
+- name: substring on product name
+- status: "Draft" | "Review" | "Published" | "Exported"
+- category: substring on category
+- brand: substring on brand
+- tag: tag name (must exist in user's tag list)
 - minPrice, maxPrice: numeric price range
 - minStock, maxStock: numeric stock range
-- noImages: true (find products without images)
-- noPrice: true (find products without a price)
-- needsAttention: true (completeness < 70)
+- lowStock: true (stock at or below the alert threshold)
+- noImages: true (products without images)
+- noPrice: true (products without a price)
+- recentlyUpdated: true (updated in last 7 days)
+- needsAttention: true (missing image OR price OR description)
+- sortBy: "updated_desc" | "updated_asc" | "price_desc" | "price_asc" | "stock_desc" | "stock_asc" | "name_asc"
 - limit: max results (default 50)
 
-2. ACTION (write — modify or create):
-{ "type": "action", "action": "<name>", "filter": { ...criteria }, "change": { ...new values }, "summary": "preview text" }
+2. ACTION (write — modify or create; server confirms before executing):
+{ "type": "action", "action": "<name>", "filter": {...}, "change": {...}, "summary": "preview text" }
 
-Available actions:
-- "update_status" with change: { status: "Published" | "Draft" | "Review" | "Exported" }
-- "update_stock" with change: { stock: <number> }
-- "update_price" with change: { price: <number> }
-- "update_name" with change: { name: "new name" }
-- "update_description" with change: { description: "new description" }
-- "update_threshold" with change: { threshold: <number> } (low-stock alert threshold)
-- "delete" with no change
-- "add_tag" with change: { tag: "<existing tag name>" }
-- "create_tag" with change: { name: "tag name", color: "#hexcolor" } (no filter needed)
-- "create_product" with change: { name: "product name", price: <number>, category: "category" } (no filter needed; price/category optional)
+Actions:
+- "update_status" change: { status: ... }
+- "update_stock" change: { stock: <number> }
+- "update_price" change: { price: <number> }
+- "update_name" change: { name: "..." }
+- "update_description" change: { description: "..." }
+- "update_threshold" change: { threshold: <number> }
+- "delete" no change
+- "add_tag" change: { tag: "<existing tag name>" }
+- "create_tag" change: { name: "...", color: "#hex" } (no filter)
+- "create_product" change: { name: "...", price: <num>, category: "..." } (no filter)
 
-3. TEXT (conversational — answer questions about the catalog):
-{ "type": "text", "message": "your conversational answer" }
+3. TEXT (conversational answer using the CATALOG CONTEXT below):
+{ "type": "text", "message": "your answer, using actual numbers from the context" }
 
-Rules:
-- Use TEXT for general questions, advice, summaries (e.g. "how is my catalog doing?")
-- Use FILTER for "show me X" or "find Y" queries
-- Use ACTION when the user asks to change/delete/update something — server will require user confirmation before executing
-- For destructive actions (delete), be conservative — narrow the filter
-- Never invent fields not in the lists above
+4. ANALYZE (structured insight card — server runs real SQL aggregates, you just pick the query):
+{ "type": "analyze", "query": "<one of below>", "summary": "..." }
 
-Examples:
-User: "show me everything under $20"
-Output: {"type":"filter","filter":{"maxPrice":20},"summary":"Products priced under $20"}
+Analyze queries:
+- "overview" — total products, status breakdown, low-stock count, inventory value
+- "category_breakdown" — top 5 categories by count
+- "inventory_health" — out-of-stock, low-stock, needs-attention counts
+- "pricing" — min, max, average, median price across the catalog
 
-User: "how many products do I have?"
-Output: {"type":"text","message":"Let me count..."} — actually use filter with no criteria for count requests, or just answer based on stats provided
+Use ANALYZE for: "how is my catalog doing?", "what's selling best?", "give me a summary", "category breakdown", "show me an overview", "is anything running out?", "price stats", "what should I focus on?"
 
-User: "delete all draft products"
-Output: {"type":"action","action":"delete","filter":{"status":"Draft"},"summary":"Delete all draft products"}
+5. NAVIGATE (open a specific page):
+{ "type": "navigate", "route": "/<path>", "label": "Page name", "summary": "Opening <page>" }
 
-User: "publish everything that's been in review"
-Output: {"type":"action","action":"update_status","filter":{"status":"Review"},"change":{"status":"Published"},"summary":"Publish all products currently in Review"}
+Valid routes: "/" "/catalog" "/search" "/trending" "/analytics" "/brand-voices" "/settings" "/activity"
+Use NAVIGATE for: "take me to X", "open Y", "show me the Z page", "go to settings"
 
-User: "create a tag called Sale with red color"
-Output: {"type":"action","action":"create_tag","filter":{},"change":{"name":"Sale","color":"#EF4444"},"summary":"Create a new tag 'Sale' (red)"}
+6. HELP (capability/feature explanation):
+{ "type": "help", "topic": "<one of below>", "summary": "..." }
 
-User: "add a product called Red Sneakers $80"
-Output: {"type":"action","action":"create_product","filter":{},"change":{"name":"Red Sneakers","price":80,"category":"Footwear"},"summary":"Create new product 'Red Sneakers' at $80 with AI enrichment"}
+Help topics:
+- "capabilities" — what the assistant can do
+- "exports" — how exports work
+- "voices" — how brand voices work
+- "scanner" — how the barcode scanner works
+- "team" — how invites / roles work
 
-User: "set price to $19.99 for items under $30"
-Output: {"type":"action","action":"update_price","filter":{"maxPrice":30},"change":{"price":19.99},"summary":"Change price to $19.99 for products under $30"}`;
+Use HELP for: "what can you do?", "how do I export?", "what are brand voices?", "how does the scanner work?"
+
+DECISION RULES:
+- "show / find / list / which products" → FILTER
+- "change / update / set / delete / create / add" → ACTION
+- "how many / what's the total / breakdown / stats / overview / health" → ANALYZE
+- "take me to / open / go to" → NAVIGATE
+- "what can you do / how does X work" → HELP
+- general conversation / advice based on numbers I gave you → TEXT
+- For destructive actions (delete), narrow the filter conservatively
+- Never invent filter fields, actions, routes, or help topics not in the lists
+
+EXAMPLES:
+User: "show me everything under $20" → {"type":"filter","filter":{"maxPrice":20},"summary":"Products under $20"}
+User: "what's running low?" → {"type":"filter","filter":{"lowStock":true,"sortBy":"stock_asc"},"summary":"Products at or below low-stock threshold"}
+User: "how is my catalog doing?" → {"type":"analyze","query":"overview","summary":"Catalog overview"}
+User: "category breakdown" → {"type":"analyze","query":"category_breakdown","summary":"Top categories"}
+User: "open the analytics page" → {"type":"navigate","route":"/analytics","label":"Analytics","summary":"Opening Analytics"}
+User: "what can you do?" → {"type":"help","topic":"capabilities","summary":"Here's what I can help with"}
+User: "delete all draft products" → {"type":"action","action":"delete","filter":{"status":"Draft"},"summary":"Delete all draft products"}
+User: "publish everything in review" → {"type":"action","action":"update_status","filter":{"status":"Review"},"change":{"status":"Published"},"summary":"Publish all Review products"}
+User: "create a tag called Sale red" → {"type":"action","action":"create_tag","filter":{},"change":{"name":"Sale","color":"#EF4444"},"summary":"Create tag 'Sale'"}`;
 
 const ALLOWED_ACTIONS = new Set([
   'update_status', 'update_stock', 'update_price', 'update_name', 'update_description', 'update_threshold',
@@ -136,6 +161,16 @@ const ALLOWED_ACTIONS = new Set([
 const CREATE_ACTIONS = new Set(['create_tag', 'create_product']);
 const VALID_STATUSES = new Set(['Draft', 'Review', 'Published', 'Exported']);
 
+const SORT_MAP = {
+  updated_desc: 'ce.updated_at DESC',
+  updated_asc: 'ce.updated_at ASC',
+  price_desc: 'ce.custom_price DESC',
+  price_asc: 'ce.custom_price ASC',
+  stock_desc: 'ce.stock_quantity DESC',
+  stock_asc: 'ce.stock_quantity ASC',
+  name_asc: 'p.name ASC',
+};
+
 // Build a SQL WHERE clause + params from a filter spec, scoped to store
 function buildFilter(filter, storeId, tagsMap) {
   const conditions = ['ce.store_id = ?'];
@@ -143,12 +178,22 @@ function buildFilter(filter, storeId, tagsMap) {
   if (filter.name) { conditions.push('(p.name LIKE ? OR ce.custom_name LIKE ?)'); params.push(`%${filter.name}%`, `%${filter.name}%`); }
   if (filter.status && VALID_STATUSES.has(filter.status)) { conditions.push('ce.status = ?'); params.push(filter.status); }
   if (filter.category) { conditions.push('p.ai_category_suggestion LIKE ?'); params.push(`%${filter.category}%`); }
+  if (filter.brand) { conditions.push('p.brand LIKE ?'); params.push(`%${filter.brand}%`); }
   if (filter.minPrice != null) { conditions.push('ce.custom_price >= ?'); params.push(parseFloat(filter.minPrice)); }
   if (filter.maxPrice != null) { conditions.push('ce.custom_price <= ?'); params.push(parseFloat(filter.maxPrice)); }
   if (filter.minStock != null) { conditions.push('ce.stock_quantity >= ?'); params.push(parseInt(filter.minStock, 10)); }
   if (filter.maxStock != null) { conditions.push('ce.stock_quantity <= ?'); params.push(parseInt(filter.maxStock, 10)); }
+  if (filter.lowStock) { conditions.push('ce.stock_quantity IS NOT NULL AND ce.low_stock_threshold IS NOT NULL AND ce.stock_quantity <= ce.low_stock_threshold'); }
+  if (filter.recentlyUpdated) { conditions.push('ce.updated_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)'); }
   if (filter.noImages) { conditions.push('NOT EXISTS (SELECT 1 FROM product_images pi WHERE pi.product_id = p.id)'); }
   if (filter.noPrice) { conditions.push('(ce.custom_price IS NULL OR ce.custom_price = 0)'); }
+  if (filter.needsAttention) {
+    conditions.push(`(
+      (ce.custom_price IS NULL OR ce.custom_price = 0)
+      OR NOT EXISTS (SELECT 1 FROM product_images pi WHERE pi.product_id = p.id)
+      OR (p.description IS NULL AND p.ai_description_professional IS NULL)
+    )`);
+  }
   if (filter.tag && tagsMap?.[filter.tag.toLowerCase()]) {
     conditions.push('EXISTS (SELECT 1 FROM catalog_entry_tags cet WHERE cet.catalog_entry_id = ce.id AND cet.tag_id = ?)');
     params.push(tagsMap[filter.tag.toLowerCase()]);
@@ -167,18 +212,143 @@ async function runFilter(filter, storeId) {
   const tagsMap = await loadTagsMap(storeId);
   const { where, params } = buildFilter(filter, storeId, tagsMap);
   const limit = Math.min(parseInt(filter.limit, 10) || 50, 200);
+  const orderBy = SORT_MAP[filter.sortBy] || 'ce.updated_at DESC';
   const [rows] = await db.query(
     `SELECT ce.id, ce.product_id, ce.status, ce.custom_name, ce.custom_price, ce.stock_quantity, ce.low_stock_threshold,
-            p.name, p.barcode, p.ai_category_suggestion AS category,
+            p.name, p.barcode, p.ai_category_suggestion AS category, p.brand,
             (SELECT image_url FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.sort_order LIMIT 1) AS image
      FROM catalog_entries ce
      JOIN products p ON ce.product_id = p.id
      WHERE ${where}
-     ORDER BY ce.updated_at DESC
+     ORDER BY ${orderBy}
      LIMIT ?`,
     [...params, limit]
   );
   return rows;
+}
+
+// Server-side analyze handlers — run actual SQL aggregations so the model
+// can't hallucinate numbers. Each returns a structured object the frontend
+// renders as an insight card.
+async function runAnalyze(query, storeId) {
+  if (query === 'overview') {
+    const [[s]] = await db.query(
+      `SELECT COUNT(*) total,
+              SUM(CASE WHEN status='Draft' THEN 1 ELSE 0 END) drafts,
+              SUM(CASE WHEN status='Review' THEN 1 ELSE 0 END) review,
+              SUM(CASE WHEN status='Published' THEN 1 ELSE 0 END) published,
+              SUM(CASE WHEN status='Exported' THEN 1 ELSE 0 END) exported,
+              SUM(CASE WHEN stock_quantity = 0 THEN 1 ELSE 0 END) out_of_stock,
+              SUM(CASE WHEN stock_quantity IS NOT NULL AND low_stock_threshold IS NOT NULL AND stock_quantity <= low_stock_threshold THEN 1 ELSE 0 END) low_stock,
+              COALESCE(SUM(custom_price * COALESCE(stock_quantity, 0)), 0) inventory_value
+       FROM catalog_entries WHERE store_id = ?`, [storeId]);
+    return {
+      kind: 'overview',
+      metrics: [
+        { label: 'Total products', value: Number(s.total) || 0 },
+        { label: 'Published', value: Number(s.published) || 0 },
+        { label: 'Drafts', value: Number(s.drafts) || 0 },
+        { label: 'In review', value: Number(s.review) || 0 },
+        { label: 'Out of stock', value: Number(s.out_of_stock) || 0, tone: Number(s.out_of_stock) > 0 ? 'warn' : 'ok' },
+        { label: 'Low stock', value: Number(s.low_stock) || 0, tone: Number(s.low_stock) > 0 ? 'warn' : 'ok' },
+        { label: 'Inventory value', value: '$' + (Number(s.inventory_value) || 0).toFixed(2) },
+      ],
+    };
+  }
+  if (query === 'category_breakdown') {
+    const [rows] = await db.query(
+      `SELECT COALESCE(p.ai_category_suggestion, 'Uncategorized') category, COUNT(*) n
+       FROM catalog_entries ce JOIN products p ON ce.product_id = p.id
+       WHERE ce.store_id = ?
+       GROUP BY category ORDER BY n DESC LIMIT 8`, [storeId]);
+    const total = rows.reduce((a, r) => a + Number(r.n), 0) || 1;
+    return {
+      kind: 'breakdown',
+      total,
+      rows: rows.map(r => ({ label: r.category, value: Number(r.n), pct: Math.round((Number(r.n) / total) * 100) })),
+    };
+  }
+  if (query === 'inventory_health') {
+    const [[h]] = await db.query(
+      `SELECT
+        SUM(CASE WHEN stock_quantity = 0 THEN 1 ELSE 0 END) out_of_stock,
+        SUM(CASE WHEN stock_quantity IS NOT NULL AND low_stock_threshold IS NOT NULL AND stock_quantity > 0 AND stock_quantity <= low_stock_threshold THEN 1 ELSE 0 END) low_stock,
+        SUM(CASE WHEN custom_price IS NULL OR custom_price = 0 THEN 1 ELSE 0 END) no_price,
+        COUNT(*) total
+       FROM catalog_entries WHERE store_id = ?`, [storeId]);
+    const [[na]] = await db.query(
+      `SELECT COUNT(*) n FROM catalog_entries ce JOIN products p ON ce.product_id = p.id
+       WHERE ce.store_id = ? AND (
+         (ce.custom_price IS NULL OR ce.custom_price = 0)
+         OR NOT EXISTS (SELECT 1 FROM product_images pi WHERE pi.product_id = p.id)
+         OR (p.description IS NULL AND p.ai_description_professional IS NULL)
+       )`, [storeId]);
+    return {
+      kind: 'health',
+      metrics: [
+        { label: 'Out of stock', value: Number(h.out_of_stock) || 0, tone: Number(h.out_of_stock) > 0 ? 'warn' : 'ok' },
+        { label: 'Low stock', value: Number(h.low_stock) || 0, tone: Number(h.low_stock) > 0 ? 'warn' : 'ok' },
+        { label: 'Missing price', value: Number(h.no_price) || 0, tone: Number(h.no_price) > 0 ? 'warn' : 'ok' },
+        { label: 'Needs attention', value: Number(na.n) || 0, tone: Number(na.n) > 0 ? 'warn' : 'ok' },
+        { label: 'Total products', value: Number(h.total) || 0 },
+      ],
+    };
+  }
+  if (query === 'pricing') {
+    const [[p]] = await db.query(
+      `SELECT MIN(custom_price) min_p, MAX(custom_price) max_p, AVG(custom_price) avg_p, COUNT(custom_price) priced
+       FROM catalog_entries WHERE store_id = ? AND custom_price IS NOT NULL AND custom_price > 0`, [storeId]);
+    return {
+      kind: 'pricing',
+      metrics: [
+        { label: 'Priced products', value: Number(p.priced) || 0 },
+        { label: 'Min price', value: p.min_p != null ? '$' + Number(p.min_p).toFixed(2) : '—' },
+        { label: 'Max price', value: p.max_p != null ? '$' + Number(p.max_p).toFixed(2) : '—' },
+        { label: 'Average price', value: p.avg_p != null ? '$' + Number(p.avg_p).toFixed(2) : '—' },
+      ],
+    };
+  }
+  return null;
+}
+
+// Build a rich context block the LLM sees on every turn. Without this the
+// model has 4 numbers and guesses everything else.
+async function buildCatalogContext(storeId) {
+  const [[stats]] = await db.query(
+    `SELECT COUNT(*) total,
+            SUM(CASE WHEN status='Draft' THEN 1 ELSE 0 END) drafts,
+            SUM(CASE WHEN status='Published' THEN 1 ELSE 0 END) published,
+            SUM(CASE WHEN status='Review' THEN 1 ELSE 0 END) review,
+            SUM(CASE WHEN stock_quantity = 0 THEN 1 ELSE 0 END) out_of_stock,
+            SUM(CASE WHEN stock_quantity IS NOT NULL AND low_stock_threshold IS NOT NULL AND stock_quantity > 0 AND stock_quantity <= low_stock_threshold THEN 1 ELSE 0 END) low_stock
+     FROM catalog_entries WHERE store_id = ?`, [storeId]);
+  const [tagRows] = await db.query('SELECT name FROM tags WHERE store_id = ? ORDER BY name LIMIT 30', [storeId]);
+  const [catRows] = await db.query(
+    `SELECT COALESCE(p.ai_category_suggestion, 'Uncategorized') category, COUNT(*) n
+     FROM catalog_entries ce JOIN products p ON ce.product_id = p.id
+     WHERE ce.store_id = ? GROUP BY category ORDER BY n DESC LIMIT 5`, [storeId]);
+  const [voiceRows] = await db.query('SELECT name FROM brand_voices WHERE store_id = ? ORDER BY is_default DESC, name LIMIT 10', [storeId]);
+  const [[needs]] = await db.query(
+    `SELECT COUNT(*) n FROM catalog_entries ce JOIN products p ON ce.product_id = p.id
+     WHERE ce.store_id = ? AND (
+       (ce.custom_price IS NULL OR ce.custom_price = 0)
+       OR NOT EXISTS (SELECT 1 FROM product_images pi WHERE pi.product_id = p.id)
+       OR (p.description IS NULL AND p.ai_description_professional IS NULL)
+     )`, [storeId]);
+  return {
+    stats: {
+      total: Number(stats.total) || 0,
+      drafts: Number(stats.drafts) || 0,
+      published: Number(stats.published) || 0,
+      review: Number(stats.review) || 0,
+      out_of_stock: Number(stats.out_of_stock) || 0,
+      low_stock: Number(stats.low_stock) || 0,
+    },
+    tags: tagRows.map(t => t.name),
+    top_categories: catRows.map(r => ({ category: r.category, count: Number(r.n) })),
+    brand_voices: voiceRows.map(v => v.name),
+    needs_attention: Number(needs.n) || 0,
+  };
 }
 
 async function runCount(filter, storeId) {
@@ -191,6 +361,78 @@ async function runCount(filter, storeId) {
   return count;
 }
 
+const VALID_ROUTES = new Set([
+  '/', '/dashboard', '/catalog', '/search', '/trending', '/analytics',
+  '/brand-voices', '/settings', '/activity',
+]);
+
+const HELP_TOPICS = {
+  capabilities: {
+    title: 'What I can do',
+    points: [
+      'Find products by name, price, stock, status, tag, brand, or category',
+      'Spot products that need attention (missing price, image, or description)',
+      'Run actions: update price/stock/status, add tags, create products and tags, delete in bulk',
+      'Show catalog analytics: overview, category breakdown, inventory health, pricing stats',
+      'Navigate to any page in the app — just ask',
+      'Explain how CatalogAI features work (exports, brand voices, scanner, team)',
+    ],
+  },
+  exports: {
+    title: 'How exports work',
+    points: [
+      'Pick a product → choose a format (Shopify CSV, Amazon, Google Shopping, Etsy, PDF)',
+      'Shopify supports live sync — direct push to your store via API credentials in Settings → Integrations',
+      'PDF exports include AI-generated description, specs, and image',
+      'Export history is on the Export page; failed exports can be retried',
+    ],
+  },
+  voices: {
+    title: 'How brand voices work',
+    points: [
+      'A brand voice is a tone preset: name, style description, optional keywords, and an example',
+      'When you generate a product description, the AI rewrites it in your chosen voice',
+      'Three built-in voices ship out of the box: Professional, Friendly, Luxury',
+      'You can create unlimited custom voices in the Brand Voices page',
+    ],
+  },
+  scanner: {
+    title: 'How the barcode scanner works',
+    points: [
+      'Open the Search step and click the camera icon',
+      'Point the camera at a UPC/EAN — supports 1D and 2D barcodes',
+      'Or switch to "Product photo" mode to identify a product without a barcode',
+      'AI fills in name, brand, category, description automatically',
+    ],
+  },
+  team: {
+    title: 'Team and invites',
+    points: [
+      'Three roles: Admin (full), Editor (no delete or team mgmt), Viewer (read-only)',
+      'Invite by email from Settings → Team; invitee gets a one-click signup link',
+      'Each signup creates a store; team members join that store',
+      'Invite emails fall back to a copyable link if SMTP fails',
+    ],
+  },
+};
+
+// Robust JSON parse — strips backtick fences, retries.
+function parseModelJson(raw) {
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch {}
+  const cleaned = String(raw)
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim();
+  try { return JSON.parse(cleaned); } catch {}
+  // Try to find the first {...} block
+  const match = cleaned.match(/\{[\s\S]*\}/);
+  if (match) {
+    try { return JSON.parse(match[0]); } catch {}
+  }
+  return null;
+}
+
 // POST /api/chat — converse with catalog
 router.post('/', auth, async (req, res) => {
   const { message, history } = req.body;
@@ -198,22 +440,14 @@ router.post('/', auth, async (req, res) => {
   if (!process.env.GROQ_API_KEY) return res.status(500).json({ error: 'GROQ_API_KEY not configured' });
 
   try {
-    // Stats snapshot for context
-    const [[stats]] = await db.query(
-      `SELECT COUNT(*) as total,
-              SUM(CASE WHEN status='Draft' THEN 1 ELSE 0 END) as drafts,
-              SUM(CASE WHEN status='Published' THEN 1 ELSE 0 END) as published,
-              SUM(CASE WHEN stock_quantity = 0 THEN 1 ELSE 0 END) as out_of_stock
-       FROM catalog_entries WHERE store_id = ?`,
-      [req.user.store_id]
-    );
+    const context = await buildCatalogContext(req.user.store_id);
 
     const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
     const messages = [
-      { role: 'system', content: SYSTEM_PROMPT + `\n\nCURRENT CATALOG STATS:\n${JSON.stringify(stats)}` },
+      { role: 'system', content: SYSTEM_PROMPT + `\n\nCATALOG CONTEXT (use these real numbers in TEXT answers; do not invent):\n${JSON.stringify(context)}\n\nUSER ROLE: ${req.user.role}` },
     ];
     if (Array.isArray(history)) {
-      history.slice(-6).forEach(h => {
+      history.slice(-8).forEach(h => {
         if (h?.role && h?.content) messages.push({ role: h.role, content: String(h.content).slice(0, 1000) });
       });
     }
@@ -223,19 +457,42 @@ router.post('/', auth, async (req, res) => {
       model: 'llama-3.3-70b-versatile',
       messages,
       response_format: { type: 'json_object' },
-      max_tokens: 600,
+      max_tokens: 700,
       temperature: 0.3,
     });
 
     const raw = completion.choices?.[0]?.message?.content || '{}';
-    let parsed;
-    try { parsed = JSON.parse(raw); }
-    catch { return res.json({ type: 'text', message: "I had trouble understanding. Try rephrasing?" }); }
+    const parsed = parseModelJson(raw);
+    if (!parsed) {
+      // Last resort: surface the raw text instead of a dead-end apology
+      const trimmed = String(raw).replace(/```/g, '').trim().slice(0, 500);
+      return res.json({ type: 'text', message: trimmed || "I had trouble understanding. Try rephrasing?" });
+    }
 
     if (parsed.type === 'filter') {
       const items = await runFilter(parsed.filter || {}, req.user.store_id);
       return res.json({ type: 'filter', summary: parsed.summary || 'Results', filter: parsed.filter, items });
     }
+
+    if (parsed.type === 'analyze') {
+      const insight = await runAnalyze(parsed.query, req.user.store_id);
+      if (!insight) return res.json({ type: 'text', message: parsed.summary || "I'm not sure how to analyze that. Try 'overview', 'category breakdown', 'inventory health', or 'pricing'." });
+      return res.json({ type: 'analyze', query: parsed.query, summary: parsed.summary || 'Insight', insight });
+    }
+
+    if (parsed.type === 'navigate') {
+      const route = String(parsed.route || '').trim();
+      if (!VALID_ROUTES.has(route)) {
+        return res.json({ type: 'text', message: `I can open: ${[...VALID_ROUTES].join(', ')}. Where do you want to go?` });
+      }
+      return res.json({ type: 'navigate', route, label: parsed.label || route, summary: parsed.summary || `Opening ${parsed.label || route}` });
+    }
+
+    if (parsed.type === 'help') {
+      const topic = HELP_TOPICS[parsed.topic] ? parsed.topic : 'capabilities';
+      return res.json({ type: 'help', topic, summary: parsed.summary || HELP_TOPICS[topic].title, content: HELP_TOPICS[topic] });
+    }
+
     if (parsed.type === 'action') {
       if (!ALLOWED_ACTIONS.has(parsed.action)) {
         return res.json({ type: 'text', message: `I don't know how to "${parsed.action}". Try a different phrasing.` });
@@ -264,10 +521,39 @@ router.post('/', auth, async (req, res) => {
         preview: previewItems.slice(0, 10),
       });
     }
+
     return res.json({ type: 'text', message: parsed.message || 'Done.' });
   } catch (err) {
     console.error('Chat error:', err.message);
-    res.status(500).json({ error: 'Chat failed: ' + err.message });
+    res.status(500).json({ error: 'Chat failed. Please try again.' });
+  }
+});
+
+// GET /api/chat/suggestions — dynamic empty-state prompts based on real state
+router.get('/suggestions', auth, async (req, res) => {
+  try {
+    const ctx = await buildCatalogContext(req.user.store_id);
+    const out = [];
+    if (ctx.stats.total === 0) {
+      out.push('Add a Premium Coffee Mug at $25');
+      out.push('How does the scanner work?');
+      out.push('What can you do?');
+    } else {
+      out.push('How is my catalog doing?');
+      if (ctx.needs_attention > 0) out.push(`Show me the ${ctx.needs_attention} products that need attention`);
+      if (ctx.stats.low_stock > 0) out.push(`What's running low? (${ctx.stats.low_stock})`);
+      if (ctx.stats.drafts > 0) out.push(`Show my ${ctx.stats.drafts} drafts`);
+      if (ctx.stats.out_of_stock > 0) out.push(`Find ${ctx.stats.out_of_stock} out-of-stock items`);
+      if (ctx.top_categories[0]) out.push(`Category breakdown`);
+      out.push('Open the analytics page');
+    }
+    // Always cap at 6 chips, dedupe
+    const seen = new Set();
+    const chips = out.filter(c => { if (seen.has(c)) return false; seen.add(c); return true; }).slice(0, 6);
+    res.json({ chips });
+  } catch (err) {
+    console.error('Suggestions error:', err.message);
+    res.json({ chips: ['How is my catalog doing?', 'Show products that need attention', 'What can you do?'] });
   }
 });
 

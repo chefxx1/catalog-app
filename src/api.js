@@ -274,6 +274,11 @@ export const chatExecute = async ({ action, filter, change }) => {
   return handleResponse(res);
 };
 
+export const chatSuggestions = async () => {
+  const res = await apiFetch(`${API_URL}/chat/suggestions`, { headers: headers() });
+  return handleResponse(res);
+};
+
 // Stream all 3 AI description tones. Calls onToneChunk(tone, text) per chunk,
 // onDone({Professional, Friendly, Luxury}) at end. Returns a cancel function.
 export const streamDescription = async (payload, { onToneChunk, onDone, onError }) => {

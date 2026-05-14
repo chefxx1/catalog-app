@@ -2,28 +2,33 @@ import React, { useEffect, useRef, useState } from "react";
 import { Icon } from "./shared";
 import { toast } from "./Toast";
 import BrandOrb from "./BrandOrb";
-import { chatSend, chatExecute } from "../api";
+import { chatSend, chatExecute, chatSuggestions } from "../api";
 
-const CHIPS = [
-  "Show products under $20",
-  "What needs attention?",
-  "Out-of-stock items",
+// Server route → App.jsx view name
+const ROUTE_TO_VIEW = {
+  "/": "dashboard", "/dashboard": "dashboard",
+  "/catalog": "catalog", "/search": "catalog",
+  "/trending": "trending", "/analytics": "analytics",
+  "/brand-voices": "voices", "/settings": "settings",
+};
+
+const FALLBACK_CHIPS = [
   "How is my catalog doing?",
-  "Find products in Draft",
-  "Add a Premium Coffee Mug at $25",
-  "Create a tag called Sale",
+  "What needs attention?",
+  "What can you do?",
 ];
 
 const ROTATING_EXAMPLES = [
   "“Show me everything under $20...”",
-  "“Add a product called Red Sneakers at $80...”",
-  "“What's my best-selling category?”",
+  "“What's running low on stock?”",
+  "“Category breakdown”",
+  "“Open the analytics page”",
   "“Publish all draft products...”",
+  "“How do exports work?”",
   "“Create a tag called Summer...”",
-  "“Set stock to 0 for Beauty items...”",
 ];
 
-const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged }) => {
+const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, onNavigate }) => {
   const canWrite = user?.role === "Admin" || user?.role === "Editor";
   const [input, setInput] = useState("");
   const [history, setHistory] = useState([]);
@@ -31,11 +36,20 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged }
   const [pendingAction, setPendingAction] = useState(null);
   const [executing, setExecuting] = useState(false);
   const [exampleIdx, setExampleIdx] = useState(0);
+  const [chips, setChips] = useState(FALLBACK_CHIPS);
   const inputRef = useRef(null);
   const scrollRef = useRef(null);
 
   useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 80); }, [open]);
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }); }, [history, pendingAction]);
+
+  // Load dynamic suggestion chips when the palette opens
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    chatSuggestions().then(r => { if (!cancelled && r?.chips?.length) setChips(r.chips); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [open]);
 
   // Rotating example queries — only when empty
   useEffect(() => {
@@ -64,6 +78,12 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged }
       } else if (result.type === "action") {
         setHistory(h => [...h, { role: "assistant", type: "action-preview", content: result.summary, action: result }]);
         setPendingAction(result);
+      } else if (result.type === "analyze") {
+        setHistory(h => [...h, { role: "assistant", type: "analyze", content: result.summary, insight: result.insight }]);
+      } else if (result.type === "navigate") {
+        setHistory(h => [...h, { role: "assistant", type: "navigate", content: result.summary, route: result.route, label: result.label }]);
+      } else if (result.type === "help") {
+        setHistory(h => [...h, { role: "assistant", type: "help", content: result.summary, help: result.content }]);
       } else {
         setHistory(h => [...h, { role: "assistant", type: "text", content: result.message }]);
       }
@@ -71,6 +91,12 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged }
       setHistory(h => [...h, { role: "assistant", type: "error", content: err?.message || "Something went wrong" }]);
     }
     setLoading(false);
+  };
+
+  const goRoute = (route) => {
+    const view = ROUTE_TO_VIEW[route];
+    if (view && onNavigate) { onNavigate(view); onClose(); }
+    else toast.error(`Don't know how to open ${route}`);
   };
 
   const confirmAction = async () => {
@@ -135,7 +161,7 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged }
               </div>
 
               <div className="palette-chips">
-                {CHIPS.map((c, i) => (
+                {chips.map((c, i) => (
                   <button key={i} onClick={() => send(c)} className="palette-chip">
                     {c}
                   </button>
@@ -213,6 +239,53 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged }
                       )}
                     </div>
                   )}
+                </div>
+              ) : h.type === "analyze" ? (
+                <div className="msg-card">
+                  <div className="msg-card-summary">{h.content}</div>
+                  {h.insight?.kind === "breakdown" ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "4px 2px" }}>
+                      {h.insight.rows.map((r, j) => (
+                        <div key={j} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <div style={{ fontSize: 12, color: "var(--text)", minWidth: 90, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label}</div>
+                          <div style={{ flex: 1, height: 6, background: "var(--card-bg-alt, rgba(255,255,255,0.05))", borderRadius: 3, overflow: "hidden" }}>
+                            <div style={{ width: `${r.pct}%`, height: "100%", background: "linear-gradient(90deg, #3B82F6, #A78BFA)" }} />
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--text-dim)", minWidth: 56, textAlign: "right" }}>{r.value} · {r.pct}%</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
+                      {h.insight?.metrics?.map((m, j) => (
+                        <div key={j} style={{ padding: "10px 12px", background: "var(--card-bg-alt, rgba(255,255,255,0.03))", border: "1px solid var(--border, rgba(255,255,255,0.06))", borderRadius: 8 }}>
+                          <div style={{ fontSize: 10.5, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>{m.label}</div>
+                          <div style={{ fontSize: 17, fontWeight: 700, color: m.tone === "warn" ? "#F59E0B" : "var(--text)" }}>{m.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : h.type === "navigate" ? (
+                <div className="msg-card" style={{ cursor: "pointer" }} onClick={() => goRoute(h.route)}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg, #3B82F6, #A78BFA)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <Icon name="chevronRight" size={14} color="white" />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{h.content}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Click to open {h.label}</div>
+                    </div>
+                  </div>
+                </div>
+              ) : h.type === "help" ? (
+                <div className="msg-card">
+                  <div className="msg-card-summary">{h.help?.title || h.content}</div>
+                  <ul style={{ margin: 0, padding: "4px 0 0 18px", display: "flex", flexDirection: "column", gap: 6 }}>
+                    {(h.help?.points || []).map((p, j) => (
+                      <li key={j} style={{ fontSize: 12.5, color: "var(--text-sec)", lineHeight: 1.5 }}>{p}</li>
+                    ))}
+                  </ul>
                 </div>
               ) : h.type === "success" ? (
                 <div className="msg-success">
