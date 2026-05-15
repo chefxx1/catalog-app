@@ -65,6 +65,40 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  // Convert a UI history entry into a string the LLM can actually reason over.
+  // The default `h.content` is just the human summary ("Products in Draft") —
+  // without the actual products, follow-ups like "can I edit them?" have no
+  // referent and the model re-runs the same filter.
+  const serializeForLLM = (h) => {
+    if (h.role === "user") return h.content;
+    if (h.type === "filter") {
+      const items = (h.items || []).slice(0, 10).map(it => {
+        const name = it.custom_name || it.name;
+        const parts = [`id:${it.id}`];
+        if (it.custom_price != null) parts.push(`$${it.custom_price}`);
+        if (it.status) parts.push(it.status);
+        return `${name} (${parts.join(", ")})`;
+      }).join("; ");
+      const more = (h.items?.length || 0) > 10 ? ` ... +${h.items.length - 10} more` : "";
+      const filterStr = h.filter ? ` [last filter: ${JSON.stringify(h.filter)}]` : "";
+      return `[I just showed a filter result] ${h.content}.${filterStr} Products shown: ${items}${more}`;
+    }
+    if (h.type === "action-preview") {
+      return `[Action awaiting user confirmation] ${h.content}. Would affect ${h.action?.affected || 0} items. Filter: ${JSON.stringify(h.action?.filter || {})}, change: ${JSON.stringify(h.action?.change || {})}`;
+    }
+    if (h.type === "analyze") {
+      if (h.insight?.kind === "breakdown") {
+        return `[Insight: breakdown] ${h.content}. ${(h.insight.rows || []).map(r => `${r.label}: ${r.value} (${r.pct}%)`).join(", ")}`;
+      }
+      return `[Insight] ${h.content}. ${(h.insight?.metrics || []).map(m => `${m.label}: ${m.value}`).join(", ")}`;
+    }
+    if (h.type === "navigate") return `[Navigated to ${h.label}]`;
+    if (h.type === "help") return `[Explained: ${h.help?.title || h.content}]`;
+    if (h.type === "success") return `[Action executed] ${h.content}`;
+    if (h.type === "error") return `[Error shown] ${h.content}`;
+    return h.content || "";
+  };
+
   const send = async (text) => {
     const message = (text ?? input).trim();
     if (!message || loading) return;
@@ -72,7 +106,8 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
     setHistory(h => [...h, { role: "user", content: message }]);
     setLoading(true);
     try {
-      const result = await chatSend(message, history);
+      const llmHistory = history.map(h => ({ role: h.role, content: serializeForLLM(h) }));
+      const result = await chatSend(message, llmHistory);
       if (result.type === "filter") {
         setHistory(h => [...h, { role: "assistant", type: "filter", content: result.summary, items: result.items, filter: result.filter }]);
       } else if (result.type === "action") {
