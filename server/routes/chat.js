@@ -175,10 +175,6 @@ const SORT_MAP = {
 function buildFilter(filter, storeId, tagsMap) {
   const conditions = ['ce.store_id = ?'];
   const params = [storeId];
-  if (Array.isArray(filter.ids) && filter.ids.length > 0) {
-    const ids = filter.ids.map(n => parseInt(n, 10)).filter(Number.isFinite).slice(0, 50);
-    if (ids.length > 0) { conditions.push('ce.id IN (?)'); params.push(ids); }
-  }
   if (filter.name) { conditions.push('(p.name LIKE ? OR ce.custom_name LIKE ?)'); params.push(`%${filter.name}%`, `%${filter.name}%`); }
   if (filter.status && VALID_STATUSES.has(filter.status)) { conditions.push('ce.status = ?'); params.push(filter.status); }
   if (filter.category) { conditions.push('p.ai_category_suggestion LIKE ?'); params.push(`%${filter.category}%`); }
@@ -437,49 +433,18 @@ function parseModelJson(raw) {
   return null;
 }
 
-// Fetch full data for pinned catalog entries — drag-and-drop into chat
-// pre-loads these as scoped context so the user can say "change the price"
-// without having to name the product.
-async function fetchPinnedContext(pinnedIds, storeId) {
-  if (!Array.isArray(pinnedIds) || pinnedIds.length === 0) return [];
-  const ids = pinnedIds.map(n => parseInt(n, 10)).filter(n => Number.isFinite(n)).slice(0, 20);
-  if (ids.length === 0) return [];
-  const [rows] = await db.query(
-    `SELECT ce.id, ce.status, ce.custom_name, ce.custom_price, ce.stock_quantity, ce.low_stock_threshold,
-            p.name, p.brand, p.barcode, p.ai_category_suggestion AS category
-     FROM catalog_entries ce JOIN products p ON ce.product_id = p.id
-     WHERE ce.store_id = ? AND ce.id IN (?)`,
-    [storeId, ids]
-  );
-  return rows.map(r => ({
-    id: r.id,
-    name: r.custom_name || r.name,
-    brand: r.brand,
-    category: r.category,
-    price: r.custom_price,
-    stock: r.stock_quantity,
-    status: r.status,
-    barcode: r.barcode,
-  }));
-}
-
 // POST /api/chat — converse with catalog
 router.post('/', auth, async (req, res) => {
-  const { message, history, pinned } = req.body;
+  const { message, history } = req.body;
   if (!message || typeof message !== 'string') return res.status(400).json({ error: 'message required' });
   if (!process.env.GROQ_API_KEY) return res.status(500).json({ error: 'GROQ_API_KEY not configured' });
 
   try {
     const context = await buildCatalogContext(req.user.store_id);
-    const pinnedIds = Array.isArray(pinned) ? pinned.map(p => p?.id).filter(Boolean) : [];
-    const pinnedProducts = await fetchPinnedContext(pinnedIds, req.user.store_id);
 
     const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-    const pinnedBlock = pinnedProducts.length > 0
-      ? `\n\nPINNED PRODUCTS (the user has selected these specific catalog entries — scope FILTER and ACTION responses to only these IDs when relevant by using filter: { ids: [...] }; do NOT search the whole catalog when pinned context exists):\n${JSON.stringify(pinnedProducts)}`
-      : '';
     const messages = [
-      { role: 'system', content: SYSTEM_PROMPT + `\n\nCATALOG CONTEXT (use these real numbers in TEXT answers; do not invent):\n${JSON.stringify(context)}\n\nUSER ROLE: ${req.user.role}${pinnedBlock}` },
+      { role: 'system', content: SYSTEM_PROMPT + `\n\nCATALOG CONTEXT (use these real numbers in TEXT answers; do not invent):\n${JSON.stringify(context)}\n\nUSER ROLE: ${req.user.role}` },
     ];
     if (Array.isArray(history)) {
       history.slice(-8).forEach(h => {
