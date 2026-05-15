@@ -94,6 +94,10 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
     }
     if (h.type === "navigate") return `[Navigated to ${h.label}]`;
     if (h.type === "help") return `[Explained: ${h.help?.title || h.content}]`;
+    if (h.type === "recommend") {
+      const titles = (h.recommendations || []).map(r => r.title).join("; ");
+      return `[Recommended priorities] ${h.content}. ${titles}`;
+    }
     if (h.type === "success") return `[Action executed] ${h.content}`;
     if (h.type === "error") return `[Error shown] ${h.content}`;
     return h.content || "";
@@ -119,6 +123,8 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
         setHistory(h => [...h, { role: "assistant", type: "navigate", content: result.summary, route: result.route, label: result.label }]);
       } else if (result.type === "help") {
         setHistory(h => [...h, { role: "assistant", type: "help", content: result.summary, help: result.content }]);
+      } else if (result.type === "recommend") {
+        setHistory(h => [...h, { role: "assistant", type: "recommend", content: result.summary, recommendations: result.recommendations }]);
       } else {
         setHistory(h => [...h, { role: "assistant", type: "text", content: result.message }]);
       }
@@ -348,6 +354,26 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
                       <li key={j} style={{ fontSize: 12.5, color: "var(--text-sec)", lineHeight: 1.5 }}>{p}</li>
                     ))}
                   </ul>
+                </div>
+              ) : h.type === "recommend" ? (
+                <div className="msg-card">
+                  <div className="msg-card-summary">{h.content}</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {(h.recommendations || []).map((r, j) => {
+                      const tone = r.priority === "urgent" ? "#EF4444" : r.priority === "high" ? "#F59E0B" : r.priority === "medium" ? "#3B82F6" : "#10B981";
+                      const clickable = !!r.filter && !!onApplyFilter;
+                      return (
+                        <div key={j} onClick={() => { if (clickable) { onApplyFilter(r.filter); onClose(); } }} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", borderRadius: 9, background: "var(--card-bg-alt, rgba(255,255,255,0.03))", border: "1px solid var(--border-light)", cursor: clickable ? "pointer" : "default", transition: "background 0.15s" }} onMouseEnter={e => { if (clickable) e.currentTarget.style.background = "var(--hover-bg)"; }} onMouseLeave={e => { if (clickable) e.currentTarget.style.background = "var(--card-bg-alt, rgba(255,255,255,0.03))"; }}>
+                          <div style={{ width: 6, height: 6, borderRadius: "50%", background: tone, marginTop: 6, flexShrink: 0, boxShadow: `0 0 8px ${tone}` }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text)" }}>{r.title}</div>
+                            <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>{r.why}</div>
+                          </div>
+                          {clickable && <Icon name="chevronRight" size={12} color="var(--text-dim)" />}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               ) : h.type === "success" ? (
                 <div className="msg-success">

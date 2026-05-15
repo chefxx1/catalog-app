@@ -62,7 +62,13 @@ Specs: 5-7 attributes RELEVANT to this product type.`;
   }
 }
 
-const SYSTEM_PROMPT = `You are CatalogAI's catalog assistant. You help users query and manage their product catalog using natural language.
+const SYSTEM_PROMPT = `You are CatalogAI's catalog assistant — focused, warm, concise. You convert natural language about a product catalog into structured JSON so the app can answer, run actions, navigate, or explain.
+
+VOICE:
+- Warm but never wordy. 1-2 short sentences in any "summary" field.
+- Use real numbers from CATALOG CONTEXT — never invent them.
+- No emojis unless the user uses them first.
+- Skip preambles like "Sure!" or "Of course". Lead with the answer.
 
 Output ONLY a JSON object (no markdown, no code fences). Choose ONE of these response types:
 
@@ -120,27 +126,54 @@ Use ANALYZE for: "how is my catalog doing?", "what's selling best?", "give me a 
 Valid routes: "/" "/catalog" "/search" "/trending" "/analytics" "/brand-voices" "/settings" "/activity"
 Use NAVIGATE for: "take me to X", "open Y", "show me the Z page", "go to settings"
 
-6. HELP (capability/feature explanation):
+6. HELP (capability/feature/concept explanation):
 { "type": "help", "topic": "<one of below>", "summary": "..." }
 
 Help topics:
 - "capabilities" — what the assistant can do
+- "getting-started" — first steps for a brand-new user
 - "exports" — how exports work
 - "voices" — how brand voices work
 - "scanner" — how the barcode scanner works
 - "team" — how invites / roles work
+- "tags" — how tagging works
+- "status" — what Draft / Review / Published / Exported mean
+- "completeness" — what the completeness score means
+- "shortcuts" — keyboard shortcuts
+- "glossary" — generic catch-all for "what is X" / "what does X mean" questions about catalog concepts
 
-Use HELP for: "what can you do?", "how do I export?", "what are brand voices?", "how does the scanner work?"
+Use HELP for: "what can you do?", "how do I export?", "what are brand voices?", "how does the scanner work?", "what's a Draft?", "what does Published mean?", "how do I add my first product?"
+
+7. RECOMMEND (proactive priority guidance — server computes the actionable picture):
+{ "type": "recommend", "summary": "..." }
+
+Use RECOMMEND for: "what should I focus on?", "what's next?", "what needs my attention?", "where do I start?", "anything urgent?", "what's broken?", "give me priorities"
 
 DECISION RULES:
 - "show / find / list / which products" → FILTER
 - "change / update / set / delete / create / add" → ACTION
 - "how many / what's the total / breakdown / stats / overview / health" → ANALYZE
 - "take me to / open / go to" → NAVIGATE
-- "what can you do / how does X work" → HELP
-- general conversation / advice based on numbers I gave you → TEXT
+- "what can you do / how does X work / what's a X / what does X mean" → HELP
+- "what should I focus on / what's next / priorities / anything urgent" → RECOMMEND
+- General conversation, advice, opinion based on numbers → TEXT
 - For destructive actions (delete), narrow the filter conservatively
 - Never invent filter fields, actions, routes, or help topics not in the lists
+
+GREETINGS & CASUAL:
+- "hi" / "hello" / "yo" / "hey" → TEXT: short hello + one or two specific suggestions based on the catalog context (e.g. "Hey! You have 12 drafts — want to publish any?")
+- "thanks" / "thank you" / "ok" / "cool" / "got it" → TEXT: brief acknowledgment, optionally suggest a next step
+- "who are you" / "what are you" → HELP topic capabilities
+- Apology / chit-chat → short TEXT, gently redirect to what the user might do next
+
+AMBIGUITY:
+- Vague queries ("show me stuff", "anything good", "what's up"): use RECOMMEND or ANALYZE overview rather than guessing
+- Partial product names → FILTER with name as substring; if no match the server says so and the user can refine
+- Conflicting criteria ("published drafts") → pick the more specific reading and note it in the summary
+- If you genuinely cannot interpret → TEXT asking one short clarifying question
+
+OFF-TOPIC:
+- Weather, jokes, math, world events, anything unrelated to a product catalog → TEXT, one sentence politely declining + offer to help with the catalog instead. Do NOT engage with the off-topic request.
 
 MULTI-TURN CONTEXT (CRITICAL — most failures happen here):
 - "them" / "those" / "these" / "the ones" / "all of them" refer to the products from the most recent filter result or action context. Look at the assistant message tagged "[I just showed a filter result]" or "[Action awaiting user confirmation]" — re-use that filter.
@@ -159,7 +192,7 @@ After [I just showed a filter result] Products in Draft (id:5, id:7, id:9):
 - User: "add the Sale tag to them" → {"type":"action","action":"add_tag","filter":{"status":"Draft"},"change":{"tag":"Sale"},"summary":"Add Sale tag to Drafts"}
 - User: "how about exported ones?" → {"type":"filter","filter":{"status":"Exported"},"summary":"Exported products"} (the user is pivoting status, fresh filter is fine)
 
-EXAMPLES:
+EXAMPLES (single-turn):
 User: "show me everything under $20" → {"type":"filter","filter":{"maxPrice":20},"summary":"Products under $20"}
 User: "what's running low?" → {"type":"filter","filter":{"lowStock":true,"sortBy":"stock_asc"},"summary":"Products at or below low-stock threshold"}
 User: "how is my catalog doing?" → {"type":"analyze","query":"overview","summary":"Catalog overview"}
@@ -168,7 +201,33 @@ User: "open the analytics page" → {"type":"navigate","route":"/analytics","lab
 User: "what can you do?" → {"type":"help","topic":"capabilities","summary":"Here's what I can help with"}
 User: "delete all draft products" → {"type":"action","action":"delete","filter":{"status":"Draft"},"summary":"Delete all draft products"}
 User: "publish everything in review" → {"type":"action","action":"update_status","filter":{"status":"Review"},"change":{"status":"Published"},"summary":"Publish all Review products"}
-User: "create a tag called Sale red" → {"type":"action","action":"create_tag","filter":{},"change":{"name":"Sale","color":"#EF4444"},"summary":"Create tag 'Sale'"}`;
+User: "create a tag called Sale red" → {"type":"action","action":"create_tag","filter":{},"change":{"name":"Sale","color":"#EF4444"},"summary":"Create tag 'Sale'"}
+
+EXAMPLES (greetings, casual, ambiguous):
+User: "hi" → {"type":"text","message":"Hey! Ask me to show products, run bulk edits, or analyze your catalog. What needs doing?"}
+User: "thanks" → {"type":"text","message":"Anytime."}
+User: "ok cool" → {"type":"text","message":"Want me to look at anything else?"}
+User: "who are you" → {"type":"help","topic":"capabilities","summary":"I'm your catalog assistant"}
+User: "I'm new here" → {"type":"help","topic":"getting-started","summary":"Welcome — here's the quick tour"}
+User: "anything good?" → {"type":"recommend","summary":"Top priorities for your catalog right now"}
+User: "what should I focus on" → {"type":"recommend","summary":"Here's what needs attention"}
+User: "what's next?" → {"type":"recommend","summary":"Suggested next steps"}
+
+EXAMPLES (glossary / what-is):
+User: "what's a Draft?" → {"type":"help","topic":"status","summary":"Status workflow explained"}
+User: "what does completeness mean" → {"type":"help","topic":"completeness","summary":"How the completeness score works"}
+User: "what are tags" → {"type":"help","topic":"tags","summary":"How tagging works"}
+User: "what's the difference between Published and Exported" → {"type":"help","topic":"status","summary":"Status workflow explained"}
+
+EXAMPLES (off-topic):
+User: "what's the weather" → {"type":"text","message":"I only help with your catalog — ask me about products, stats, or what needs attention."}
+User: "tell me a joke" → {"type":"text","message":"Not my thing — but I can show you what's selling, what's missing data, or what to publish next."}
+User: "2 + 2" → {"type":"text","message":"That one's outside my catalog brain. Want a category breakdown or a priority list instead?"}
+
+EXAMPLES (single-product Q&A):
+User: "tell me about the Sony headphones" → {"type":"filter","filter":{"name":"Sony headphones","limit":3},"summary":"Sony headphones in your catalog"}
+User: "do I have any Apple products?" → {"type":"filter","filter":{"brand":"Apple","limit":10},"summary":"Apple products"}
+User: "what's the price of the X" → {"type":"filter","filter":{"name":"X","limit":5},"summary":"Found these — price is in the row"}`;
 
 const ALLOWED_ACTIONS = new Set([
   'update_status', 'update_stock', 'update_price', 'update_name', 'update_description', 'update_threshold',
@@ -328,6 +387,54 @@ async function runAnalyze(query, storeId) {
   return null;
 }
 
+// Compute a prioritized "what to do next" picture from the catalog state.
+// Used by the RECOMMEND intent. Each item is actionable — title + count +
+// suggested action so the frontend can render an interactive list.
+async function runRecommendation(storeId) {
+  const items = [];
+  const [[oos]] = await db.query(
+    `SELECT COUNT(*) n FROM catalog_entries WHERE store_id = ? AND stock_quantity = 0`, [storeId]);
+  if (Number(oos.n) > 0) {
+    items.push({ priority: 'urgent', title: `${oos.n} product${oos.n === 1 ? '' : 's'} out of stock`, why: 'Customers see them but can\'t buy', action: 'Show out-of-stock', filter: { maxStock: 0 } });
+  }
+  const [[lowStock]] = await db.query(
+    `SELECT COUNT(*) n FROM catalog_entries
+     WHERE store_id = ? AND stock_quantity IS NOT NULL AND low_stock_threshold IS NOT NULL
+       AND stock_quantity > 0 AND stock_quantity <= low_stock_threshold`, [storeId]);
+  if (Number(lowStock.n) > 0) {
+    items.push({ priority: 'high', title: `${lowStock.n} product${lowStock.n === 1 ? '' : 's'} below low-stock threshold`, why: 'Will run out soon', action: 'Show low stock', filter: { lowStock: true, sortBy: 'stock_asc' } });
+  }
+  const [[needsAttention]] = await db.query(
+    `SELECT COUNT(*) n FROM catalog_entries ce JOIN products p ON ce.product_id = p.id
+     WHERE ce.store_id = ? AND (
+       (ce.custom_price IS NULL OR ce.custom_price = 0)
+       OR NOT EXISTS (SELECT 1 FROM product_images pi WHERE pi.product_id = p.id)
+       OR (p.description IS NULL AND p.ai_description_professional IS NULL)
+     )`, [storeId]);
+  if (Number(needsAttention.n) > 0) {
+    items.push({ priority: 'high', title: `${needsAttention.n} product${needsAttention.n === 1 ? '' : 's'} need attention`, why: 'Missing price, image, or description', action: 'Show them', filter: { needsAttention: true } });
+  }
+  const [[drafts]] = await db.query(
+    `SELECT COUNT(*) n FROM catalog_entries WHERE store_id = ? AND status = 'Draft'`, [storeId]);
+  if (Number(drafts.n) > 5) {
+    items.push({ priority: 'medium', title: `${drafts.n} drafts waiting`, why: 'Move them to Review or Published when ready', action: 'Show drafts', filter: { status: 'Draft' } });
+  }
+  const [[reviews]] = await db.query(
+    `SELECT COUNT(*) n FROM catalog_entries WHERE store_id = ? AND status = 'Review'`, [storeId]);
+  if (Number(reviews.n) > 0) {
+    items.push({ priority: 'medium', title: `${reviews.n} product${reviews.n === 1 ? '' : 's'} in Review`, why: 'Approve to publish or send back to Draft', action: 'Show review queue', filter: { status: 'Review' } });
+  }
+  const [[noPrice]] = await db.query(
+    `SELECT COUNT(*) n FROM catalog_entries WHERE store_id = ? AND (custom_price IS NULL OR custom_price = 0)`, [storeId]);
+  if (Number(noPrice.n) > 0 && Number(noPrice.n) <= Number(needsAttention.n)) {
+    // Don't duplicate — only surface if it's a distinct slice
+  }
+  if (items.length === 0) {
+    items.push({ priority: 'info', title: 'Your catalog looks healthy', why: 'No urgent issues — try the Trending page for product ideas', action: null, filter: null });
+  }
+  return { items: items.slice(0, 6) };
+}
+
 // Build a rich context block the LLM sees on every turn. Without this the
 // model has 4 numbers and guesses everything else.
 async function buildCatalogContext(storeId) {
@@ -391,8 +498,19 @@ const HELP_TOPICS = {
       'Spot products that need attention (missing price, image, or description)',
       'Run actions: update price/stock/status, add tags, create products and tags, delete in bulk',
       'Show catalog analytics: overview, category breakdown, inventory health, pricing stats',
-      'Navigate to any page in the app — just ask',
-      'Explain how CatalogAI features work (exports, brand voices, scanner, team)',
+      'Recommend priorities — ask "what should I focus on?"',
+      'Navigate to any page — just ask',
+      'Explain how CatalogAI features work (exports, brand voices, scanner, team, tags, status, completeness)',
+    ],
+  },
+  'getting-started': {
+    title: 'Getting started',
+    points: [
+      'Add your first product: click "New Catalog" in the sidebar, then scan a barcode or upload a photo',
+      'The AI fills in name, brand, description, and category — review and edit anything you want',
+      'Save it as Draft (still editing), Review (ready for a teammate to check), or Published (live)',
+      'Use the AI Catalog Chat (this thing) to bulk-edit, analyze, or jump around the app',
+      'Invite team members in Settings → Team so multiple people can work on the same catalog',
     ],
   },
   exports: {
@@ -429,6 +547,54 @@ const HELP_TOPICS = {
       'Invite by email from Settings → Team; invitee gets a one-click signup link',
       'Each signup creates a store; team members join that store',
       'Invite emails fall back to a copyable link if SMTP fails',
+    ],
+  },
+  tags: {
+    title: 'How tagging works',
+    points: [
+      'Tags are colored labels you attach to any product (Sale, Featured, Summer, etc.)',
+      'Create tags in the Tag Manager on the Dashboard, or via chat: "create a tag called Sale red"',
+      'Apply tags to one or many products at once — drag-select or use bulk actions',
+      'Filter the catalog by tag from the Dashboard or ask the assistant: "show me all Sale items"',
+    ],
+  },
+  status: {
+    title: 'Status workflow',
+    points: [
+      'Draft — still being edited; nobody sees it but you and your team',
+      'Review — finished editing; flagged for a teammate to approve',
+      'Published — live, ready to be exported to a sales channel',
+      'Exported — has been sent to at least one platform (Shopify, Amazon, etc.)',
+      'Change a status in the Dashboard or ask the assistant: "publish all drafts"',
+    ],
+  },
+  completeness: {
+    title: 'Completeness score',
+    points: [
+      'A 0–100% score showing how much of a product is filled in',
+      'Counts: name, price, description, category, image, brand, barcode, specs',
+      'Visible as a colored ring on Dashboard rows — green ≥80, yellow 40-79, red <40',
+      'Ask "what needs attention?" to surface low-completeness items',
+    ],
+  },
+  shortcuts: {
+    title: 'Keyboard shortcuts',
+    points: [
+      'Ctrl/Cmd+K — open the AI Catalog Chat (this)',
+      'Ctrl/Cmd+1..6 — jump to Dashboard / New Catalog / Trending / Analytics / Brand Voices / Settings',
+      'Ctrl/Cmd+N — start a new catalog entry',
+      '? — show the full shortcuts overlay',
+      'Esc — close any open modal or dock',
+    ],
+  },
+  glossary: {
+    title: 'CatalogAI quick glossary',
+    points: [
+      'Catalog entry — one product line in your store; has a status, optional price, stock, tags',
+      'Product — the underlying shared data (name, brand, AI descriptions) that a catalog entry references',
+      'Brand voice — a tone preset that controls how the AI writes descriptions (Professional / Friendly / Luxury / custom)',
+      'SEO tags — keywords the AI generates for findability, separate from your own tags',
+      'Store — a multi-tenant workspace; each signup creates one, team members join it',
     ],
   },
 };
@@ -510,6 +676,11 @@ router.post('/', auth, async (req, res) => {
       return res.json({ type: 'help', topic, summary: parsed.summary || HELP_TOPICS[topic].title, content: HELP_TOPICS[topic] });
     }
 
+    if (parsed.type === 'recommend') {
+      const rec = await runRecommendation(req.user.store_id);
+      return res.json({ type: 'recommend', summary: parsed.summary || 'Here\'s what to focus on', recommendations: rec.items });
+    }
+
     if (parsed.type === 'action') {
       if (!ALLOWED_ACTIONS.has(parsed.action)) {
         return res.json({ type: 'text', message: `I don't know how to "${parsed.action}". Try a different phrasing.` });
@@ -556,13 +727,13 @@ router.get('/suggestions', auth, async (req, res) => {
       out.push('How does the scanner work?');
       out.push('What can you do?');
     } else {
+      out.push('What should I focus on?');
       out.push('How is my catalog doing?');
       if (ctx.needs_attention > 0) out.push(`Show me the ${ctx.needs_attention} products that need attention`);
       if (ctx.stats.low_stock > 0) out.push(`What's running low? (${ctx.stats.low_stock})`);
       if (ctx.stats.drafts > 0) out.push(`Show my ${ctx.stats.drafts} drafts`);
       if (ctx.stats.out_of_stock > 0) out.push(`Find ${ctx.stats.out_of_stock} out-of-stock items`);
       if (ctx.top_categories[0]) out.push(`Category breakdown`);
-      out.push('Open the analytics page');
     }
     // Always cap at 6 chips, dedupe
     const seen = new Set();
