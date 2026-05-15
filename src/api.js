@@ -260,9 +260,10 @@ export const addTrendingToCatalog = async (item) => {
 };
 
 // ── CHAT ──
-export const chatSend = async (message, history = []) => {
+export const chatSend = async (message, history = [], extras = {}) => {
+  const body = { message, history, ...extras };
   const res = await apiFetch(`${API_URL}/chat`, {
-    method: 'POST', headers: headers(), body: JSON.stringify({ message, history }),
+    method: 'POST', headers: headers(), body: JSON.stringify(body),
   });
   return handleResponse(res);
 };
