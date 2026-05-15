@@ -418,19 +418,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
             </tr></thead>
             <tbody>{filteredCatalog.map((item,i)=>{
               const isSelected = selected.has(item.id);
-              const onDragStart = (e) => {
-                // If user drags from a selection of multiple rows, drop them all.
-                // Otherwise drop just this one.
-                const payload = (isSelected && selected.size > 1)
-                  ? filteredCatalog.filter(c => selected.has(c.id)).map(c => ({ id: c.id, product_id: c.product_id, name: c.custom_name || c.name, price: c.custom_price, image: c.image }))
-                  : [{ id: item.id, product_id: item.product_id, name: item.custom_name || item.name, price: item.custom_price, image: item.image }];
-                try {
-                  e.dataTransfer.setData('application/x-catalogai-product', JSON.stringify(payload));
-                  e.dataTransfer.setData('text/plain', payload.map(p => p.name).join(', '));
-                  e.dataTransfer.effectAllowed = 'copy';
-                } catch {}
-              };
-              return <tr key={item.id||i} className={`catalog-row ${isSelected?"selected":""}`} draggable onDragStart={onDragStart} onClick={()=>toggleSelect(item.id)} style={{borderBottom:"1px solid var(--border-light)",background:isSelected?"rgba(124,58,237,0.06)":"transparent",cursor:"pointer"}} onMouseEnter={e=>{if(!isSelected)e.currentTarget.style.background="var(--hover-bg)"}} onMouseLeave={e=>{if(!isSelected)e.currentTarget.style.background="transparent"}}>
+              return <tr key={item.id||i} className={`catalog-row ${isSelected?"selected":""}`} onClick={()=>toggleSelect(item.id)} style={{borderBottom:"1px solid var(--border-light)",background:isSelected?"rgba(124,58,237,0.06)":"transparent",cursor:"pointer"}} onMouseEnter={e=>{if(!isSelected)e.currentTarget.style.background="var(--hover-bg)"}} onMouseLeave={e=>{if(!isSelected)e.currentTarget.style.background="transparent"}}>
               {visibleCols.product && <td style={{padding:"12px 16px",position:"relative"}}>
                 <div style={{position:"absolute",left:6,top:"50%",transform:"translateY(-50%)",width:18,height:18,borderRadius:5,border:isSelected?"2px solid #3B82F6":"2px solid var(--border)",background:isSelected?"#3B82F6":"transparent",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s",opacity:isSelected||selected.size>0?1:0}} className="row-check">
                   {isSelected && <Icon name="check" size={11} color="#fff"/>}

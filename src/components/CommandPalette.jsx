@@ -37,8 +37,6 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
   const [executing, setExecuting] = useState(false);
   const [exampleIdx, setExampleIdx] = useState(0);
   const [chips, setChips] = useState(FALLBACK_CHIPS);
-  const [pinned, setPinned] = useState([]); // products dragged into chat
-  const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef(null);
   const scrollRef = useRef(null);
 
@@ -71,15 +69,10 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
     const message = (text ?? input).trim();
     if (!message || loading) return;
     setInput("");
-    // Render the user message with pinned chips inline (UX) — server sees the
-    // pinned IDs separately so it can fetch real product context.
-    const displayMessage = pinned.length > 0
-      ? `${message} — context: ${pinned.map(p => p.name).join(", ")}`
-      : message;
-    setHistory(h => [...h, { role: "user", content: displayMessage }]);
+    setHistory(h => [...h, { role: "user", content: message }]);
     setLoading(true);
     try {
-      const result = await chatSend(message, history, { pinned: pinned.map(p => ({ id: p.id, product_id: p.product_id, name: p.name })) });
+      const result = await chatSend(message, history);
       if (result.type === "filter") {
         setHistory(h => [...h, { role: "assistant", type: "filter", content: result.summary, items: result.items, filter: result.filter }]);
       } else if (result.type === "action") {
@@ -152,61 +145,12 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
 
   const reset = () => { setHistory([]); setPendingAction(null); setInput(""); };
 
-  // Drop-zone handlers for drag-product-into-chat
-  const onDropProducts = (e) => {
-    e.preventDefault();
-    setDragOver(false);
-    try {
-      const raw = e.dataTransfer.getData("application/x-catalogai-product");
-      if (!raw) return;
-      const incoming = JSON.parse(raw);
-      if (!Array.isArray(incoming)) return;
-      setPinned(prev => {
-        const seen = new Set(prev.map(p => p.id));
-        const merged = [...prev];
-        incoming.forEach(p => { if (p?.id && !seen.has(p.id)) { merged.push(p); seen.add(p.id); } });
-        return merged;
-      });
-      const added = incoming.length;
-      if (added > 0) toast.success(`Pinned ${added} product${added === 1 ? "" : "s"} to context`);
-      setTimeout(() => inputRef.current?.focus(), 60);
-    } catch {}
-  };
-  const onDragOverPalette = (e) => {
-    if (e.dataTransfer?.types && Array.from(e.dataTransfer.types).includes("application/x-catalogai-product")) {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "copy";
-      if (!dragOver) setDragOver(true);
-    }
-  };
-  const onDragLeavePalette = (e) => {
-    // Only clear if we actually left the card, not when crossing inner elements
-    if (e.currentTarget === e.target) setDragOver(false);
-  };
-  const removePinned = (id) => setPinned(p => p.filter(x => x.id !== id));
-  const clearPinned = () => setPinned([]);
-
   if (!open) return null;
 
   return (
     <div className="palette-overlay" onClick={onClose}>
-      <div
-        className={`palette-card ${dragOver ? "drop-active" : ""}`}
-        onClick={e => e.stopPropagation()}
-        onDragOver={onDragOverPalette}
-        onDragLeave={onDragLeavePalette}
-        onDrop={onDropProducts}
-      >
+      <div className="palette-card" onClick={e => e.stopPropagation()}>
         <div className="palette-blobs" />
-        {dragOver && (
-          <div className="palette-drop-overlay">
-            <div className="palette-drop-inner">
-              <Icon name="plus" size={20} color="#A78BFA" />
-              <div style={{ fontSize: 14, fontWeight: 700, marginTop: 8 }}>Drop to pin as context</div>
-              <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>Then ask me anything about these products</div>
-            </div>
-          </div>
-        )}
 
         <div className="palette-header">
           <div className="palette-header-title">
@@ -423,31 +367,12 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
           </div>
         )}
 
-        {pinned.length > 0 && (
-          <div className="palette-pinned-row">
-            <div className="palette-pinned-label">
-              <Icon name="tag" size={11} color="#A78BFA" />
-              <span>{pinned.length === 1 ? "1 product pinned" : `${pinned.length} products pinned · bulk mode`}</span>
-              <button className="palette-pinned-clear" onClick={clearPinned} title="Clear all">Clear</button>
-            </div>
-            <div className="palette-pinned-chips">
-              {pinned.slice(0, 8).map(p => (
-                <div key={p.id} className="palette-pinned-chip">
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 }}>{p.name}</span>
-                  <button onClick={() => removePinned(p.id)} title="Remove" className="palette-pinned-chip-x">×</button>
-                </div>
-              ))}
-              {pinned.length > 8 && <span style={{ fontSize: 11, color: "var(--text-dim)", padding: "0 4px" }}>+ {pinned.length - 8} more</span>}
-            </div>
-          </div>
-        )}
-
         <div className="palette-input-row">
           <div className="palette-input-wrap">
             <Icon name="sparkle" size={14} color="var(--text-dim)" />
             <input
               ref={inputRef}
-              placeholder={pinned.length > 0 ? `Ask about ${pinned.length === 1 ? "this product" : "these products"}...` : "Ask anything about your catalog..."}
+              placeholder="Ask anything about your catalog..."
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
