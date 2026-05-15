@@ -68,6 +68,20 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [user]);
 
+  // Auto-open the chat dock when the user starts dragging a product —
+  // gives them a guaranteed drop target. Only triggers on our custom MIME type.
+  useEffect(() => {
+    if (!user) return;
+    const onDragStart = (e) => {
+      const types = e.dataTransfer?.types;
+      if (types && Array.from(types).includes("application/x-catalogai-product")) {
+        setPaletteOpen(true);
+      }
+    };
+    window.addEventListener("dragstart", onDragStart);
+    return () => window.removeEventListener("dragstart", onDragStart);
+  }, [user]);
+
   const handleLogout = async () => { await logout(); setUser(null); };
 
   if (loading) return null;

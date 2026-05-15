@@ -223,6 +223,19 @@ const GlobalStyles = ({ dark }) => (
 
     .palette-action-bar { padding:11px 18px; border-top:1px solid var(--border); background: rgba(245,158,11,0.04); display:flex; gap:8px; align-items:center; z-index:1; }
 
+    /* Drag-product-into-chat */
+    .palette-card.drop-active { box-shadow: -20px 0 60px rgba(124,58,237,0.35), 0 0 0 2px rgba(124,58,237,0.45) inset; }
+    .palette-drop-overlay { position:absolute; inset:14px; z-index:5; pointer-events:none; border:2px dashed rgba(167,139,250,0.7); border-radius:16px; background: radial-gradient(circle at center, rgba(124,58,237,0.18), rgba(124,58,237,0.04) 70%); display:flex; align-items:center; justify-content:center; backdrop-filter: blur(3px); animation: paletteFadeIn 0.15s ease-out; }
+    .palette-drop-inner { text-align:center; color: var(--text); padding: 20px; }
+    .palette-pinned-row { padding: 8px 14px 6px; border-top:1px solid var(--border); background: rgba(124,58,237,0.04); z-index:1; }
+    .palette-pinned-label { display:flex; align-items:center; gap:6px; font-size:10.5px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.06em; font-weight:700; margin-bottom:6px; }
+    .palette-pinned-clear { margin-left:auto; padding:2px 8px; border-radius:6px; background:transparent; border:1px solid var(--border-light); color:var(--text-dim); font-size:10px; cursor:pointer; text-transform:uppercase; letter-spacing:0.04em; transition: all 0.15s; }
+    .palette-pinned-clear:hover { background: var(--hover-bg); color: var(--text); }
+    .palette-pinned-chips { display:flex; flex-wrap:wrap; gap:5px; }
+    .palette-pinned-chip { display:inline-flex; align-items:center; gap:6px; padding:4px 4px 4px 10px; border-radius:999px; background: linear-gradient(135deg, rgba(59,130,246,0.18), rgba(124,58,237,0.18)); border:1px solid rgba(124,58,237,0.32); font-size:11.5px; color:var(--text); max-width:180px; }
+    .palette-pinned-chip-x { width:18px; height:18px; border-radius:50%; border:none; background:rgba(255,255,255,0.06); color:var(--text-dim); cursor:pointer; font-size:13px; line-height:1; padding:0; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition: all 0.15s; }
+    .palette-pinned-chip-x:hover { background: rgba(239,68,68,0.2); color:#EF4444; }
+
     .palette-input-row { padding:14px 18px; border-top:1px solid var(--border); position:relative; z-index:1; }
     .palette-input-wrap { position:relative; display:flex; align-items:center; gap:10px; padding:0 6px 0 14px; background: var(--surface); border:1.5px solid var(--border); border-radius:14px; transition: border-color 0.2s, box-shadow 0.2s, background 0.2s; }
     .palette-input-wrap:focus-within { border-color: rgba(124,58,237,0.55); box-shadow: 0 0 0 4px rgba(124,58,237,0.1); background: var(--card-bg); }
