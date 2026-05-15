@@ -142,12 +142,18 @@ const GlobalStyles = ({ dark }) => (
     @keyframes ambientBreathe1 { 0%, 100% { transform: translate(0,0) scale(1); opacity: 0.7; } 50% { transform: translate(30px,-20px) scale(1.08); opacity: 1; } }
     @keyframes ambientBreathe2 { 0%, 100% { transform: translate(0,0) scale(1); opacity: 0.6; } 50% { transform: translate(-25px,30px) scale(1.05); opacity: 0.9; } }
 
-    .palette-overlay { position:fixed; inset:0; z-index:10000; display:flex; align-items:flex-start; justify-content:center; padding-top:7vh; background:rgba(0,0,0,0.6); backdrop-filter:blur(12px); animation: paletteFadeIn 0.2s ease-out; }
-    .palette-card { width:100%; max-width:720px; max-height:84vh; background: var(--card-bg); border:1px solid var(--border); border-radius:20px; overflow:hidden; display:flex; flex-direction:column; box-shadow: 0 30px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04) inset, 0 1px 0 rgba(255,255,255,0.08) inset; position:relative; animation: paletteScaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1); backdrop-filter: blur(20px); }
-    .palette-blobs { position:absolute; inset:0; pointer-events:none; overflow:hidden; opacity:0.45; }
-    .palette-blobs::before, .palette-blobs::after { content:""; position:absolute; width:300px; height:300px; border-radius:50%; filter: blur(80px); }
-    .palette-blobs::before { top:-100px; left:-50px; background: radial-gradient(circle, rgba(124,58,237,0.5), transparent 70%); animation: blobShift 14s ease-in-out infinite; }
-    .palette-blobs::after { top:-50px; right:-80px; background: radial-gradient(circle, rgba(59,130,246,0.4), transparent 70%); animation: blobShift 18s ease-in-out infinite reverse; }
+    @keyframes paletteSlideRight { from { transform: translateX(100%); opacity: 0.4; } to { transform: translateX(0); opacity: 1; } }
+    @keyframes msgEnter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Right-side dock — slides in from edge, doesn't block the rest of the app */
+    .palette-overlay { position:fixed; inset:0; z-index:10000; display:flex; align-items:stretch; justify-content:flex-end; background:transparent; animation: paletteFadeIn 0.2s ease-out; pointer-events:auto; }
+    .palette-overlay::before { content:""; position:absolute; inset:0; background:rgba(0,0,0,0.18); backdrop-filter:blur(2px); pointer-events:auto; }
+    .palette-card { position:relative; width:480px; max-width:100vw; height:100vh; background: var(--card-bg); border-left:1px solid var(--border); border-top:none; border-bottom:none; border-right:none; border-radius:0; overflow:hidden; display:flex; flex-direction:column; box-shadow: -20px 0 60px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.04) inset; animation: paletteSlideRight 0.32s cubic-bezier(0.16, 1, 0.3, 1); backdrop-filter: blur(24px); }
+    @media (max-width: 640px) { .palette-card { width: 100vw; } }
+    .palette-blobs { position:absolute; inset:0; pointer-events:none; overflow:hidden; opacity:0.4; }
+    .palette-blobs::before, .palette-blobs::after { content:""; position:absolute; width:260px; height:260px; border-radius:50%; filter: blur(80px); }
+    .palette-blobs::before { top:-80px; left:-40px; background: radial-gradient(circle, rgba(124,58,237,0.5), transparent 70%); animation: blobShift 14s ease-in-out infinite; }
+    .palette-blobs::after { bottom:-80px; right:-60px; background: radial-gradient(circle, rgba(59,130,246,0.4), transparent 70%); animation: blobShift 18s ease-in-out infinite reverse; }
 
     .palette-header { position:relative; padding:14px 20px; border-bottom:1px solid color-mix(in oklab, var(--border) 60%, transparent); display:flex; align-items:center; justify-content:space-between; z-index:1; }
     .palette-header-title { font-size:13px; font-weight:600; color:var(--text); display:flex; align-items:center; gap:8px; }
@@ -173,14 +179,24 @@ const GlobalStyles = ({ dark }) => (
     .palette-chip { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:999px; border:1px solid var(--border-light); background: color-mix(in oklab, var(--hover-bg) 60%, transparent); cursor:pointer; font-size:11.5px; font-weight:500; color:var(--text-muted); font-family:'Sora',sans-serif; transition: all 0.15s; backdrop-filter: blur(6px); }
     .palette-chip:hover { border-color: rgba(124,58,237,0.5); background: rgba(124,58,237,0.08); color: var(--text); }
 
-    /* Chat messages — minimalist */
-    .msg-row { display:flex; gap:10px; align-items:flex-start; }
-    .msg-user { padding:9px 14px; background: var(--surface); border:1px solid var(--border-light); color:var(--text); border-radius:14px; border-bottom-right-radius:5px; font-size:13px; line-height:1.5; max-width:80%; }
-    .msg-assistant { padding:9px 14px; background: transparent; font-size:13.5px; line-height:1.55; color:var(--text-muted); max-width:88%; }
+    /* Chat messages — with assistant avatar + hover actions */
+    .msg-row { display:flex; gap:8px; align-items:flex-start; animation: msgEnter 0.25s cubic-bezier(0.16,1,0.3,1); }
+    .msg-avatar { width:22px; height:22px; flex-shrink:0; margin-top:6px; position:relative; }
+    .msg-avatar::before { content:""; position:absolute; inset:0; border-radius:50%; background: conic-gradient(from 0deg, #3B82F6, #8B5CF6, #10B981, #3B82F6); filter: blur(1px); }
+    .msg-avatar::after { content:""; position:absolute; inset:2px; border-radius:50%; background: var(--card-bg); }
+    .msg-avatar.thinking::before { animation: orbRotate 2s linear infinite; }
+    .msg-content { flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; }
+    .msg-actions { display:flex; gap:4px; opacity:0; transition: opacity 0.15s; padding-left:2px; }
+    .msg-content:hover .msg-actions, .msg-row:hover .msg-actions { opacity:1; }
+    .msg-action-btn { width:22px; height:22px; border-radius:6px; background:transparent; border:1px solid transparent; color:var(--text-dim); cursor:pointer; display:flex; align-items:center; justify-content:center; transition: all 0.15s; padding:0; }
+    .msg-action-btn:hover { background:var(--hover-bg); border-color:var(--border-light); color:var(--text); }
+    .msg-user { padding:9px 14px; background: linear-gradient(135deg, rgba(59,130,246,0.18), rgba(124,58,237,0.14)); border:1px solid rgba(124,58,237,0.25); color:var(--text); border-radius:14px; border-bottom-right-radius:5px; font-size:13px; line-height:1.5; max-width:80%; }
+    .msg-assistant { padding:9px 12px 9px 0; background: transparent; font-size:13.5px; line-height:1.55; color:var(--text-muted); max-width:100%; }
     .msg-error { padding:9px 14px; background: rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.2); border-radius:12px; font-size:13px; color:#EF4444; max-width:80%; }
     .msg-success { padding:7px 14px; background: rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.25); border-radius:999px; font-size:12.5px; color:#10B981; display:inline-flex; align-items:center; gap:8px; font-weight:600; }
-    .msg-thinking { padding:10px 14px; display:inline-flex; align-items:center; gap:5px; }
-    .dot-bounce { width:6px; height:6px; border-radius:50%; background:var(--text-dim); animation: dotBounce 1.2s ease-in-out infinite; display:inline-block; }
+    .msg-thinking { padding:8px 12px; display:inline-flex; align-items:center; gap:5px; background: var(--surface); border:1px solid var(--border-light); border-radius:12px; }
+    .msg-thinking-label { font-size:11.5px; color:var(--text-dim); margin-left:6px; font-style:italic; }
+    .dot-bounce { width:5px; height:5px; border-radius:50%; background:var(--text-dim); animation: dotBounce 1.2s ease-in-out infinite; display:inline-block; }
 
     .msg-card { background: color-mix(in oklab, var(--surface) 70%, transparent); border:1px solid var(--border-light); border-radius:14px; padding:13px; max-width:100%; flex:1; backdrop-filter: blur(8px); }
     .msg-card-summary { font-size:12.5px; color:var(--text); margin-bottom:11px; line-height:1.4; font-weight:500; }
