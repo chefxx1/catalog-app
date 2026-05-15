@@ -99,6 +99,29 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
     else toast.error(`Don't know how to open ${route}`);
   };
 
+  // Plain-text summary of a message for the Copy hover action
+  const messageToText = (h) => {
+    if (h.type === "filter") return `${h.content}\n${(h.items || []).map(it => `• ${it.custom_name || it.name}${it.custom_price ? ` ($${it.custom_price})` : ""}`).join("\n")}`;
+    if (h.type === "analyze") {
+      if (h.insight?.kind === "breakdown") return `${h.content}\n${h.insight.rows.map(r => `• ${r.label}: ${r.value} (${r.pct}%)`).join("\n")}`;
+      return `${h.content}\n${(h.insight?.metrics || []).map(m => `• ${m.label}: ${m.value}`).join("\n")}`;
+    }
+    if (h.type === "help") return `${h.help?.title || h.content}\n${(h.help?.points || []).map(p => `• ${p}`).join("\n")}`;
+    if (h.type === "navigate") return `${h.content} (${h.route})`;
+    return h.content || "";
+  };
+  const copyMessage = (h) => {
+    try { navigator.clipboard.writeText(messageToText(h)); toast.success("Copied"); }
+    catch { toast.error("Copy failed"); }
+  };
+
+  // Re-fire the last user message as a new turn
+  const regenerateLast = () => {
+    const lastUser = [...history].reverse().find(h => h.role === "user");
+    if (!lastUser || loading) return;
+    send(lastUser.content);
+  };
+
   const confirmAction = async () => {
     if (!pendingAction || !canWrite) return;
     setExecuting(true);
@@ -174,7 +197,11 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
             <div key={i} className="msg-row" style={{ justifyContent: h.role === "user" ? "flex-end" : "flex-start" }}>
               {h.role === "user" ? (
                 <div className="msg-user">{h.content}</div>
-              ) : h.type === "filter" ? (
+              ) : (
+                <>
+                  <div className="msg-avatar" />
+                  <div className="msg-content">
+                    {h.type === "filter" ? (
                 <div className="msg-card">
                   <div className="msg-card-summary">{h.content}</div>
                   {h.items.length === 0 ? (
@@ -297,15 +324,32 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
               ) : (
                 <div className="msg-assistant">{h.content}</div>
               )}
+                    {h.type !== "success" && h.type !== "error" && (
+                      <div className="msg-actions">
+                        <button className="msg-action-btn" onClick={() => copyMessage(h)} title="Copy">
+                          <Icon name="copy" size={11} />
+                        </button>
+                        {i === history.length - 1 && (
+                          <button className="msg-action-btn" onClick={regenerateLast} disabled={loading} title="Regenerate">
+                            <Icon name="refresh" size={11} />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           ))}
 
           {loading && (
-            <div className="msg-row" style={{ justifyContent: "flex-start" }}>
+            <div className="msg-row" style={{ justifyContent: "flex-start", alignItems: "center" }}>
+              <div className="msg-avatar thinking" />
               <div className="msg-thinking">
                 <span className="dot-bounce" />
                 <span className="dot-bounce" style={{ animationDelay: "0.15s" }} />
                 <span className="dot-bounce" style={{ animationDelay: "0.3s" }} />
+                <span className="msg-thinking-label">Thinking…</span>
               </div>
             </div>
           )}
