@@ -2,7 +2,34 @@ import React, { useEffect, useRef, useState } from "react";
 import { Icon } from "./shared";
 import { toast } from "./Toast";
 import BrandOrb from "./BrandOrb";
-import { chatSend, chatExecute, chatSuggestions } from "../api";
+import { chatStream, chatExecute, chatSuggestions } from "../api";
+
+// Pull live text out of partial JSON during streaming. The model emits TEXT
+// responses as {"type":"text","message":"..."}; for filter/analyze/etc the
+// summary field is short but still gives the user something to read.
+const unescapeJsonStr = (s) => {
+  try { return JSON.parse('"' + s + '"'); } catch {}
+  return s.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+};
+const extractLiveText = (raw) => {
+  if (!raw) return "";
+  let m = raw.match(/"message"\s*:\s*"((?:[^"\\]|\\.)*)/);
+  if (m) return unescapeJsonStr(m[1]);
+  m = raw.match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)/);
+  if (m) return unescapeJsonStr(m[1]);
+  return "";
+};
+
+// Map a routed chat result → a history entry of the right shape
+const resultToEntry = (result) => {
+  if (result.type === "filter") return { role: "assistant", type: "filter", content: result.summary, items: result.items, filter: result.filter };
+  if (result.type === "action") return { role: "assistant", type: "action-preview", content: result.summary, action: result };
+  if (result.type === "analyze") return { role: "assistant", type: "analyze", content: result.summary, insight: result.insight };
+  if (result.type === "navigate") return { role: "assistant", type: "navigate", content: result.summary, route: result.route, label: result.label };
+  if (result.type === "help") return { role: "assistant", type: "help", content: result.summary, help: result.content };
+  if (result.type === "recommend") return { role: "assistant", type: "recommend", content: result.summary, recommendations: result.recommendations };
+  return { role: "assistant", type: "text", content: result.message };
+};
 
 // Server route → App.jsx view name
 const ROUTE_TO_VIEW = {
@@ -39,6 +66,8 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
   const [chips, setChips] = useState(FALLBACK_CHIPS);
   const inputRef = useRef(null);
   const scrollRef = useRef(null);
+  const cancelStreamRef = useRef(null);
+  const streamIdRef = useRef(0);
 
   useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 80); }, [open]);
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }); }, [history, pendingAction]);
@@ -103,35 +132,59 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
     return h.content || "";
   };
 
-  const send = async (text) => {
+  const send = (text) => {
     const message = (text ?? input).trim();
     if (!message || loading) return;
     setInput("");
-    setHistory(h => [...h, { role: "user", content: message }]);
+
+    const llmHistory = history.map(h => ({ role: h.role, content: serializeForLLM(h) }));
+    const streamId = ++streamIdRef.current;
+    setHistory(h => [
+      ...h,
+      { role: "user", content: message },
+      { role: "assistant", type: "streaming", content: "", _streamId: streamId },
+    ]);
     setLoading(true);
-    try {
-      const llmHistory = history.map(h => ({ role: h.role, content: serializeForLLM(h) }));
-      const result = await chatSend(message, llmHistory);
-      if (result.type === "filter") {
-        setHistory(h => [...h, { role: "assistant", type: "filter", content: result.summary, items: result.items, filter: result.filter }]);
-      } else if (result.type === "action") {
-        setHistory(h => [...h, { role: "assistant", type: "action-preview", content: result.summary, action: result }]);
-        setPendingAction(result);
-      } else if (result.type === "analyze") {
-        setHistory(h => [...h, { role: "assistant", type: "analyze", content: result.summary, insight: result.insight }]);
-      } else if (result.type === "navigate") {
-        setHistory(h => [...h, { role: "assistant", type: "navigate", content: result.summary, route: result.route, label: result.label }]);
-      } else if (result.type === "help") {
-        setHistory(h => [...h, { role: "assistant", type: "help", content: result.summary, help: result.content }]);
-      } else if (result.type === "recommend") {
-        setHistory(h => [...h, { role: "assistant", type: "recommend", content: result.summary, recommendations: result.recommendations }]);
-      } else {
-        setHistory(h => [...h, { role: "assistant", type: "text", content: result.message }]);
-      }
-    } catch (err) {
-      setHistory(h => [...h, { role: "assistant", type: "error", content: err?.message || "Something went wrong" }]);
+
+    const cancel = chatStream(message, llmHistory, {
+      onToken: ({ raw }) => {
+        const live = extractLiveText(raw);
+        if (!live) return;
+        setHistory(h => h.map(item => item._streamId === streamId ? { ...item, content: live } : item));
+      },
+      onFinal: (result) => {
+        cancelStreamRef.current = null;
+        setLoading(false);
+        setHistory(h => {
+          const idx = h.findIndex(item => item._streamId === streamId);
+          if (idx === -1) return h;
+          const copy = [...h];
+          copy[idx] = resultToEntry(result);
+          return copy;
+        });
+        if (result.type === "action") setPendingAction(result);
+      },
+      onError: (err) => {
+        cancelStreamRef.current = null;
+        setLoading(false);
+        setHistory(h => h.map(item => item._streamId === streamId
+          ? { role: "assistant", type: "error", content: err?.message || "Something went wrong" }
+          : item));
+      },
+    });
+    cancelStreamRef.current = cancel;
+  };
+
+  const stopStream = () => {
+    if (cancelStreamRef.current) {
+      cancelStreamRef.current();
+      cancelStreamRef.current = null;
     }
+    const sid = streamIdRef.current;
     setLoading(false);
+    setHistory(h => h.map(item => item._streamId === sid
+      ? (item.content ? { role: "assistant", type: "text", content: item.content + " [stopped]" } : { role: "assistant", type: "text", content: "Stopped." })
+      : item));
   };
 
   const goRoute = (route) => {
@@ -250,24 +303,38 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
                   ) : (
                     <>
                       <div className="msg-list">
-                        {h.items.slice(0, 8).map((it, j) => (
-                          <div key={j} className="msg-item">
-                            {it.image ? (
-                              <img src={it.image} loading="lazy" onError={e => { e.target.style.display = "none"; e.target.nextSibling && (e.target.nextSibling.style.display = "flex"); }} />
-                            ) : null}
-                            <div className="msg-item-thumb-fallback" style={{ display: it.image ? "none" : "flex" }}>
-                              <Icon name="package" size={13} color="var(--text-dim)" />
-                            </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 12.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.custom_name || it.name}</div>
-                              <div style={{ fontSize: 10.5, color: "var(--text-dim)", display: "flex", gap: 8, marginTop: 2, alignItems: "center" }}>
-                                {it.custom_price && <span>${it.custom_price}</span>}
-                                {it.stock_quantity != null && <span>· {it.stock_quantity} in stock</span>}
-                                {it.status && <span className={`pill-status pill-${it.status?.toLowerCase()}`}>{it.status}</span>}
+                        {h.items.slice(0, 8).map((it, j) => {
+                          const name = it.custom_name || it.name;
+                          const clickable = !!name && !!onApplyFilter;
+                          const openSingle = () => { onApplyFilter({ name }); onClose(); };
+                          return (
+                            <div
+                              key={j}
+                              className={`msg-item${clickable ? " msg-item-clickable" : ""}`}
+                              onClick={() => { if (clickable) openSingle(); }}
+                              role={clickable ? "button" : undefined}
+                              tabIndex={clickable ? 0 : undefined}
+                              onKeyDown={e => { if (clickable && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openSingle(); } }}
+                              title={clickable ? "Open in Catalog" : undefined}
+                            >
+                              {it.image ? (
+                                <img src={it.image} loading="lazy" onError={e => { e.target.style.display = "none"; e.target.nextSibling && (e.target.nextSibling.style.display = "flex"); }} />
+                              ) : null}
+                              <div className="msg-item-thumb-fallback" style={{ display: it.image ? "none" : "flex" }}>
+                                <Icon name="package" size={13} color="var(--text-dim)" />
                               </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 12.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+                                <div style={{ fontSize: 10.5, color: "var(--text-dim)", display: "flex", gap: 8, marginTop: 2, alignItems: "center" }}>
+                                  {it.custom_price && <span>${it.custom_price}</span>}
+                                  {it.stock_quantity != null && <span>· {it.stock_quantity} in stock</span>}
+                                  {it.status && <span className={`pill-status pill-${it.status?.toLowerCase()}`}>{it.status}</span>}
+                                </div>
+                              </div>
+                              {clickable && <Icon name="chevronRight" size={12} color="var(--text-dim)" />}
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                       <div className="msg-card-footer">
                         <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
@@ -382,10 +449,20 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
                 </div>
               ) : h.type === "error" ? (
                 <div className="msg-error">{h.content}</div>
+              ) : h.type === "streaming" ? (
+                <div className="msg-assistant">
+                  {h.content
+                    ? <>{h.content}<span className="stream-cursor">▍</span></>
+                    : <span className="msg-thinking" style={{ display: "inline-flex", padding: 0, background: "none" }}>
+                        <span className="dot-bounce" />
+                        <span className="dot-bounce" style={{ animationDelay: "0.15s" }} />
+                        <span className="dot-bounce" style={{ animationDelay: "0.3s" }} />
+                      </span>}
+                </div>
               ) : (
                 <div className="msg-assistant">{h.content}</div>
               )}
-                    {h.type !== "success" && h.type !== "error" && (
+                    {h.type !== "success" && h.type !== "error" && h.type !== "streaming" && (
                       <div className="msg-actions">
                         <button className="msg-action-btn" onClick={() => copyMessage(h)} title="Copy">
                           <Icon name="copy" size={11} />
@@ -403,17 +480,6 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
             </div>
           ))}
 
-          {loading && (
-            <div className="msg-row" style={{ justifyContent: "flex-start", alignItems: "center" }}>
-              <div className="msg-avatar thinking" />
-              <div className="msg-thinking">
-                <span className="dot-bounce" />
-                <span className="dot-bounce" style={{ animationDelay: "0.15s" }} />
-                <span className="dot-bounce" style={{ animationDelay: "0.3s" }} />
-                <span className="msg-thinking-label">Thinking…</span>
-              </div>
-            </div>
-          )}
         </div>
 
         {pendingAction && (
@@ -439,11 +505,19 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
               onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
               disabled={loading}
             />
-            <button className="palette-send" onClick={() => send()} disabled={loading || !input.trim()} title="Send">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>
-              </svg>
-            </button>
+            {loading ? (
+              <button className="palette-send" onClick={stopStream} title="Stop generating" style={{ background: "linear-gradient(135deg, #EF4444, #B91C1C)" }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="white">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+              </button>
+            ) : (
+              <button className="palette-send" onClick={() => send()} disabled={!input.trim()} title="Send">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>
+                </svg>
+              </button>
+            )}
           </div>
         </div>
 

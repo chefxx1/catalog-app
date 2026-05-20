@@ -31,7 +31,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
   const [entryTags, setEntryTags] = useState({}); // { entryId: [tagId, ...] }
   const [savedViews, setSavedViews] = useState([]);
   const [activeView, setActiveView] = useState(null);
-  const [filters, setFilters] = useState({ status: "", tag: "", minPrice: "", maxPrice: "", completeness: "" });
+  const [filters, setFilters] = useState({ status: "", tag: "", minPrice: "", maxPrice: "", completeness: "", stock: "", category: "", brand: "" });
   const [showFilters, setShowFilters] = useState(false);
   const [showTagManager, setShowTagManager] = useState(false);
   const [newTagName, setNewTagName] = useState("");
@@ -82,7 +82,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
   // setState-in-effect pattern here is intentional and runs at most once per push.
   useEffect(() => {
     if (!pendingFilter) return;
-    const next = { status: "", tag: "", minPrice: "", maxPrice: "", completeness: "" };
+    const next = { status: "", tag: "", minPrice: "", maxPrice: "", completeness: "", stock: "", category: "", brand: "" };
     if (pendingFilter.status) next.status = pendingFilter.status;
     if (pendingFilter.tag) {
       const t = tags.find(x => x.name?.toLowerCase() === String(pendingFilter.tag).toLowerCase());
@@ -90,7 +90,15 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
     }
     if (pendingFilter.minPrice != null) next.minPrice = String(pendingFilter.minPrice);
     if (pendingFilter.maxPrice != null) next.maxPrice = String(pendingFilter.maxPrice);
-    if (pendingFilter.needsAttention) next.completeness = "needs-work";
+    if (pendingFilter.category) next.category = String(pendingFilter.category);
+    if (pendingFilter.brand) next.brand = String(pendingFilter.brand);
+    // Quality / completeness — only one slot, pick the most specific signal
+    if (pendingFilter.needsAttention) next.completeness = "needs-attention";
+    else if (pendingFilter.noPrice) next.completeness = "no-price";
+    else if (pendingFilter.noImages) next.completeness = "no-image";
+    else if (pendingFilter.recentlyUpdated) next.completeness = "recently-updated";
+    if (pendingFilter.lowStock) next.stock = "low";
+    else if (pendingFilter.maxStock === 0) next.stock = "out";
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setFilters(next);
     setShowFilters(true);
@@ -115,13 +123,36 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
     if (filters.completeness === "good" && ((item.completeness ?? 0) < 70 || (item.completeness ?? 0) >= 100)) return false;
     if (filters.completeness === "needs-work" && ((item.completeness ?? 0) < 40 || (item.completeness ?? 0) >= 70)) return false;
     if (filters.completeness === "poor" && (item.completeness ?? 0) >= 40) return false;
+    if (filters.completeness === "needs-attention") {
+      const missingPrice = !item.custom_price || Number(item.custom_price) === 0;
+      const missingImage = !(Number(item.image_count) > 0);
+      const missingDesc = !item.description && !item.ai_description_professional;
+      if (!(missingPrice || missingImage || missingDesc)) return false;
+    }
+    if (filters.completeness === "no-price" && !(!item.custom_price || Number(item.custom_price) === 0)) return false;
+    if (filters.completeness === "no-image" && Number(item.image_count) > 0) return false;
+    if (filters.completeness === "recently-updated") {
+      const updated = item.updated_at ? new Date(item.updated_at).getTime() : 0;
+      if (Date.now() - updated > 7 * 24 * 60 * 60 * 1000) return false;
+    }
+    // Stock filter
+    if (filters.stock === "out" && Number(item.stock_quantity ?? -1) !== 0) return false;
+    if (filters.stock === "low") {
+      const q = Number(item.stock_quantity);
+      const t = Number(item.low_stock_threshold);
+      if (!(Number.isFinite(q) && Number.isFinite(t) && q > 0 && q <= t)) return false;
+    }
+    if (filters.stock === "in" && !(Number(item.stock_quantity ?? 0) > 0)) return false;
+    // Category & brand (substring, case-insensitive)
+    if (filters.category && !(item.ai_category_suggestion || "").toLowerCase().includes(filters.category.toLowerCase())) return false;
+    if (filters.brand && !(item.brand || "").toLowerCase().includes(filters.brand.toLowerCase())) return false;
     return true;
   });
 
   const activeFilterCount = Object.values(filters).filter(v => v).length;
 
   const applyView = (view) => {
-    setFilters(view.filters);
+    setFilters({ status: "", tag: "", minPrice: "", maxPrice: "", completeness: "", stock: "", category: "", brand: "", ...(view.filters || {}) });
     setActiveView(view.id);
     setShowFilters(true);
   };
@@ -369,13 +400,25 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
             </select>}
             <select className="input" style={{width:"auto",fontSize:11,padding:"5px 28px 5px 8px",background:"transparent"}} value={filters.completeness} onChange={e=>setFilters(f=>({...f,completeness:e.target.value}))}>
               <option value="">All Quality</option>
+              <option value="needs-attention">Needs Attention</option>
+              <option value="no-price">No Price</option>
+              <option value="no-image">No Image</option>
+              <option value="recently-updated">Recently Updated</option>
               <option value="complete">Complete (100%)</option>
               <option value="good">Good (70-99%)</option>
               <option value="needs-work">Needs Work (40-69%)</option>
               <option value="poor">Poor (&lt;40%)</option>
             </select>
+            <select className="input" style={{width:"auto",fontSize:11,padding:"5px 28px 5px 8px",background:"transparent"}} value={filters.stock} onChange={e=>setFilters(f=>({...f,stock:e.target.value}))}>
+              <option value="">All Stock</option>
+              <option value="out">Out of Stock</option>
+              <option value="low">Low Stock</option>
+              <option value="in">In Stock</option>
+            </select>
             <input className="input" type="number" placeholder="Min $" value={filters.minPrice} onChange={e=>setFilters(f=>({...f,minPrice:e.target.value}))} style={{width:80,fontSize:11,padding:"5px 8px",background:"transparent"}}/>
             <input className="input" type="number" placeholder="Max $" value={filters.maxPrice} onChange={e=>setFilters(f=>({...f,maxPrice:e.target.value}))} style={{width:80,fontSize:11,padding:"5px 8px",background:"transparent"}}/>
+            <input className="input" placeholder="Category" value={filters.category} onChange={e=>setFilters(f=>({...f,category:e.target.value}))} style={{width:100,fontSize:11,padding:"5px 8px",background:"transparent"}}/>
+            <input className="input" placeholder="Brand" value={filters.brand} onChange={e=>setFilters(f=>({...f,brand:e.target.value}))} style={{width:90,fontSize:11,padding:"5px 8px",background:"transparent"}}/>
             <div style={{marginLeft:"auto",display:"flex",gap:6}}>
               {activeFilterCount > 0 && !savingView && <button style={{fontSize:11,fontWeight:600,color:"var(--primary-light)",background:"none",border:"none",cursor:"pointer",fontFamily:"'Sora',sans-serif"}} onClick={()=>setSavingView(true)}>Save View</button>}
               {savingView && <>
@@ -383,7 +426,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
                 <button className="btn btn-primary" style={{fontSize:10,padding:"3px 8px"}} onClick={handleSaveView} disabled={!newViewName.trim()}>Save</button>
                 <button style={{fontSize:11,color:"var(--text-dim)",background:"none",border:"none",cursor:"pointer",fontFamily:"'Sora',sans-serif"}} onClick={()=>setSavingView(false)}>Cancel</button>
               </>}
-              {activeFilterCount > 0 && <button style={{fontSize:11,fontWeight:600,color:"var(--text-dim)",background:"none",border:"none",cursor:"pointer",fontFamily:"'Sora',sans-serif"}} onClick={()=>{setFilters({status:"",tag:"",minPrice:"",maxPrice:"",completeness:""});setActiveView(null);}}>Clear</button>}
+              {activeFilterCount > 0 && <button style={{fontSize:11,fontWeight:600,color:"var(--text-dim)",background:"none",border:"none",cursor:"pointer",fontFamily:"'Sora',sans-serif"}} onClick={()=>{setFilters({status:"",tag:"",minPrice:"",maxPrice:"",completeness:"",stock:"",category:"",brand:""});setActiveView(null);}}>Clear</button>}
             </div>
           </div>
         )}

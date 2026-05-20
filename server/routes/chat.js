@@ -104,7 +104,7 @@ Actions:
 - "delete" no change
 - "add_tag" change: { tag: "<existing tag name>" }
 - "create_tag" change: { name: "...", color: "#hex" } (no filter)
-- "create_product" change: { name: "...", price: <num>, category: "..." } (no filter)
+- "create_product" change: { name: "...", price: <num>, category: "..." } (no filter) — name MUST come verbatim from the user. NEVER invent a product name, category, price, or description. If the user hasn't provided a name, respond with TEXT asking what they want to call it (see CREATE_PRODUCT RULES).
 
 3. TEXT (conversational answer using the CATALOG CONTEXT below):
 { "type": "text", "message": "your answer, using actual numbers from the context" }
@@ -175,6 +175,13 @@ AMBIGUITY:
 OFF-TOPIC:
 - Weather, jokes, math, world events, anything unrelated to a product catalog → TEXT, one sentence politely declining + offer to help with the catalog instead. Do NOT engage with the off-topic request.
 
+CREATE_PRODUCT RULES (CRITICAL — most failures happen here):
+- The product name MUST come verbatim from the user. NEVER invent or auto-generate a product name, brand, category, price, description, or feature list.
+- "create a product" / "add a product" / "make a new product" / "I want to create one" with NO name supplied → TEXT asking: "Sure — what should I call it? You can also include a price and category, e.g. 'create Vintage Lamp, $45, lighting'."
+- Only emit a create_product action when the user has clearly given a name in their message (e.g. "create a product called Red Mug", "add Nike Air Max", "new product: Vintage Lamp $45 lighting").
+- price and category are optional — only include them if the user actually said them. Do not guess.
+- Do not include description, tags, images, or any other fields in the change object. The Review step handles enrichment after creation.
+
 MULTI-TURN CONTEXT (CRITICAL — most failures happen here):
 - "them" / "those" / "these" / "the ones" / "all of them" refer to the products from the most recent filter result or action context. Look at the assistant message tagged "[I just showed a filter result]" or "[Action awaiting user confirmation]" — re-use that filter.
 - "now only X" / "filter to Y" / "just the ones over $50" → REFINE the previous filter by combining the prior fields with the new criterion. Do NOT start a fresh filter that drops earlier criteria.
@@ -202,6 +209,11 @@ User: "what can you do?" → {"type":"help","topic":"capabilities","summary":"He
 User: "delete all draft products" → {"type":"action","action":"delete","filter":{"status":"Draft"},"summary":"Delete all draft products"}
 User: "publish everything in review" → {"type":"action","action":"update_status","filter":{"status":"Review"},"change":{"status":"Published"},"summary":"Publish all Review products"}
 User: "create a tag called Sale red" → {"type":"action","action":"create_tag","filter":{},"change":{"name":"Sale","color":"#EF4444"},"summary":"Create tag 'Sale'"}
+User: "create a product called Red Mug" → {"type":"action","action":"create_product","filter":{},"change":{"name":"Red Mug"},"summary":"Create product 'Red Mug'"}
+User: "add Vintage Lamp, $45, lighting" → {"type":"action","action":"create_product","filter":{},"change":{"name":"Vintage Lamp","price":45,"category":"lighting"},"summary":"Create product 'Vintage Lamp'"}
+User: "I want to create a product" → {"type":"text","message":"Sure — what should I call it? You can also include a price and category, e.g. 'create Vintage Lamp, $45, lighting'."}
+User: "add a new product" → {"type":"text","message":"Of course — what name should it have? You can also tell me a price and category if you'd like."}
+User: "make me a product" → {"type":"text","message":"Happy to. What should I call it?"}
 
 EXAMPLES (greetings, casual, ambiguous):
 User: "hi" → {"type":"text","message":"Hey! Ask me to show products, run bulk edits, or analyze your catalog. What needs doing?"}
@@ -616,7 +628,87 @@ function parseModelJson(raw) {
   return null;
 }
 
-// POST /api/chat — converse with catalog
+// Build the system+history+user message array for Groq
+function buildChatMessages({ context, role, history, message }) {
+  const messages = [
+    { role: 'system', content: SYSTEM_PROMPT + `\n\nCATALOG CONTEXT (use these real numbers in TEXT answers; do not invent):\n${JSON.stringify(context)}\n\nUSER ROLE: ${role}` },
+  ];
+  if (Array.isArray(history)) {
+    history.slice(-8).forEach(h => {
+      if (h?.role && h?.content) messages.push({ role: h.role, content: String(h.content).slice(0, 1000) });
+    });
+  }
+  messages.push({ role: 'user', content: String(message).slice(0, 1000) });
+  return messages;
+}
+
+// Route a parsed model response → final payload (runs DB queries, validates, etc.)
+async function buildChatPayload(parsed, raw, storeId) {
+  if (!parsed) {
+    const trimmed = String(raw || '').replace(/```/g, '').trim().slice(0, 500);
+    return { type: 'text', message: trimmed || "I had trouble understanding. Try rephrasing?" };
+  }
+
+  if (parsed.type === 'filter') {
+    const items = await runFilter(parsed.filter || {}, storeId);
+    return { type: 'filter', summary: parsed.summary || 'Results', filter: parsed.filter, items };
+  }
+
+  if (parsed.type === 'analyze') {
+    const insight = await runAnalyze(parsed.query, storeId);
+    if (!insight) return { type: 'text', message: parsed.summary || "I'm not sure how to analyze that. Try 'overview', 'category breakdown', 'inventory health', or 'pricing'." };
+    return { type: 'analyze', query: parsed.query, summary: parsed.summary || 'Insight', insight };
+  }
+
+  if (parsed.type === 'navigate') {
+    const route = String(parsed.route || '').trim();
+    if (!VALID_ROUTES.has(route)) {
+      return { type: 'text', message: `I can open: ${[...VALID_ROUTES].join(', ')}. Where do you want to go?` };
+    }
+    return { type: 'navigate', route, label: parsed.label || route, summary: parsed.summary || `Opening ${parsed.label || route}` };
+  }
+
+  if (parsed.type === 'help') {
+    const topic = HELP_TOPICS[parsed.topic] ? parsed.topic : 'capabilities';
+    return { type: 'help', topic, summary: parsed.summary || HELP_TOPICS[topic].title, content: HELP_TOPICS[topic] };
+  }
+
+  if (parsed.type === 'recommend') {
+    const rec = await runRecommendation(storeId);
+    return { type: 'recommend', summary: parsed.summary || "Here's what to focus on", recommendations: rec.items };
+  }
+
+  if (parsed.type === 'action') {
+    if (!ALLOWED_ACTIONS.has(parsed.action)) {
+      return { type: 'text', message: `I don't know how to "${parsed.action}". Try a different phrasing.` };
+    }
+    if (CREATE_ACTIONS.has(parsed.action)) {
+      return {
+        type: 'action',
+        action: parsed.action,
+        filter: {},
+        change: parsed.change || {},
+        summary: parsed.summary || `Create a new ${parsed.action === 'create_tag' ? 'tag' : 'product'}`,
+        affected: 1,
+        preview: [],
+      };
+    }
+    const previewItems = await runFilter(parsed.filter || {}, storeId);
+    return {
+      type: 'action',
+      action: parsed.action,
+      filter: parsed.filter || {},
+      change: parsed.change || {},
+      summary: parsed.summary || `${parsed.action} on ${previewItems.length} products`,
+      affected: previewItems.length,
+      preview: previewItems.slice(0, 10),
+    };
+  }
+
+  return { type: 'text', message: parsed.message || 'Done.' };
+}
+
+// POST /api/chat — converse with catalog (non-streaming, fallback)
 router.post('/', auth, async (req, res) => {
   const { message, history } = req.body;
   if (!message || typeof message !== 'string') return res.status(400).json({ error: 'message required' });
@@ -624,17 +716,8 @@ router.post('/', auth, async (req, res) => {
 
   try {
     const context = await buildCatalogContext(req.user.store_id);
-
     const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-    const messages = [
-      { role: 'system', content: SYSTEM_PROMPT + `\n\nCATALOG CONTEXT (use these real numbers in TEXT answers; do not invent):\n${JSON.stringify(context)}\n\nUSER ROLE: ${req.user.role}` },
-    ];
-    if (Array.isArray(history)) {
-      history.slice(-8).forEach(h => {
-        if (h?.role && h?.content) messages.push({ role: h.role, content: String(h.content).slice(0, 1000) });
-      });
-    }
-    messages.push({ role: 'user', content: message.slice(0, 1000) });
+    const messages = buildChatMessages({ context, role: req.user.role, history, message });
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
@@ -646,74 +729,67 @@ router.post('/', auth, async (req, res) => {
 
     const raw = completion.choices?.[0]?.message?.content || '{}';
     const parsed = parseModelJson(raw);
-    if (!parsed) {
-      // Last resort: surface the raw text instead of a dead-end apology
-      const trimmed = String(raw).replace(/```/g, '').trim().slice(0, 500);
-      return res.json({ type: 'text', message: trimmed || "I had trouble understanding. Try rephrasing?" });
-    }
-
-    if (parsed.type === 'filter') {
-      const items = await runFilter(parsed.filter || {}, req.user.store_id);
-      return res.json({ type: 'filter', summary: parsed.summary || 'Results', filter: parsed.filter, items });
-    }
-
-    if (parsed.type === 'analyze') {
-      const insight = await runAnalyze(parsed.query, req.user.store_id);
-      if (!insight) return res.json({ type: 'text', message: parsed.summary || "I'm not sure how to analyze that. Try 'overview', 'category breakdown', 'inventory health', or 'pricing'." });
-      return res.json({ type: 'analyze', query: parsed.query, summary: parsed.summary || 'Insight', insight });
-    }
-
-    if (parsed.type === 'navigate') {
-      const route = String(parsed.route || '').trim();
-      if (!VALID_ROUTES.has(route)) {
-        return res.json({ type: 'text', message: `I can open: ${[...VALID_ROUTES].join(', ')}. Where do you want to go?` });
-      }
-      return res.json({ type: 'navigate', route, label: parsed.label || route, summary: parsed.summary || `Opening ${parsed.label || route}` });
-    }
-
-    if (parsed.type === 'help') {
-      const topic = HELP_TOPICS[parsed.topic] ? parsed.topic : 'capabilities';
-      return res.json({ type: 'help', topic, summary: parsed.summary || HELP_TOPICS[topic].title, content: HELP_TOPICS[topic] });
-    }
-
-    if (parsed.type === 'recommend') {
-      const rec = await runRecommendation(req.user.store_id);
-      return res.json({ type: 'recommend', summary: parsed.summary || 'Here\'s what to focus on', recommendations: rec.items });
-    }
-
-    if (parsed.type === 'action') {
-      if (!ALLOWED_ACTIONS.has(parsed.action)) {
-        return res.json({ type: 'text', message: `I don't know how to "${parsed.action}". Try a different phrasing.` });
-      }
-      // Create actions don't filter — they make new things
-      if (CREATE_ACTIONS.has(parsed.action)) {
-        return res.json({
-          type: 'action',
-          action: parsed.action,
-          filter: {},
-          change: parsed.change || {},
-          summary: parsed.summary || `Create a new ${parsed.action === 'create_tag' ? 'tag' : 'product'}`,
-          affected: 1,
-          preview: [],
-        });
-      }
-      const previewItems = await runFilter(parsed.filter || {}, req.user.store_id);
-      const count = previewItems.length;
-      return res.json({
-        type: 'action',
-        action: parsed.action,
-        filter: parsed.filter || {},
-        change: parsed.change || {},
-        summary: parsed.summary || `${parsed.action} on ${count} products`,
-        affected: count,
-        preview: previewItems.slice(0, 10),
-      });
-    }
-
-    return res.json({ type: 'text', message: parsed.message || 'Done.' });
+    const payload = await buildChatPayload(parsed, raw, req.user.store_id);
+    return res.json(payload);
   } catch (err) {
     console.error('Chat error:', err.message);
     res.status(500).json({ error: 'Chat failed. Please try again.' });
+  }
+});
+
+// POST /api/chat/stream — SSE-streamed version. Forwards each Groq token as a
+// `token` event so the client can show text appearing live, then emits a single
+// `final` event with the fully-routed payload (same shape as POST /).
+router.post('/stream', auth, async (req, res) => {
+  const { message, history } = req.body;
+  if (!message || typeof message !== 'string') return res.status(400).json({ error: 'message required' });
+  if (!process.env.GROQ_API_KEY) return res.status(500).json({ error: 'GROQ_API_KEY not configured' });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  const send = (event, data) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  // If the client drops, abort the upstream Groq request.
+  const abortCtrl = new AbortController();
+  req.on('close', () => { try { abortCtrl.abort(); } catch {} });
+
+  try {
+    const context = await buildCatalogContext(req.user.store_id);
+    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+    const messages = buildChatMessages({ context, role: req.user.role, history, message });
+
+    const stream = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages,
+      response_format: { type: 'json_object' },
+      max_tokens: 700,
+      temperature: 0.3,
+      stream: true,
+    }, { signal: abortCtrl.signal });
+
+    let raw = '';
+    for await (const chunk of stream) {
+      const delta = chunk.choices?.[0]?.delta?.content || '';
+      if (delta) {
+        raw += delta;
+        send('token', { delta });
+      }
+    }
+
+    const parsed = parseModelJson(raw);
+    const payload = await buildChatPayload(parsed, raw, req.user.store_id);
+    send('final', payload);
+    res.end();
+  } catch (err) {
+    // AbortError from client disconnect is silent — nothing to send.
+    if (err?.name === 'AbortError') { try { res.end(); } catch {} return; }
+    console.error('Chat stream error:', err.message);
+    try { send('error', { error: 'Chat failed. Please try again.' }); res.end(); } catch {}
   }
 });
 

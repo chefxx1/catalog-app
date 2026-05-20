@@ -279,6 +279,58 @@ export const chatSuggestions = async () => {
   return handleResponse(res);
 };
 
+// SSE-streamed chat. Calls onToken({delta, raw}) per token, onFinal(payload)
+// when the full response is routed, onError(err) on failure. Returns a cancel fn.
+export const chatStream = (message, history, { onToken, onFinal, onError }) => {
+  const controller = new AbortController();
+  (async () => {
+    try {
+      const res = await apiFetch(`${API_URL}/chat/stream`, {
+        method: 'POST',
+        headers: { ...headers(), Accept: 'text/event-stream' },
+        body: JSON.stringify({ message, history }),
+        signal: controller.signal,
+      });
+      if (!res.ok) { onError?.(new Error(`HTTP ${res.status}`)); return; }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let raw = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split('\n\n');
+        buffer = events.pop() || '';
+        for (const evt of events) {
+          if (!evt.trim()) continue;
+          let eventName = 'message';
+          let dataLine = '';
+          for (const line of evt.split('\n')) {
+            if (line.startsWith('event: ')) eventName = line.slice(7).trim();
+            else if (line.startsWith('data: ')) dataLine += line.slice(6);
+          }
+          if (!dataLine) continue;
+          try {
+            const data = JSON.parse(dataLine);
+            if (eventName === 'token') {
+              raw += data.delta || '';
+              onToken?.({ delta: data.delta || '', raw });
+            } else if (eventName === 'final') {
+              onFinal?.(data);
+            } else if (eventName === 'error') {
+              onError?.(new Error(data.error || 'Stream error'));
+            }
+          } catch {}
+        }
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError') onError?.(err);
+    }
+  })();
+  return () => controller.abort();
+};
+
 // Stream all 3 AI description tones. Calls onToneChunk(tone, text) per chunk,
 // onDone({Professional, Friendly, Luxury}) at end. Returns a cancel function.
 export const streamDescription = async (payload, { onToneChunk, onDone, onError }) => {
