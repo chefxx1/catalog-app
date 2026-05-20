@@ -197,6 +197,8 @@ const GlobalStyles = ({ dark }) => (
     .msg-thinking { padding:8px 12px; display:inline-flex; align-items:center; gap:5px; background: var(--surface); border:1px solid var(--border-light); border-radius:12px; }
     .msg-thinking-label { font-size:11.5px; color:var(--text-dim); margin-left:6px; font-style:italic; }
     .dot-bounce { width:5px; height:5px; border-radius:50%; background:var(--text-dim); animation: dotBounce 1.2s ease-in-out infinite; display:inline-block; }
+    .stream-cursor { display:inline-block; width:2px; height:0.95em; vertical-align:text-bottom; margin-left:2px; background: linear-gradient(180deg, #6366F1, #A855F7); border-radius:1px; animation: streamCursor 1s steps(2) infinite; }
+    @keyframes streamCursor { 0%,49% { opacity:1; } 50%,100% { opacity:0; } }
 
     .msg-card { background: color-mix(in oklab, var(--surface) 70%, transparent); border:1px solid var(--border-light); border-radius:14px; padding:13px; max-width:100%; flex:1; backdrop-filter: blur(8px); }
     .msg-card-summary { font-size:12.5px; color:var(--text); margin-bottom:11px; line-height:1.4; font-weight:500; }
@@ -205,6 +207,9 @@ const GlobalStyles = ({ dark }) => (
     .msg-list::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
     .msg-item { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:9px; background: color-mix(in oklab, var(--bg) 70%, transparent); border:1px solid transparent; transition: all 0.15s; }
     .msg-item:hover { border-color: var(--border-light); background: var(--hover-bg); }
+    .msg-item-clickable { cursor: pointer; }
+    .msg-item-clickable:hover { border-color: color-mix(in oklab, #6366F1 50%, var(--border-light)); background: color-mix(in oklab, #6366F1 6%, var(--hover-bg)); transform: translateX(2px); }
+    .msg-item-clickable:focus-visible { outline: 2px solid #6366F1; outline-offset: 1px; }
     .msg-item img { width:32px; height:32px; border-radius:7px; object-fit:cover; flex-shrink:0; }
     .msg-item-thumb-fallback { width:32px; height:32px; border-radius:7px; background: var(--hover-bg); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
     .msg-empty { font-size:12px; color:var(--text-dim); font-style:italic; padding:14px 0; text-align:center; }
