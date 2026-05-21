@@ -35,15 +35,19 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
     id: c.id, field: c.field_name, values: safeJsonParse(c.source_values, {}), severity: "medium"
   })) : [];
 
-  // Parse real specs from source data or AI-identified attributes
+  // Parse real specs from source data or AI-identified attributes.
+  // Backend stores specs as JSON-encoded; sometimes it arrives double-encoded
+  // when an old row was re-serialized. Unwrap up to 3 layers, then validate.
   const parseSpecs = (raw) => {
-    if (!raw) return null;
+    if (raw == null) return null;
     let parsed = raw;
-    // Unwrap double/triple stringified JSON
-    while (typeof parsed === 'string') {
-      try { parsed = JSON.parse(parsed); } catch { return null; }
+    for (let i = 0; i < 3 && typeof parsed === 'string'; i++) {
+      const next = safeJsonParse(parsed, undefined);
+      if (next === undefined || next === parsed) return null;
+      parsed = next;
     }
-    return (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length > 0) ? parsed : null;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return Object.keys(parsed).length > 0 ? parsed : null;
   };
 
   const realSpecs = (() => {

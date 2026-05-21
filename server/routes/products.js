@@ -776,7 +776,7 @@ router.delete('/variants/:vid', auth, requireRole('Admin', 'Editor'), async (req
 // ── BULK IMPORT ──
 router.post('/bulk-import', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
-    const { rows, mapping } = req.body;
+    const { rows, mapping, mode: rawMode } = req.body;
     if (!rows || !Array.isArray(rows) || rows.length === 0) {
       return res.status(400).json({ error: 'No data to import' });
     }
@@ -784,7 +784,12 @@ router.post('/bulk-import', auth, requireRole('Admin', 'Editor'), async (req, re
       return res.status(400).json({ error: 'Maximum 500 rows per import' });
     }
 
-    const results = { imported: 0, skipped: 0, failed: 0, errors: [] };
+    // Duplicate handling: 'skip' leaves existing catalog entries untouched;
+    // 'update' overwrites their custom_name / custom_description / custom_price.
+    // Default 'skip' so re-uploading a CSV never silently clobbers manual edits.
+    const mode = rawMode === 'update' ? 'update' : 'skip';
+
+    const results = { imported: 0, updated: 0, skipped: 0, failed: 0, errors: [] };
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -836,28 +841,34 @@ router.post('/bulk-import', auth, requireRole('Admin', 'Editor'), async (req, re
         );
 
         if (existingEntry.length > 0) {
-          // Update existing — sanitize like the INSERT branch does
+          if (mode === 'skip') {
+            // Leave existing entry alone — report it so user knows
+            results.skipped++;
+            results.errors.push({ row: i + 1, error: `Skipped: "${name || barcode}" already in catalog` });
+            continue;
+          }
+          // mode === 'update' — overwrite with CSV values (sanitized)
           const safeName = name ? sanitize(name).slice(0, 255) : null;
           const safeDesc = description ? sanitize(description).slice(0, 5000) : null;
           await db.query(
             `UPDATE catalog_entries SET custom_name = COALESCE(?, custom_name), custom_description = COALESCE(?, custom_description), custom_price = COALESCE(?, custom_price), updated_at = NOW() WHERE id = ?`,
             [safeName, safeDesc, price, existingEntry[0].id]
           );
+          results.updated++;
         } else {
           await db.query(
             `INSERT INTO catalog_entries (store_id, user_id, product_id, status, custom_name, custom_description, custom_price) VALUES (?, ?, ?, 'Draft', ?, ?, ?)`,
             [req.user.store_id, req.user.id, productId, sanitize(name).slice(0, 255) || null, description ? sanitize(description).slice(0, 5000) : null, price]
           );
+          results.imported++;
         }
-
-        results.imported++;
       } catch (err) {
         results.failed++;
         results.errors.push({ row: i + 1, error: err.message });
       }
     }
 
-    if (results.imported > 0) logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'imported', entity_type: 'bulk_import', details: { imported: results.imported, skipped: results.skipped, failed: results.failed } });
+    if (results.imported > 0 || results.updated > 0) logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'imported', entity_type: 'bulk_import', details: { imported: results.imported, updated: results.updated, skipped: results.skipped, failed: results.failed } });
     res.json(results);
   } catch (err) {
     console.error('Bulk import error:', err.message);
