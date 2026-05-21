@@ -663,10 +663,10 @@ export const getActivity = async (limit = 30, entityType, entityId) => {
 };
 
 // ── BULK IMPORT ──
-export const bulkImport = async (rows, mapping) => {
+export const bulkImport = async (rows, mapping, mode = 'skip') => {
   const res = await apiFetch(`${API_URL}/products/bulk-import`, {
     method: 'POST', headers: headers(),
-    body: JSON.stringify({ rows, mapping }),
+    body: JSON.stringify({ rows, mapping, mode }),
   });
   return handleResponse(res);
 };

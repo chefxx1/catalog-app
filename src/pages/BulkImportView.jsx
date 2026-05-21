@@ -15,6 +15,7 @@ const BulkImportView = ({ onDone, user }) => {
   const [step, setStep] = useState(0); // 0=upload, 1=map, 2=preview, 3=importing, 4=done
   const [results, setResults] = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  const [dupeMode, setDupeMode] = useState("skip"); // 'skip' | 'update'
   const fileRef = useRef(null);
 
   const catalogFields = [
@@ -110,10 +111,17 @@ const BulkImportView = ({ onDone, user }) => {
       Object.entries(mapping).forEach(([field, colIdx]) => {
         if (colIdx !== "") mappingIdx[field] = parseInt(colIdx);
       });
-      const res = await bulkImport(parsedRows, mappingIdx);
+      const res = await bulkImport(parsedRows, mappingIdx, dupeMode);
       setResults(res);
       setStep(4);
-      if (res.imported > 0) toast.success(`${res.imported} product${res.imported > 1 ? "s" : ""} imported!`);
+      const added = res.imported || 0;
+      const updated = res.updated || 0;
+      if (added > 0 || updated > 0) {
+        const parts = [];
+        if (added > 0) parts.push(`${added} new`);
+        if (updated > 0) parts.push(`${updated} updated`);
+        toast.success(`Import done — ${parts.join(", ")}`);
+      }
     } catch (err) {
       toast.error("Import failed: " + err.message);
       setStep(2);
@@ -211,6 +219,25 @@ const BulkImportView = ({ onDone, user }) => {
           </div>
         ))}
       </div>
+      <div style={{padding:"12px 14px",borderRadius:10,border:"1px solid var(--border)",background:"var(--hover-bg)"}}>
+        <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.06em",marginBottom:8}}>IF A PRODUCT ALREADY EXISTS IN YOUR CATALOG</div>
+        <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
+          <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,flex:1,minWidth:240,padding:"10px 12px",borderRadius:8,border:`1px solid ${dupeMode==="skip"?"var(--primary)":"var(--border-light)"}`,background:dupeMode==="skip"?"color-mix(in oklab, var(--primary) 8%, transparent)":"transparent",transition:"all 0.15s"}}>
+            <input type="radio" name="dupemode" value="skip" checked={dupeMode==="skip"} onChange={()=>setDupeMode("skip")} style={{margin:0}}/>
+            <div>
+              <div style={{fontWeight:600}}>Skip duplicates <span style={{fontSize:10,color:"var(--text-dim)",fontWeight:500}}>(safe)</span></div>
+              <div style={{fontSize:11,color:"var(--text-dim)",marginTop:2}}>Keep existing data — don't touch matching products</div>
+            </div>
+          </label>
+          <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,flex:1,minWidth:240,padding:"10px 12px",borderRadius:8,border:`1px solid ${dupeMode==="update"?"#F59E0B":"var(--border-light)"}`,background:dupeMode==="update"?"rgba(245,158,11,0.08)":"transparent",transition:"all 0.15s"}}>
+            <input type="radio" name="dupemode" value="update" checked={dupeMode==="update"} onChange={()=>setDupeMode("update")} style={{margin:0}}/>
+            <div>
+              <div style={{fontWeight:600}}>Update duplicates <span style={{fontSize:10,color:"#F59E0B",fontWeight:500}}>(overwrites)</span></div>
+              <div style={{fontSize:11,color:"var(--text-dim)",marginTop:2}}>Replace name, description, and price with CSV values</div>
+            </div>
+          </label>
+        </div>
+      </div>
       <div style={{border:"1px solid var(--border)",borderRadius:10,overflow:"hidden",maxHeight:300,overflowY:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
           <thead><tr style={{position:"sticky",top:0,background:"var(--surface)",zIndex:2}}>
@@ -268,9 +295,10 @@ const BulkImportView = ({ onDone, user }) => {
         <h2 style={{fontSize:24,fontWeight:800,marginBottom:6}}>Import Complete!</h2>
         <p style={{color:"var(--text-muted)",fontSize:14}}>Your products have been added to the catalog.</p>
       </div>
-      <div style={{display:"flex",gap:14}}>
+      <div style={{display:"flex",gap:14,flexWrap:"wrap",justifyContent:"center"}}>
         {[
-          {l:"Imported",v:results?.imported||0,color:"#10B981"},
+          {l:"New",v:results?.imported||0,color:"#10B981"},
+          {l:"Updated",v:results?.updated||0,color:"#3B82F6"},
           {l:"Skipped",v:results?.skipped||0,color:"#F59E0B"},
           {l:"Failed",v:results?.failed||0,color:"#EF4444"},
         ].map((s,i)=>(
