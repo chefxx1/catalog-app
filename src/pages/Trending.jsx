@@ -113,6 +113,11 @@ const Trending = ({ user }) => {
             <BrandOrb size="lg" floating />
             <div className="es-title">No trends right now</div>
             <div className="es-subtitle">Try a different country or category — Google Shopping doesn't have data for every region.</div>
+            {(country !== "US" || category !== (categories[0] || "Electronics")) && (
+              <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => { setCountry("US"); setCategory(categories[0] || "Electronics"); }}>
+                <Icon name="refresh" size={13} /> Reset to defaults
+              </button>
+            )}
           </div>
         </div>
       )}

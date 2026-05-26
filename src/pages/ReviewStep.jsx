@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Icon, CopyButton, ConfidenceScore, safeJsonParse } from "../components/shared";
 import { toast } from "../components/Toast";
 import { resolveConflict, saveForLater, generateAIContent, getBrandVoices as apiGetBrandVoices, searchProductImages, streamDescription } from "../api";
+import CompletenessRing from "../components/CompletenessRing";
 
 // ============================================================
 // REVIEW STEP — AI content review + export
@@ -397,6 +398,43 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
             </div>}
             {Object.keys(resolvedConflicts).length>0&&<div style={{fontSize:12,color:"var(--success-light)",display:"flex",alignItems:"center",gap:4}}><Icon name="check" size={12} color="#10B981"/>{Object.keys(resolvedConflicts).length} conflict(s) resolved</div>}
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {(() => {
+                const hasName = !!(editFields.name ?? p.name)?.toString().trim();
+                const hasBrand = !!(editFields.brand ?? p.brand)?.toString().trim() && (editFields.brand ?? p.brand) !== "Unknown";
+                const hasDesc = !!(editedDesc?.toString().trim() && editedDesc !== "AI description will be generated.");
+                const hasPrice = !!editPrice && parseFloat(editPrice) > 0;
+                const hasImages = (images || []).some(im => im.selected) || (images || []).length > 0;
+                const hasCategory = !!(aiCategory || p.category) && (aiCategory || p.category) !== "Uncategorized";
+                const hasSeo = Array.isArray(seoTags) && seoTags.length >= 3;
+                // Weights mirror the server's calcCompleteness: name 15, description 20, price 15, images 20, category 15, seo 15
+                let pct = 0;
+                if (hasName) pct += 15;
+                if (hasDesc) pct += 20;
+                if (hasPrice) pct += 15;
+                if (hasImages) pct += 20;
+                if (hasCategory) pct += 15;
+                if (hasSeo) pct += 15;
+                const missing = [];
+                if (!hasName) missing.push("Name");
+                if (!hasDesc) missing.push("Description");
+                if (!hasPrice) missing.push("Price");
+                if (!hasImages) missing.push("Image");
+                if (!hasCategory) missing.push("Category");
+                if (!hasSeo) missing.push("SEO tags");
+                return (
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,padding:"8px 12px",background:"var(--card-bg-alt, rgba(255,255,255,0.03))",border:"1px solid var(--border-light)",borderRadius:8}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <CompletenessRing pct={pct} size={42} strokeWidth={4}/>
+                      <div>
+                        <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.05em"}}>COMPLETENESS</div>
+                        <div style={{fontSize:11.5,color:missing.length?"var(--text-muted)":"#10B981",marginTop:2}}>
+                          {missing.length === 0 ? "All set — ready to publish" : `Missing: ${missing.join(", ")}`}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
               <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:2}}>PRODUCT DATA</div>
               {[{l:"Name",v:p.name,c:94,edit:true,key:"name"},{l:"Brand",v:p.brand,c:96,edit:true,key:"brand"},{l:"UPC",v:p.upc,c:100},{l:"Category",v:aiCategory||p.category,c:88}].map((f,i)=><div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",background:f.ai?"rgba(37,99,235,0.06)":"var(--hover-bg)",borderRadius:6,border:f.ai?"1px solid rgba(37,99,235,0.15)":"none"}}>
                 <span style={{fontSize:12,color:f.ai?"#3B82F6":"var(--text-dim)",width:80,flexShrink:0}}>{f.l}{f.ai&&<span className="badge badge-ai" style={{marginLeft:4,fontSize:9}}>AI</span>}</span>

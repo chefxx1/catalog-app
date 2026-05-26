@@ -293,12 +293,20 @@ const AuthPage = ({ onLogin }) => {
 
             {/* Remember me */}
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div onClick={() => setRemember(r => !r)} style={{
-                width: 16, height: 16, borderRadius: 4, cursor: "pointer", flexShrink: 0,
-                background: remember ? "#2563EB" : "transparent",
-                border: `2px solid ${remember ? "#2563EB" : "var(--border)"}`,
-                display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s"
-              }}>{remember && <Icon name="check" size={10} color="white" />}</div>
+              <div
+                className="auth-checkbox"
+                role="checkbox"
+                aria-checked={remember}
+                tabIndex={0}
+                onClick={() => setRemember(r => !r)}
+                onKeyDown={e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); setRemember(r => !r); } }}
+                style={{
+                  width: 16, height: 16, borderRadius: 4, cursor: "pointer", flexShrink: 0,
+                  background: remember ? "#2563EB" : "transparent",
+                  border: `2px solid ${remember ? "#2563EB" : "var(--border)"}`,
+                  display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s"
+                }}
+              >{remember && <Icon name="check" size={10} color="white" />}</div>
               <span style={{ fontSize: 12, color: "var(--text-muted)", cursor: "pointer" }} onClick={() => setRemember(r => !r)}>Remember me for 30 days</span>
             </div>
 
