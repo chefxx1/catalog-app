@@ -26,7 +26,7 @@ const BrandVoices = ({ user }) => {
     apiGetBrandVoices().then(dbVoices => {
       setVoices(dbVoices.map(v => {
         const meta = safeJsonParse(v.metadata, {}) || {};
-        return { id: v.id, name: v.name, tone: v.tone || 'Professional', color: meta.color || '#3B82F6', audience: meta.audience || '', style: meta.style || '', includeKeywords: meta.includeKeywords || [], excludeKeywords: meta.excludeKeywords || [], description: v.description || '', isDefault: !!v.is_default };
+        return { id: v.id, name: v.name, tone: v.tone || 'Professional', color: meta.color || '#3B82F6', audience: meta.audience || '', style: meta.style || '', includeKeywords: meta.includeKeywords || [], excludeKeywords: meta.excludeKeywords || [], description: v.description || '', isDefault: !!v.is_default, ownerId: v.user_id };
       }));
       setVoicesLoading(false);
     }).catch(() => { setVoicesLoading(false); toast.error("Failed to load brand voices"); });
@@ -235,6 +235,8 @@ const BrandVoices = ({ user }) => {
           {voices.map((voice, i) => {
             const c = voice.color;
             const totalKw = (voice.includeKeywords?.length || 0) + (voice.excludeKeywords?.length || 0);
+            const isOwner = voice.ownerId === user.id;
+            const canModify = canEdit && isOwner;
             return (
               <div key={voice.id} className="animate-slideUp"
                 style={{
@@ -242,12 +244,12 @@ const BrandVoices = ({ user }) => {
                   background: "var(--card-bg)",
                   border: "1px solid var(--border-light)",
                   backdropFilter: "blur(10px)",
-                  cursor: canEdit ? "pointer" : "default",
+                  cursor: canModify ? "pointer" : "default",
                   animationDelay: `${i * 0.05}s`,
                   display: "flex", flexDirection: "column",
                   transition: "transform 0.22s cubic-bezier(0.16,1,0.3,1), box-shadow 0.22s, border-color 0.22s",
                 }}
-                onClick={() => canEdit && openEditor(voice)}
+                onClick={() => canModify && openEditor(voice)}
                 onMouseEnter={e => {
                   e.currentTarget.style.transform = "translateY(-3px)";
                   e.currentTarget.style.boxShadow = `0 14px 32px color-mix(in oklab, ${c} 22%, transparent)`;
@@ -323,7 +325,7 @@ const BrandVoices = ({ user }) => {
                   )}
 
                   {/* Actions */}
-                  {canEdit && (
+                  {canModify ? (
                     <div style={{ marginTop: "auto", paddingTop: 8, display: "flex", gap: 6, alignItems: "center", borderTop: "1px solid var(--border-light)" }}>
                       {!voice.isDefault ? (
                         <button className="btn btn-ghost" style={{ fontSize: 11, padding: "4px 10px" }}
@@ -341,6 +343,10 @@ const BrandVoices = ({ user }) => {
                         onClick={e => { e.stopPropagation(); setShowDeleteDialog(voice.id); }}>
                         <Icon name="trash" size={11} color="#EF4444" />
                       </button>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: "auto", paddingTop: 8, fontSize: 11, color: "var(--text-dim)", fontWeight: 500, borderTop: "1px solid var(--border-light)" }}>
+                      Shared by teammate · view-only
                     </div>
                   )}
                 </div>

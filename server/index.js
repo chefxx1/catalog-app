@@ -4,6 +4,12 @@ const cookieParser = require('cookie-parser');
 const helmet = require('helmet');
 require('dotenv').config({ path: __dirname + '/.env' });
 
+// Fail fast on missing critical env so we don't discover this on the first signin attempt.
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET is not set in server/.env — signup/signin will throw on every request.');
+  process.exit(1);
+}
+
 const authRoutes = require('./routes/auth');
 const productRoutes = require('./routes/products');
 const analyticsRoutes = require('./routes/analytics');

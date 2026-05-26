@@ -7,12 +7,17 @@ const { sanitize } = require('../middleware/validate');
 
 const router = express.Router();
 
-// List user's voices
+// List all voices in this store. Each row carries user_id so the frontend can
+// flag ownership (only the owner can edit/delete; anyone in the store can use).
 router.get('/', auth, async (req, res) => {
   try {
     const [voices] = await db.query(
-      'SELECT * FROM brand_voices WHERE user_id = ? ORDER BY is_default DESC, created_at DESC',
-      [req.user.id]
+      `SELECT bv.*, u.name AS owner_name
+       FROM brand_voices bv
+       LEFT JOIN users u ON u.id = bv.user_id
+       WHERE bv.store_id = ?
+       ORDER BY bv.is_default DESC, bv.created_at DESC`,
+      [req.user.store_id]
     );
     res.json({ voices });
   } catch (err) {
@@ -30,8 +35,8 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
     if (name.length > 100) return res.status(400).json({ error: 'Name must be under 100 characters' });
     if (description && description.length > 2000) return res.status(400).json({ error: 'Description must be under 2000 characters' });
 
-    // If setting as default, unset only THIS user's other defaults — voices
-    // are user-scoped, so we shouldn't nuke other store members' defaults.
+    // Defaults are per-user (each teammate can have their own go-to voice) even
+    // though the catalog of voices is store-shared.
     if (is_default) {
       await db.query('UPDATE brand_voices SET is_default = FALSE WHERE user_id = ?', [req.user.id]);
     }
