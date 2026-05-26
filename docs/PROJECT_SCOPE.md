@@ -16,7 +16,7 @@ CatalogAI provides a single multi-tenant platform where merchants can:
 - Monitor prices, track team activity, and manage multi-user stores with invitations
 
 ## Tech Stack
-- **Frontend:** React 18, Vite, split-file architecture (pages + components), three.js for shader background
+- **Frontend:** React 19, Vite, split-file architecture (pages + components), three.js for shader background
 - **Backend:** Node.js, Express
 - **Database:** MySQL via XAMPP (18 tables)
 - **Authentication:** JWT in httpOnly cookies, bcrypt, Google OAuth

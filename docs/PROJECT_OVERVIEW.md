@@ -43,7 +43,7 @@ Beyond the core workflow, the platform includes a dashboard with analytics, team
 ## 4. Technology Stack
 
 ### Frontend
-- **React 18** — component-based UI library. Chosen for its mature ecosystem, fast iteration, and component reusability.
+- **React 19** — component-based UI library. Chosen for its mature ecosystem, fast iteration, and component reusability.
 - **Vite** — build tool and dev server. Chosen over Create React App for its significantly faster hot-reload and smaller bundle sizes.
 - **three.js** — used for the WebGL aurora shader background on the authentication page.
 - **Inline styles + CSS custom properties** — design system is built without Tailwind or CSS-in-JS libraries. Custom properties (`--primary`, `--bg`, `--text`) make the dark/light theme switch instant.
@@ -78,7 +78,7 @@ Beyond the core workflow, the platform includes a dashboard with analytics, team
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  React Frontend │◄──►│ Express Backend │◄──►│   MySQL (18    │
+│  React Frontend │◄──►│ Express Backend │◄──►│   MySQL (21    │
 │  (Vite, 5173)   │    │  (Node, 3000)   │    │    tables)     │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                               │
@@ -130,7 +130,7 @@ The frontend keeps the current step and product data in App.jsx state. Each step
 
 ## 6. Database Design
 
-18 normalized tables with foreign key relationships and cascade deletes:
+21 normalized tables with foreign key relationships and cascade deletes:
 
 | Table | Purpose |
 |---|---|
@@ -153,8 +153,11 @@ The frontend keeps the current step and product data in App.jsx state. Each step
 | `saved_views` | Saved filter combinations per store |
 | `activity_log` | Audit trail of user actions across the app |
 | `price_history` | Historical prices for change alerts |
+| `product_variants` | Per-entry variants (size, color, SKU, stock) |
+| `trending_cache` | 24h cache for Serper.dev trending product lookups |
+| `product_translations` | Cached AI translations per product per language |
 
-12 performance indexes were added to common query columns (store_id, product_id, barcode, etc.) to keep queries fast as the data grows.
+18+ performance indexes were added to common query columns (store_id, product_id, barcode, cache_key, etc.) to keep queries fast as the data grows.
 
 ---
 
@@ -185,7 +188,7 @@ The frontend keeps the current step and product data in App.jsx state. Each step
 - Custom one-off prompts for specific generation needs
 - 8 language support: English, Arabic, French, Spanish, German, Chinese, Turkish, Portuguese — regenerates all content in the selected language, also translates specs
 - Data quality suggestions: AI analyzes incomplete listings and gives actionable improvement tips
-- Automatic retry with model fallback on 503 overload errors (tries `gemini-2.5-flash`, `gemini-flash-latest`, `gemini-2.0-flash` in order)
+- Automatic retry with model fallback on 503 overload errors (tries `gemini-2.5-flash`, then `gemini-2.0-flash`)
 
 ### Image Library
 - Full-screen modal picker with Pinterest-style grid
@@ -253,7 +256,7 @@ The frontend keeps the current step and product data in App.jsx state. Each step
 ### Challenge 1: App.jsx Became a Monolith
 **Problem:** The entire frontend was written in a single `App.jsx` file that grew to ~3,700 lines. Finding code, making changes, and avoiding merge conflicts became painful as the team grew.
 
-**Solution:** We split the file into 10 separate page components (`src/pages/`) and 5 shared components (`src/components/`). `App.jsx` became a 255-line shell containing only the sidebar, header, routing state, and keyboard shortcut handlers. We initially used `React.lazy()` + `Suspense` for code splitting, but the per-page loading spinner felt jarring on navigation, so we switched to direct imports — instant navigation with slightly larger initial bundle, which is the right tradeoff for this app.
+**Solution:** We split the file into 11 separate page components (`src/pages/`) and 14 shared components (`src/components/`). `App.jsx` became a ~340-line shell containing only the sidebar, header, routing state, command palette, and keyboard shortcut handlers. We initially used `React.lazy()` + `Suspense` for code splitting, but the per-page loading spinner felt jarring on navigation, so we switched to direct imports — instant navigation with slightly larger initial bundle, which is the right tradeoff for this app.
 
 ### Challenge 2: Gemini API Overload (503 Errors)
 **Problem:** During testing, the `gemini-2.5-flash` model intermittently returned 503 "high demand" errors, breaking AI generation at random.
@@ -292,10 +295,12 @@ The most likely root cause: the frontend sent the price as `"$29.99"` but the da
 2. **Clamping** the product name to 255 chars to fit `VARCHAR(255)`
 3. **Surfacing** errors instead of swallowing them — now the user sees the actual failure and can retry
 
-### Challenge 6: Variants Were Unnecessary Complexity
-**Problem:** We built a full variant system (colors, sizes, flavors, materials, storage, pack quantities) in the Review step. The idea was to let users define things like "Nike Shoes in Red, Blue, Green at sizes 8, 9, 10". After building it, we realized this info really belongs in the product specifications — duplicating it was clutter.
+### Challenge 6: Variants — Removed, Then Brought Back
+**Problem:** We built a full variant system (colors, sizes, flavors, materials, storage, pack quantities) in the Review step. After building it, we realized this info really belonged in product specifications and the Review-step location was clutter, so we ripped the entire tab out.
 
-**Solution:** We removed the entire Variants tab and all related state, handlers, and UI. The Review step is now cleaner and focuses on what matters: data accuracy, AI content, and image selection.
+**Solution then:** Removed the Variants tab and all related state, handlers, and UI from Review. The step became cleaner and focused on data accuracy, AI content, and image selection.
+
+**What changed later:** Variants returned in Phase 21 — but as a per-catalog-entry feature rather than a Review tab. They now live on `catalog_entries` via a dedicated `product_variants` table and are managed through a `VariantManager` modal on the Dashboard. This keeps Review focused on the source product, while still letting merchants define store-specific SKUs/sizes/colors per entry. The right home for the feature, not the wrong feature.
 
 ### Challenge 7: Table Row Hover Accent Broke the Layout
 **Problem:** We tried to add a gradient left accent strip to catalog rows using `::before` pseudo-element with `position: absolute` on `<tr>`. Tables have unusual positioning rules and the accent appeared in the wrong place, creating visual glitches.
@@ -388,8 +393,10 @@ The project was built in **20 progressive phases**, each adding a coherent set o
 18. **AI Enhancements** — multi-language generation
 19. **Integrations** — Shopify sync, Google Merchant Center, price monitoring
 20. **Security Hardening (round 2)** — Helmet security headers, image upload MIME/size validation, dependency audit (7 CVEs resolved)
+21. **Camera, PDF, Inventory, Variants, Trending** — live html5-qrcode barcode scanner, jsPDF catalog/product export, stock + low-stock thresholds, per-entry variant manager, Serper-backed trending products page
+22. **AI Catalog Chat + Translations + Polish** — Groq Llama 3.3 chat router with 7 intent types (filter/action/text/analyze/navigate/help/recommend) and SSE streaming, 10-language `TranslateModal` with cached translations, completeness ring, AI quality suggestions, multi-turn context handling, and a wave of security/audit fixes (JWT pinning, SSRF guards, language-aware AI cache, store-scoped brand voices)
 
-After Phase 19, we did a **visual rebrand** (new logo, shader background, glassmorphism, gradient design system) and **architecture cleanup** (split App.jsx into separate files) to bring the app to production quality. Phase 20 then added a second round of security hardening based on a self-audit.
+After Phase 19, we did a **visual rebrand** (new logo, shader background, glassmorphism, gradient design system) and **architecture cleanup** (split App.jsx into separate files) to bring the app to production quality. Phase 20 added a second round of security hardening based on a self-audit, then Phases 21–22 layered on the camera/PDF/inventory feature set and the conversational AI assistant.
 
 ### Team Collaboration
 - 4 team members (1 lead + 3 collaborators) working on a private GitHub repo
@@ -460,14 +467,14 @@ Features that are planned or considered but not yet built:
 
 ## 14. Key Statistics
 
-- **~5,500 lines of frontend code** across 15 files (pages + components)
-- **~3,000 lines of backend code** across 10 route files + middleware
-- **18 database tables** with 12 performance indexes
-- **50+ API endpoints**
-- **30+ custom SVG icons** in a single Icon component
-- **8 languages** supported for AI content generation
+- **~9,300 lines of frontend code** across 27 files (1 root + 11 pages + 14 components + utils + constants)
+- **~5,300 lines of backend code** across 9 route files + 4 middleware + helpers
+- **21 database tables** with 18+ performance indexes
+- **70+ API endpoints**
+- **40+ custom SVG icons** in a single Icon component
+- **10 languages** supported for AI content generation
 - **5 export platforms** (Shopify, WooCommerce, Magento, BigCommerce, Google Shopping)
-- **20 development phases** over ~6 weeks
+- **22+ development phases** over ~8 weeks, including Phase 21 (camera scanner, PDF export, inventory, variants, trending) and ongoing AI chat / translations / security polish
 - **Free-tier compatible** — all APIs used have generous free tiers (Gemini 1500 req/day, Serper 2500/month, Open Food Facts unlimited)
 
 ---
