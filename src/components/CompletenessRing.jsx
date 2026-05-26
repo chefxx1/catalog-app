@@ -1,11 +1,9 @@
 import React from "react";
-
-const colorFor = (pct) =>
-  pct >= 100 ? "#10B981" : pct >= 70 ? "#3B82F6" : pct >= 40 ? "#F59E0B" : "#EF4444";
+import { completenessColor } from "../constants/catalog";
 
 const CompletenessRing = ({ pct = 0, size = 30, strokeWidth = 3, showLabel = true, label, onClick, title }) => {
   const safe = Math.max(0, Math.min(100, Math.round(pct)));
-  const color = colorFor(safe);
+  const color = completenessColor(safe);
   const r = (size - strokeWidth) / 2;
   const c = 2 * Math.PI * r;
   const offset = c - (safe / 100) * c;
