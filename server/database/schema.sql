@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS products (
   ai_description_friendly TEXT NULL,
   ai_description_luxury TEXT NULL,
   ai_category_suggestion VARCHAR(255) NULL,
+  ai_description_language VARCHAR(32) NULL DEFAULT 'English',
   ai_attributes JSON NULL,
   seo_tags JSON NULL,
   search_count INT DEFAULT 1,
@@ -297,6 +298,23 @@ CREATE TABLE IF NOT EXISTS price_history (
   FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE,
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
   INDEX idx_price_history (store_id, product_id, recorded_at DESC)
+);
+
+-- Product translations (cached per product per language)
+CREATE TABLE IF NOT EXISTS product_translations (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  product_id INT NOT NULL,
+  language VARCHAR(40) NOT NULL,
+  name TEXT NULL,
+  description TEXT NULL,
+  meta_title VARCHAR(255) NULL,
+  meta_description TEXT NULL,
+  seo_tags JSON NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_product_lang (product_id, language),
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  INDEX idx_pt_product (product_id)
 );
 
 -- ============================================================
