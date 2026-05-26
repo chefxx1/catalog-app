@@ -449,28 +449,32 @@ async function runRecommendation(storeId) {
 
 // Build a rich context block the LLM sees on every turn. Without this the
 // model has 4 numbers and guesses everything else.
+// Stats + needs_attention share a scan of catalog_entries so they fold into one
+// query; tags/categories/voices touch different tables and run in parallel.
 async function buildCatalogContext(storeId) {
-  const [[stats]] = await db.query(
+  const statsAndNeedsQ = db.query(
     `SELECT COUNT(*) total,
-            SUM(CASE WHEN status='Draft' THEN 1 ELSE 0 END) drafts,
-            SUM(CASE WHEN status='Published' THEN 1 ELSE 0 END) published,
-            SUM(CASE WHEN status='Review' THEN 1 ELSE 0 END) review,
-            SUM(CASE WHEN stock_quantity = 0 THEN 1 ELSE 0 END) out_of_stock,
-            SUM(CASE WHEN stock_quantity IS NOT NULL AND low_stock_threshold IS NOT NULL AND stock_quantity > 0 AND stock_quantity <= low_stock_threshold THEN 1 ELSE 0 END) low_stock
-     FROM catalog_entries WHERE store_id = ?`, [storeId]);
-  const [tagRows] = await db.query('SELECT name FROM tags WHERE store_id = ? ORDER BY name LIMIT 30', [storeId]);
-  const [catRows] = await db.query(
+            SUM(CASE WHEN ce.status='Draft' THEN 1 ELSE 0 END) drafts,
+            SUM(CASE WHEN ce.status='Published' THEN 1 ELSE 0 END) published,
+            SUM(CASE WHEN ce.status='Review' THEN 1 ELSE 0 END) review,
+            SUM(CASE WHEN ce.stock_quantity = 0 THEN 1 ELSE 0 END) out_of_stock,
+            SUM(CASE WHEN ce.stock_quantity IS NOT NULL AND ce.low_stock_threshold IS NOT NULL AND ce.stock_quantity > 0 AND ce.stock_quantity <= ce.low_stock_threshold THEN 1 ELSE 0 END) low_stock,
+            SUM(CASE WHEN (ce.custom_price IS NULL OR ce.custom_price = 0)
+                        OR NOT EXISTS (SELECT 1 FROM product_images pi WHERE pi.product_id = p.id)
+                        OR (p.description IS NULL AND p.ai_description_professional IS NULL)
+                      THEN 1 ELSE 0 END) needs_attention
+     FROM catalog_entries ce
+     JOIN products p ON ce.product_id = p.id
+     WHERE ce.store_id = ?`, [storeId]);
+  const tagsQ = db.query('SELECT name FROM tags WHERE store_id = ? ORDER BY name LIMIT 30', [storeId]);
+  const catsQ = db.query(
     `SELECT COALESCE(p.ai_category_suggestion, 'Uncategorized') category, COUNT(*) n
      FROM catalog_entries ce JOIN products p ON ce.product_id = p.id
      WHERE ce.store_id = ? GROUP BY category ORDER BY n DESC LIMIT 5`, [storeId]);
-  const [voiceRows] = await db.query('SELECT name FROM brand_voices WHERE store_id = ? ORDER BY is_default DESC, name LIMIT 10', [storeId]);
-  const [[needs]] = await db.query(
-    `SELECT COUNT(*) n FROM catalog_entries ce JOIN products p ON ce.product_id = p.id
-     WHERE ce.store_id = ? AND (
-       (ce.custom_price IS NULL OR ce.custom_price = 0)
-       OR NOT EXISTS (SELECT 1 FROM product_images pi WHERE pi.product_id = p.id)
-       OR (p.description IS NULL AND p.ai_description_professional IS NULL)
-     )`, [storeId]);
+  const voicesQ = db.query('SELECT name FROM brand_voices WHERE store_id = ? ORDER BY is_default DESC, name LIMIT 10', [storeId]);
+
+  const [[[stats]], [tagRows], [catRows], [voiceRows]] = await Promise.all([statsAndNeedsQ, tagsQ, catsQ, voicesQ]);
+
   return {
     stats: {
       total: Number(stats.total) || 0,
@@ -483,7 +487,7 @@ async function buildCatalogContext(storeId) {
     tags: tagRows.map(t => t.name),
     top_categories: catRows.map(r => ({ category: r.category, count: Number(r.n) })),
     brand_voices: voiceRows.map(v => v.name),
-    needs_attention: Number(needs.n) || 0,
+    needs_attention: Number(stats.needs_attention) || 0,
   };
 }
 

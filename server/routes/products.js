@@ -582,10 +582,7 @@ router.get('/catalog', auth, async (req, res) => {
   try {
     const [entries] = await db.query(
       `SELECT ce.*, p.barcode, p.name, p.brand, p.description,
-              p.ai_description_professional, p.ai_category_suggestion, p.seo_tags,
-              (SELECT COUNT(*) FROM product_images pi WHERE pi.product_id = p.id) AS image_count,
-              (SELECT COUNT(*) FROM product_variants pv WHERE pv.catalog_entry_id = ce.id) AS variant_count,
-              (SELECT COALESCE(SUM(pv.stock_quantity),0) FROM product_variants pv WHERE pv.catalog_entry_id = ce.id) AS variant_stock
+              p.ai_description_professional, p.ai_category_suggestion, p.seo_tags
        FROM catalog_entries ce
        JOIN products p ON ce.product_id = p.id
        WHERE ce.store_id = ?
@@ -593,27 +590,59 @@ router.get('/catalog', auth, async (req, res) => {
       [req.user.store_id]
     );
 
-    // Bulk-load tag assignments per entry so the dashboard can render tag chips
-    // and the tag-filter pill without N+1 round trips.
+    // Bulk-load per-row aggregates so we don't run 3 correlated subqueries per
+    // entry. Tags, image counts, and variant stats are each one IN-query.
     const entryIds = entries.map(e => e.id);
+    const productIds = [...new Set(entries.map(e => e.product_id))];
     const tagMap = {};
+    const imgCountMap = {};
+    const variantMap = {};
+
     if (entryIds.length > 0) {
-      const [tagRows] = await db.query(
-        `SELECT cet.catalog_entry_id, cet.tag_id
-         FROM catalog_entry_tags cet
-         JOIN tags t ON t.id = cet.tag_id
-         WHERE t.store_id = ? AND cet.catalog_entry_id IN (?)`,
-        [req.user.store_id, entryIds]
-      );
-      for (const r of tagRows) {
+      const [tagRows, imgRows, variantRows] = await Promise.all([
+        db.query(
+          `SELECT cet.catalog_entry_id, cet.tag_id
+           FROM catalog_entry_tags cet
+           JOIN tags t ON t.id = cet.tag_id
+           WHERE t.store_id = ? AND cet.catalog_entry_id IN (?)`,
+          [req.user.store_id, entryIds]
+        ),
+        db.query(
+          `SELECT product_id, COUNT(*) AS cnt
+           FROM product_images
+           WHERE product_id IN (?)
+           GROUP BY product_id`,
+          [productIds]
+        ),
+        db.query(
+          `SELECT catalog_entry_id, COUNT(*) AS cnt, COALESCE(SUM(stock_quantity), 0) AS total_stock
+           FROM product_variants
+           WHERE catalog_entry_id IN (?)
+           GROUP BY catalog_entry_id`,
+          [entryIds]
+        ),
+      ]);
+
+      for (const r of tagRows[0]) {
         if (!tagMap[r.catalog_entry_id]) tagMap[r.catalog_entry_id] = [];
         tagMap[r.catalog_entry_id].push(r.tag_id);
+      }
+      for (const r of imgRows[0]) imgCountMap[r.product_id] = Number(r.cnt);
+      for (const r of variantRows[0]) {
+        variantMap[r.catalog_entry_id] = { count: Number(r.cnt), stock: Number(r.total_stock) };
       }
     }
 
     const enriched = entries.map(e => {
-      const { score, issues } = calcCompleteness(e);
-      return { ...e, completeness: score, completeness_issues: issues, tag_ids: tagMap[e.id] || [] };
+      const vm = variantMap[e.id];
+      const withCounts = {
+        ...e,
+        image_count: imgCountMap[e.product_id] || 0,
+        variant_count: vm ? vm.count : 0,
+        variant_stock: vm ? vm.stock : 0,
+      };
+      const { score, issues } = calcCompleteness(withCounts);
+      return { ...withCounts, completeness: score, completeness_issues: issues, tag_ids: tagMap[e.id] || [] };
     });
     res.json({ entries: enriched });
   } catch (err) {

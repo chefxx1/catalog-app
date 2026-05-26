@@ -84,44 +84,41 @@ router.post('/searches/cleanup', auth, requireRole('Admin'), async (req, res) =>
 // Catalog completeness overview (for dashboard donut)
 router.get('/completeness', auth, async (req, res) => {
   try {
-    const [entries] = await db.query(
-      `SELECT ce.custom_name, ce.custom_description, ce.custom_price, ce.selected_images,
-              p.name, p.description, p.ai_description_professional, p.ai_category_suggestion, p.seo_tags,
-              (SELECT COUNT(*) FROM product_images pi WHERE pi.product_id = p.id) AS image_count
-       FROM catalog_entries ce
-       JOIN products p ON ce.product_id = p.id
-       WHERE ce.store_id = ?`,
+    // Score each entry 0-100 in SQL and bucket in a single aggregate query so
+    // we never pull every row into Node just to count buckets.
+    const [[r]] = await db.query(
+      `SELECT
+         COUNT(*) AS total,
+         COALESCE(ROUND(AVG(score)), 0) AS average,
+         SUM(CASE WHEN score = 100 THEN 1 ELSE 0 END) AS complete,
+         SUM(CASE WHEN score >= 70 AND score < 100 THEN 1 ELSE 0 END) AS good,
+         SUM(CASE WHEN score >= 40 AND score < 70 THEN 1 ELSE 0 END) AS needsWork,
+         SUM(CASE WHEN score < 40 THEN 1 ELSE 0 END) AS poor
+       FROM (
+         SELECT
+           (CASE WHEN (ce.custom_name IS NOT NULL AND ce.custom_name <> '') OR (p.name IS NOT NULL AND p.name <> '') THEN 15 ELSE 0 END) +
+           (CASE WHEN (ce.custom_description IS NOT NULL AND ce.custom_description <> '')
+                      OR (p.description IS NOT NULL AND p.description <> '')
+                      OR (p.ai_description_professional IS NOT NULL AND p.ai_description_professional <> '') THEN 20 ELSE 0 END) +
+           (CASE WHEN ce.custom_price IS NOT NULL AND ce.custom_price > 0 THEN 15 ELSE 0 END) +
+           (CASE WHEN EXISTS (SELECT 1 FROM product_images pi WHERE pi.product_id = p.id) THEN 20 ELSE 0 END) +
+           (CASE WHEN p.ai_category_suggestion IS NOT NULL AND p.ai_category_suggestion <> '' THEN 15 ELSE 0 END) +
+           (CASE WHEN p.seo_tags IS NOT NULL AND JSON_VALID(p.seo_tags) AND JSON_LENGTH(p.seo_tags) > 0 THEN 15 ELSE 0 END)
+           AS score
+         FROM catalog_entries ce
+         JOIN products p ON ce.product_id = p.id
+         WHERE ce.store_id = ?
+       ) AS scored`,
       [req.user.store_id]
     );
 
-    let complete = 0, good = 0, needsWork = 0, poor = 0;
-    let totalScore = 0;
-
-    for (const e of entries) {
-      let score = 0;
-      if (e.custom_name || e.name) score += 15;
-      if (e.custom_description || e.description || e.ai_description_professional) score += 20;
-      if (e.custom_price) score += 15;
-      const imgs = e.selected_images ? (typeof e.selected_images === 'string' ? JSON.parse(e.selected_images || '[]') : e.selected_images) : [];
-      if (e.image_count > 0 || imgs.length > 0) score += 20;
-      if (e.ai_category_suggestion) score += 15;
-      const tags = e.seo_tags ? (typeof e.seo_tags === 'string' ? JSON.parse(e.seo_tags || '[]') : e.seo_tags) : [];
-      if (tags.length > 0) score += 15;
-
-      totalScore += score;
-      if (score === 100) complete++;
-      else if (score >= 70) good++;
-      else if (score >= 40) needsWork++;
-      else poor++;
-    }
-
     res.json({
-      total: entries.length,
-      average: entries.length > 0 ? Math.round(totalScore / entries.length) : 0,
-      complete,
-      good,
-      needsWork,
-      poor,
+      total: Number(r.total) || 0,
+      average: Number(r.average) || 0,
+      complete: Number(r.complete) || 0,
+      good: Number(r.good) || 0,
+      needsWork: Number(r.needsWork) || 0,
+      poor: Number(r.poor) || 0,
     });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
