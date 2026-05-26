@@ -485,24 +485,6 @@ export const generateAIContent = async (productData) => {
   return handleResponse(res);
 };
 
-export const recolorImage = async (imageUrl, color, productName) => {
-  const res = await apiFetch(`${API_URL}/ai/recolor`, {
-    method: 'POST',
-    headers: headers(),
-    body: JSON.stringify({ imageUrl, color, productName }),
-  });
-  return handleResponse(res);
-};
-
-export const aiStudio = async (imageUrl, mode, productName) => {
-  const res = await apiFetch(`${API_URL}/ai/studio`, {
-    method: 'POST',
-    headers: headers(),
-    body: JSON.stringify({ imageUrl, mode, productName }),
-  });
-  return handleResponse(res);
-};
-
 export const identifyProduct = async (imageBase64) => {
   const res = await apiFetch(`${API_URL}/ai/identify`, {
     method: 'POST',
@@ -667,18 +649,6 @@ export const translateDescription = async (name, brand, description, language) =
   const res = await apiFetch(`${API_URL}/ai/translate`, { method: 'POST', headers: headers(), body: JSON.stringify({ name, brand, description, language }) });
   return handleResponse(res);
 };
-export const optimizeTitle = async (name, brand, category, description) => {
-  const res = await apiFetch(`${API_URL}/ai/optimize-title`, { method: 'POST', headers: headers(), body: JSON.stringify({ name, brand, category, description }) });
-  return handleResponse(res);
-};
-export const extractAttributes = async (image) => {
-  const res = await apiFetch(`${API_URL}/ai/extract-attributes`, { method: 'POST', headers: headers(), body: JSON.stringify({ image }) });
-  return handleResponse(res);
-};
-export const generateAltText = async (images, productName, brand) => {
-  const res = await apiFetch(`${API_URL}/ai/alt-text`, { method: 'POST', headers: headers(), body: JSON.stringify({ images, productName, brand }) });
-  return handleResponse(res);
-};
 
 // ── ACTIVITY ──
 export const getActivity = async (limit = 30, entityType, entityId) => {
@@ -713,12 +683,6 @@ export const getPriceHistory = async (productId) => {
 };
 export const getPriceAlerts = async () => {
   const res = await apiFetch(`${API_URL}/export/price-alerts`, { headers: headers() });
-  return handleResponse(res);
-};
-
-// ── HEALTH ──
-export const healthCheck = async () => {
-  const res = await apiFetch(`${API_URL}/health`);
   return handleResponse(res);
 };
 

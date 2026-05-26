@@ -72,8 +72,6 @@ export const ConfidenceScore = ({ score }) => { const c = score>=85?"#10B981":sc
 
 export const Skeleton = ({ w, h, r, style }) => <div className="skeleton" style={{width:w||"100%",height:h||14,borderRadius:r||4,...style}}/>;
 
-export const SkeletonCard = () => <div className="card" style={{padding:20}}><Skeleton h={20} w="50%" style={{marginBottom:12}}/><Skeleton h={28} w="40%" style={{marginBottom:8}}/><Skeleton h={12} w="70%"/></div>;
-
 export const CopyButton = ({ text, size=12 }) => { const [copied,setCopied]=useState(false); return <button className="copy-btn" title="Copy" onClick={(e)=>{e.stopPropagation();navigator.clipboard.writeText(text);setCopied(true);setTimeout(()=>setCopied(false),1500);}} style={{color:copied?"#10B981":"var(--text-dim)"}}><Icon name={copied?"check":"copy"} size={size}/></button>; };
 
 // ============================================================
