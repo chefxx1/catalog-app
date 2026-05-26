@@ -104,8 +104,6 @@ const GlobalStyles = ({ dark }) => (
     .badge-warning { background:rgba(245,158,11,0.15); color:var(--warning-light); }
     .badge-primary { background:rgba(37,99,235,0.15); color:#60A5FA; }
     .badge-neutral { background:rgba(100,116,139,0.2); color:var(--text-muted); }
-    .why-draft-pill { transition: all 0.15s; }
-    .why-draft-pill:hover { border-color: rgba(124,58,237,0.45) !important; background: rgba(124,58,237,0.16) !important; color: var(--text) !important; transform: translateY(-1px); }
     .translate-lang-tile { display:flex; align-items:center; gap:9px; padding:9px 12px; border-radius:9px; border:1px solid var(--border-light); background: var(--card-bg-alt, rgba(255,255,255,0.03)); cursor:pointer; transition: all 0.15s; color: var(--text); font-family:'Sora',sans-serif; }
     .translate-lang-tile:hover { border-color: rgba(124,58,237,0.45); background: rgba(124,58,237,0.08); transform: translateY(-1px); }
     .translate-lang-tile[data-active="true"] { border-color: rgba(124,58,237,0.7); background: rgba(124,58,237,0.14); box-shadow: 0 0 0 2px rgba(124,58,237,0.18); }
