@@ -3,6 +3,7 @@ import { Icon, CopyButton, ConfidenceScore, safeJsonParse } from "../components/
 import { toast } from "../components/Toast";
 import { resolveConflict, saveForLater, generateAIContent, getBrandVoices as apiGetBrandVoices, searchProductImages, streamDescription } from "../api";
 import CompletenessRing from "../components/CompletenessRing";
+import { sourceColor } from "../constants/catalog";
 
 // ============================================================
 // REVIEW STEP — AI content review + export
@@ -16,10 +17,9 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
   const dbConflicts = pd.conflicts || [];
 
   // Map DB data to display format
-  const sourceColors = {"Amazon":"#FF9900","Open Food Facts":"#10B981","Walmart":"#0071CE","IKEA":"#0058A3","Target":"#CC0000","Best Buy":"#0046BE","Wayfair":"#7B189F","eBay":"#E53238","Etsy":"#F1641E","Home Depot":"#F96302"};
   const displaySources = dbSources.length > 0 ? dbSources.map(s => ({
     name: s.source_name, icon: s.source_name === "Open Food Facts" ? "database" : "store",
-    trustScore: s.trust_score || 70, color: sourceColors[s.source_name] || "#3B82F6",
+    trustScore: s.trust_score || 70, color: sourceColor(s.source_name),
     data: {
       ...(s.source_url ? { url: s.source_url } : {}),
       ...(s.price ? { price: `$${s.price}` } : {}),
@@ -128,6 +128,18 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
   const [pasteUrlValue, setPasteUrlValue] = useState("");
   const [libraryPreview, setLibraryPreview] = useState(null);
   const libraryCache = useRef({}); // { query: results[] }
+  const libraryCacheKeys = useRef([]);
+  const LIBRARY_CACHE_MAX = 40;
+  const setLibraryCache = (key, value) => {
+    if (!libraryCache.current[key]) {
+      libraryCacheKeys.current.push(key);
+      while (libraryCacheKeys.current.length > LIBRARY_CACHE_MAX) {
+        const oldest = libraryCacheKeys.current.shift();
+        delete libraryCache.current[oldest];
+      }
+    }
+    libraryCache.current[key] = value;
+  };
   const filterDebounce = useRef(null);
 
   // Lightbox keyboard controls
@@ -157,7 +169,20 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
 
   // Per-voice/language cache so switching tabs doesn't re-burn Gemini quota.
   // Keyed by `${voiceId}:${language}:${customPrompt}`. Force fresh via forceFresh=true.
+  // Capped at 30 entries (FIFO) so a long session doesn't grow forever.
   const descCacheRef = useRef({});
+  const descCacheKeysRef = useRef([]);
+  const DESC_CACHE_MAX = 30;
+  const setDescCache = (key, value) => {
+    if (!descCacheRef.current[key]) {
+      descCacheKeysRef.current.push(key);
+      while (descCacheKeysRef.current.length > DESC_CACHE_MAX) {
+        const oldest = descCacheKeysRef.current.shift();
+        delete descCacheRef.current[oldest];
+      }
+    }
+    descCacheRef.current[key] = value;
+  };
 
   const handleRegenerate=async(voice, lang, forceFresh = false)=>{
     const bv = voice || selectedVoice;
@@ -239,7 +264,7 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
         setTranslatedName(result.translatedName || null);
       }
       // Cache the result so switching back to this voice/language hits memory, not Gemini
-      descCacheRef.current[cacheKey] = {
+      setDescCache(cacheKey, {
         aiDescs: newDescs,
         seoTags: result?.seoTags?.length ? result.seoTags : undefined,
         metaTitle: result?.metaTitle,
@@ -247,7 +272,7 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
         aiCategory: result?.category,
         translatedSpecs: result?.translatedSpecs || null,
         translatedName: result?.translatedName || null,
-      };
+      });
     } catch (err) {
       setAiError(err.message);
       toast.error("AI generation failed: " + (err.message || "Unknown error"));
@@ -304,7 +329,7 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
           const bPx = (b.width || 0) * (b.height || 0);
           return bPx - aPx;
         });
-      libraryCache.current[key] = ranked;
+      setLibraryCache(key, ranked);
       setLibraryResults(ranked);
     } catch (err) {
       toast.error("Search failed: " + err.message);

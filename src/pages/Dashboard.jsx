@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { Icon, CopyButton, LoadingDots, ConfirmDialog, safeJsonParse } from "../components/shared";
 import BrandOrb from "../components/BrandOrb";
 import { toast } from "../components/Toast";
-import { getCatalog, getBrandVoices as apiGetBrandVoices, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, exportProduct, getTags, createTag, deleteTag, setEntryTags as apiSetEntryTags, getSavedViews, createSavedView, deleteSavedView, getQualitySuggestions } from "../api";
+import { getCatalog, getBrandVoices as apiGetBrandVoices, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, exportProduct, getTags, createTag, deleteTag, setEntryTags as apiSetEntryTags, getSavedViews, createSavedView, deleteSavedView, getQualitySuggestions, getActivity } from "../api";
+import { STATUSES, COMPLETENESS, completenessColor } from "../constants/catalog";
 import { generateCatalogPdf } from "../utils/pdfExport";
 import VariantManager from "../components/VariantManager";
 import TranslateModal from "../components/TranslateModal";
@@ -122,10 +123,11 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
     if (filters.minPrice && (parseFloat(item.custom_price) || 0) < parseFloat(filters.minPrice)) return false;
     if (filters.maxPrice && (parseFloat(item.custom_price) || 0) > parseFloat(filters.maxPrice)) return false;
     // Completeness filter
-    if (filters.completeness === "complete" && (item.completeness ?? 0) < 100) return false;
-    if (filters.completeness === "good" && ((item.completeness ?? 0) < 70 || (item.completeness ?? 0) >= 100)) return false;
-    if (filters.completeness === "needs-work" && ((item.completeness ?? 0) < 40 || (item.completeness ?? 0) >= 70)) return false;
-    if (filters.completeness === "poor" && (item.completeness ?? 0) >= 40) return false;
+    const pct = item.completeness ?? 0;
+    if (filters.completeness === "complete" && pct < COMPLETENESS.COMPLETE) return false;
+    if (filters.completeness === "good" && (pct < COMPLETENESS.GOOD || pct >= COMPLETENESS.COMPLETE)) return false;
+    if (filters.completeness === "needs-work" && (pct < COMPLETENESS.NEEDS_WORK || pct >= COMPLETENESS.GOOD)) return false;
+    if (filters.completeness === "poor" && pct >= COMPLETENESS.NEEDS_WORK) return false;
     if (filters.completeness === "needs-attention") {
       const missingPrice = !item.custom_price || Number(item.custom_price) === 0;
       const missingImage = !(Number(item.image_count) > 0);
@@ -248,6 +250,17 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
     setLoadingSuggestions(false);
   };
 
+  const openChangelog = async (item) => {
+    setChangelogEntry(item);
+    setChangelog([]);
+    try {
+      const data = await getActivity(20, 'catalog_entry', item.id);
+      setChangelog(data.activity || []);
+    } catch (err) {
+      toast.error(err.message || 'Failed to load history');
+    }
+  };
+
   const toggleSelect = (id) => {
     setSelected(prev => {
       const n = new Set(prev);
@@ -341,7 +354,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
   };
 
   const tp = catalog.length;
-  const needsAttention = catalog.filter(c => (c.completeness ?? 0) < 70).length;
+  const needsAttention = catalog.filter(c => (c.completeness ?? 0) < COMPLETENESS.GOOD).length;
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:24,opacity:loading?0:1,transition:"opacity 0.4s ease"}}>
@@ -395,7 +408,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
           <div className="animate-slideUp" style={{display:"flex",gap:8,alignItems:"center",marginBottom:12,padding:"10px 14px",background:"var(--hover-bg)",borderRadius:8,border:"1px solid var(--border-light)",flexWrap:"wrap"}}>
             <select className="input" style={{width:"auto",fontSize:11,padding:"5px 28px 5px 8px",background:"transparent"}} value={filters.status} onChange={e=>setFilters(f=>({...f,status:e.target.value}))}>
               <option value="">All Status</option>
-              {["Draft","Review","Published","Exported"].map(s=><option key={s} value={s}>{s}</option>)}
+              {STATUSES.map(s=><option key={s} value={s}>{s}</option>)}
             </select>
             {tags.length > 0 && <select className="input" style={{width:"auto",fontSize:11,padding:"5px 28px 5px 8px",background:"transparent"}} value={filters.tag} onChange={e=>setFilters(f=>({...f,tag:e.target.value}))}>
               <option value="">All Tags</option>
@@ -462,9 +475,9 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
                 {k:"product",l:"PRODUCT"},{k:"barcode",l:"BARCODE"},{k:"completeness",l:"QUALITY"},{k:"stock",l:"STOCK"},{k:"status",l:"STATUS"},{k:"tags",l:"TAGS"},{k:"date",l:"DATE"},{k:"actions",l:"ACTIONS"}
               ].filter(h=>visibleCols[h.k]).map(h=><th key={h.k} style={{padding:"10px 16px",textAlign:"left",fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.06em"}}>{h.l}</th>)}
             </tr></thead>
-            <tbody>{filteredCatalog.map((item,i)=>{
+            <tbody>{filteredCatalog.map((item)=>{
               const isSelected = selected.has(item.id);
-              return <tr key={item.id||i} className={`catalog-row ${isSelected?"selected":""}`} onClick={()=>toggleSelect(item.id)} style={{borderBottom:"1px solid var(--border-light)",background:isSelected?"rgba(124,58,237,0.06)":"transparent",cursor:"pointer"}} onMouseEnter={e=>{if(!isSelected)e.currentTarget.style.background="var(--hover-bg)"}} onMouseLeave={e=>{if(!isSelected)e.currentTarget.style.background="transparent"}}>
+              return <tr key={item.id} className={`catalog-row ${isSelected?"selected":""}`} onClick={()=>toggleSelect(item.id)} style={{borderBottom:"1px solid var(--border-light)",background:isSelected?"rgba(124,58,237,0.06)":"transparent",cursor:"pointer"}} onMouseEnter={e=>{if(!isSelected)e.currentTarget.style.background="var(--hover-bg)"}} onMouseLeave={e=>{if(!isSelected)e.currentTarget.style.background="transparent"}}>
               {visibleCols.product && <td style={{padding:"12px 16px",position:"relative"}}>
                 <div style={{position:"absolute",left:6,top:"50%",transform:"translateY(-50%)",width:18,height:18,borderRadius:5,border:isSelected?"2px solid #3B82F6":"2px solid var(--border)",background:isSelected?"#3B82F6":"transparent",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s",opacity:isSelected||selected.size>0?1:0}} className="row-check">
                   {isSelected && <Icon name="check" size={11} color="#fff"/>}
@@ -487,13 +500,18 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
               </td>}
               {visibleCols.barcode && <td style={{padding:"12px 16px"}}><span className="mono" style={{fontSize:12,color:"var(--text-muted)",display:"flex",alignItems:"center",gap:4}}>{item.barcode||"\u2014"}{item.barcode&&<CopyButton text={item.barcode}/>}</span></td>}
               {visibleCols.completeness && <td style={{padding:"12px 16px"}} onClick={e=>e.stopPropagation()}>
-                <CompletenessRing
-                  pct={item.completeness ?? 0}
-                  size={34}
-                  strokeWidth={3.5}
-                  onClick={()=>setCompletenessModal(item)}
-                  title="View completeness details"
-                />
+                {(() => {
+                  const pct = item.completeness ?? 0;
+                  const color = completenessColor(pct);
+                  return (
+                    <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setCompletenessModal(item)} title="View completeness details">
+                      <div style={{width:60,height:6,borderRadius:3,background:"var(--hover-bg)",overflow:"hidden"}}>
+                        <div style={{height:"100%",borderRadius:3,background:color,width:`${pct}%`,transition:"width 0.4s ease"}}/>
+                      </div>
+                      <span className="mono" style={{fontSize:11,fontWeight:700,color}}>{pct}%</span>
+                    </div>
+                  );
+                })()}
               </td>}
               {visibleCols.stock && <td style={{padding:"12px 16px"}} onClick={e=>e.stopPropagation()}>
                 {item.variant_count > 0 ? (() => {
@@ -549,38 +567,51 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
                   );
                 })()}
               </td>}
-              {visibleCols.status && <td style={{padding:"12px 16px"}}>
-                {(item.status||"Draft") === "Draft" ? (
-                  <button
-                    type="button"
-                    className={`badge ${sc[item.status]||"badge-neutral"} why-draft-pill`}
-                    style={{cursor:"pointer",border:"1px solid transparent",font:"inherit",display:"inline-flex",alignItems:"center",gap:5}}
-                    onClick={(e)=>{e.stopPropagation();setCompletenessModal({...item,_whyDraft:true});if((item.completeness ?? 100) < 100) fetchSuggestions(item.product_id);}}
-                    title="Why is this in Draft?"
-                  >
-                    {item.status||"Draft"}
-                    <span style={{fontSize:9,fontWeight:700,opacity:0.7}}>?</span>
-                  </button>
-                ) : (
-                  <span className={`badge ${sc[item.status]||"badge-neutral"}`}>{item.status||"Draft"}</span>
-                )}
-              </td>}
+              {visibleCols.status && <td style={{padding:"12px 16px"}}><span className={`badge ${sc[item.status]||"badge-neutral"}`}>{item.status||"Draft"}</span></td>}
               {visibleCols.tags && <td style={{padding:"12px 16px"}} onClick={e=>e.stopPropagation()}>
-                <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
-                  {(entryTags[item.id]||[]).map(tid=>{const t=tags.find(x=>x.id===tid);return t?<span key={tid} style={{padding:"1px 7px",borderRadius:10,fontSize:10,fontWeight:600,background:t.color+"18",color:t.color,border:`1px solid ${t.color}30`}}>{t.name}</span>:null;})}
-                  {canEdit && <button style={{width:18,height:18,borderRadius:"50%",border:"1px dashed var(--border)",background:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s",flexShrink:0}} title="Manage tags" onClick={()=>setTagEntryId(tagEntryId===item.id?null:item.id)}><Icon name="plus" size={9} color="var(--text-dim)"/></button>}
+                <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center",rowGap:4}}>
+                  {(entryTags[item.id]||[]).map(tid=>{
+                    const t=tags.find(x=>x.id===tid);
+                    if(!t) return null;
+                    if(!canEdit) return <span key={tid} style={{display:"inline-flex",alignItems:"center",padding:"2px 8px",borderRadius:10,fontSize:10,fontWeight:600,lineHeight:1.3,background:t.color+"18",color:t.color,border:`1px solid ${t.color}30`,whiteSpace:"nowrap"}}>{t.name}</span>;
+                    return <button key={tid} type="button" title={`Remove "${t.name}"`} onClick={()=>{
+                      const current=entryTags[item.id]||[];
+                      handleSetEntryTags(item.id,current.filter(x=>x!==tid));
+                    }} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"2px 4px 2px 8px",borderRadius:10,fontSize:10,fontWeight:600,lineHeight:1.3,background:t.color+"18",color:t.color,border:`1px solid ${t.color}30`,cursor:"pointer",fontFamily:"'Sora',sans-serif",whiteSpace:"nowrap",transition:"all 0.15s"}}
+                      onMouseEnter={e=>{e.currentTarget.style.background=t.color+"30";}}
+                      onMouseLeave={e=>{e.currentTarget.style.background=t.color+"18";}}>
+                      {t.name}<Icon name="x" size={9} color={t.color}/>
+                    </button>;
+                  })}
+                  {canEdit && <button style={{width:18,height:18,borderRadius:"50%",border:`1px dashed ${tagEntryId===item.id?"var(--primary,#8B5CF6)":"var(--border)"}`,background:tagEntryId===item.id?"rgba(124,58,237,0.08)":"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s",flexShrink:0}} title={tagEntryId===item.id?"Close":"Add tag"} onClick={()=>setTagEntryId(tagEntryId===item.id?null:item.id)}><Icon name={tagEntryId===item.id?"x":"plus"} size={9} color="var(--text-dim)"/></button>}
                 </div>
-                {tagEntryId===item.id && (
-                  <div className="animate-fadeIn" style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:6}}>
-                    {tags.map(t=>{const active=(entryTags[item.id]||[]).includes(t.id);return <button key={t.id} onClick={()=>{const current=entryTags[item.id]||[];const next=active?current.filter(x=>x!==t.id):[...current,t.id];handleSetEntryTags(item.id,next);}} style={{padding:"2px 8px",borderRadius:10,fontSize:10,fontWeight:600,border:`1px solid ${active?t.color:t.color+"40"}`,background:active?t.color+"20":"transparent",color:active?t.color:"var(--text-dim)",cursor:"pointer",fontFamily:"'Sora',sans-serif",transition:"all 0.15s"}}>{t.name}</button>;})}
-                  </div>
-                )}
+                {tagEntryId===item.id && (() => {
+                  const assigned = entryTags[item.id]||[];
+                  const available = tags.filter(t=>!assigned.includes(t.id));
+                  if (available.length === 0) {
+                    return <div className="animate-fadeIn" style={{marginTop:6,padding:"6px 10px",fontSize:11,color:"var(--text-dim)",fontStyle:"italic",background:"var(--hover-bg)",borderRadius:6,border:"1px dashed var(--border-light)"}}>{tags.length===0?"No tags yet — create one in Tag Manager.":"All tags assigned."}</div>;
+                  }
+                  return (
+                    <div className="animate-fadeIn" style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:6,rowGap:4}}>
+                      {available.map(t=>(
+                        <button key={t.id} type="button" onClick={()=>{
+                          handleSetEntryTags(item.id,[...assigned,t.id]);
+                        }} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"2px 8px",borderRadius:10,fontSize:10,fontWeight:600,lineHeight:1.3,border:`1px dashed ${t.color}60`,background:"transparent",color:t.color,cursor:"pointer",fontFamily:"'Sora',sans-serif",whiteSpace:"nowrap",transition:"all 0.15s"}}
+                          onMouseEnter={e=>{e.currentTarget.style.background=t.color+"18";e.currentTarget.style.borderStyle="solid";}}
+                          onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.borderStyle="dashed";}}>
+                          <Icon name="plus" size={8} color={t.color}/>{t.name}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
               </td>}
               {visibleCols.date && <td style={{padding:"12px 16px"}}><span style={{fontSize:12,color:"var(--text-dim)"}}>{item.updated_at?new Date(item.updated_at).toLocaleDateString():""}</span></td>}
               {visibleCols.actions && <td style={{padding:"12px 16px"}}><div style={{display:"flex",gap:6}} onClick={e=>e.stopPropagation()}>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="View" onClick={()=>onViewProduct(item.product_id,1)}><Icon name="eye" size={12}/></button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Edit" onClick={()=>startEdit(item)}><Icon name="edit" size={12}/></button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Translate" onClick={()=>setTranslateEntry(item)}><Icon name="globe" size={12}/></button>
+                <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="History" onClick={()=>openChangelog(item)}><Icon name="clock" size={12}/></button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11,position:"relative"}} title="Variants" onClick={()=>setVariantEntry(item)}>
                   <Icon name="copy" size={12}/>
                   {item.variant_count>0 && <span style={{position:"absolute",top:-2,right:-2,fontSize:9,fontWeight:700,background:"#7C3AED",color:"#fff",borderRadius:8,padding:"1px 5px",minWidth:14,textAlign:"center"}}>{item.variant_count}</span>}
@@ -786,17 +817,16 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
         const ci = completenessModal;
         const pct = ci.completeness ?? 0;
         const issues = ci.completeness_issues || [];
-        const pColor = pct === 100 ? "#10B981" : pct >= 70 ? "#3B82F6" : pct >= 40 ? "#F59E0B" : "#EF4444";
+        const pColor = completenessColor(pct);
         const aiTips = qualitySuggestions[ci.product_id];
-        const whyDraft = !!ci._whyDraft;
         return (
           <div className="modal-modern-overlay" onClick={()=>setCompletenessModal(null)}>
             <div className="modal-modern-card size-sm" onClick={e=>e.stopPropagation()}>
               <div className="modal-modern-blobs" />
               <div className="modal-modern-header">
                 <div>
-                  <h3>{whyDraft ? `Why is "${ci.custom_name || ci.name || "this"}" in Draft?` : (ci.custom_name || ci.name || "Untitled")}</h3>
-                  <p>{whyDraft ? `Here's what to fix before publishing — ${pct}% complete` : `Quality breakdown · ${pct}% complete`}</p>
+                  <h3>{ci.custom_name || ci.name || "Untitled"}</h3>
+                  <p>Quality breakdown · {pct}% complete</p>
                 </div>
                 <button className="modal-modern-close" onClick={()=>setCompletenessModal(null)}><Icon name="x" size={14}/></button>
               </div>
