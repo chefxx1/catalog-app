@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Icon, LoadingDots } from "../components/shared";
 import { toast } from "../components/Toast";
 import { getStats, getSourcePerformance, getSearchHistory, clearSearchHistory, getCompleteness, getActivity, getPriceAlerts, getLowStock } from "../api";
+import { sourceColor } from "../constants/catalog";
 
 // ── Section label ──
 const SectionLabel = ({ children, accent = "var(--text-dim)" }) => (
@@ -74,9 +75,6 @@ const Analytics = () => {
     const t = setInterval(() => { loadAll().catch(() => {}); }, REFRESH_INTERVAL_MS);
     return () => clearInterval(t);
   }, []);
-
-  const sourceColors = { "Amazon": "#FF9900", "Open Food Facts": "#10B981", "UPC Database": "#6366F1", "Alibaba": "#FF6A00", "Google": "#4285F4", "Barcode Spider": "#F97316" };
-
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -198,7 +196,7 @@ const Analytics = () => {
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   {sources.map((s, i) => {
-                    const baseColor = sourceColors[s.source_name] || "#3B82F6";
+                    const baseColor = sourceColor(s.source_name);
                     const score = Math.round(s.avg_trust || 0);
                     return (
                       <div key={i}>
