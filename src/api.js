@@ -279,6 +279,33 @@ export const chatSuggestions = async () => {
   return handleResponse(res);
 };
 
+export const chatFollowups = async (lastUser, lastAssistant) => {
+  const res = await apiFetch(`${API_URL}/chat/followups`, {
+    method: 'POST', headers: headers(), body: JSON.stringify({ lastUser, lastAssistant }),
+  });
+  return handleResponse(res);
+};
+
+// ── PRODUCT TRANSLATIONS ──
+export const listProductTranslations = async (entryId) => {
+  const res = await apiFetch(`${API_URL}/products/catalog/${entryId}/translations`, { headers: headers() });
+  return handleResponse(res);
+};
+
+export const translateProduct = async (entryId, language, { force = false } = {}) => {
+  const res = await apiFetch(`${API_URL}/products/catalog/${entryId}/translate`, {
+    method: 'POST', headers: headers(), body: JSON.stringify({ language, force }),
+  });
+  return handleResponse(res);
+};
+
+export const deleteProductTranslation = async (entryId, language) => {
+  const res = await apiFetch(`${API_URL}/products/catalog/${entryId}/translations/${encodeURIComponent(language)}`, {
+    method: 'DELETE', headers: headers(),
+  });
+  return handleResponse(res);
+};
+
 // SSE-streamed chat. Calls onToken({delta, raw}) per token, onFinal(payload)
 // when the full response is routed, onError(err) on failure. Returns a cancel fn.
 export const chatStream = (message, history, { onToken, onFinal, onError }) => {

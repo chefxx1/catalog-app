@@ -821,6 +821,43 @@ router.get('/suggestions', auth, async (req, res) => {
   }
 });
 
+// POST /api/chat/followups — given the last exchange, ask the model for 3 short
+// next-prompt suggestions. Cheap secondary call (small max_tokens, fast model)
+// so it doesn't slow the user's main turn.
+router.post('/followups', auth, async (req, res) => {
+  const { lastUser, lastAssistant } = req.body || {};
+  if (!process.env.GROQ_API_KEY) return res.json({ chips: [] });
+  if (!lastUser && !lastAssistant) return res.json({ chips: [] });
+  try {
+    const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+    const prompt = `The user is chatting with their e-commerce catalog assistant. Given the last exchange, propose THREE short, distinct, useful next prompts the user might want to send. Each one MUST:
+- be under 8 words
+- be a plausible thing a catalog owner would actually ask next (refine the result, take a follow-up action, dig deeper, change tack)
+- NOT repeat the user's previous question
+- be phrased as the user would type it (first person, casual, no quotes)
+
+Return ONLY a JSON object: {"chips": ["...", "...", "..."]}
+
+Last user message: ${String(lastUser || '').slice(0, 400)}
+Last assistant response (summary): ${String(lastAssistant || '').slice(0, 600)}`;
+
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.1-8b-instant',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+      max_tokens: 200,
+      temperature: 0.6,
+    });
+    const raw = completion.choices?.[0]?.message?.content || '{}';
+    const parsed = parseModelJson(raw) || {};
+    const chips = Array.isArray(parsed.chips) ? parsed.chips.filter(c => typeof c === 'string' && c.trim()).slice(0, 3) : [];
+    res.json({ chips });
+  } catch (err) {
+    console.warn('[chat] followups failed:', err.message);
+    res.json({ chips: [] });
+  }
+});
+
 // Action → minimum role required (mirrors the existing UI permissions exactly)
 const ACTION_ROLES = {
   update_status: ['Admin', 'Editor'],

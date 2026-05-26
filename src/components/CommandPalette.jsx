@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Icon } from "./shared";
 import { toast } from "./Toast";
 import BrandOrb from "./BrandOrb";
-import { chatStream, chatExecute, chatSuggestions } from "../api";
+import { chatStream, chatExecute, chatSuggestions, chatFollowups } from "../api";
 
 // Pull live text out of partial JSON during streaming. The model emits TEXT
 // responses as {"type":"text","message":"..."}; for filter/analyze/etc the
@@ -155,14 +155,29 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
       onFinal: (result) => {
         cancelStreamRef.current = null;
         setLoading(false);
+        const entry = resultToEntry(result);
+        entry._streamId = streamId;
         setHistory(h => {
           const idx = h.findIndex(item => item._streamId === streamId);
           if (idx === -1) return h;
           const copy = [...h];
-          copy[idx] = resultToEntry(result);
+          copy[idx] = entry;
           return copy;
         });
         if (result.type === "action") setPendingAction(result);
+        // Fire-and-forget: ask for 3 follow-up chips. Skip for action-previews
+        // (the action bar already takes focus) and for streaming-text where the
+        // user is mid-confirmation flow.
+        if (result.type !== "action") {
+          const summary = result.summary || result.message || "";
+          chatFollowups(message, summary)
+            .then(r => {
+              const chips = r?.chips || [];
+              if (!chips.length) return;
+              setHistory(h => h.map(item => item._streamId === streamId ? { ...item, followups: chips } : item));
+            })
+            .catch(() => {});
+        }
       },
       onError: (err) => {
         cancelStreamRef.current = null;
@@ -472,6 +487,16 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
                             <Icon name="refresh" size={11} />
                           </button>
                         )}
+                      </div>
+                    )}
+                    {h.followups?.length > 0 && i === history.length - 1 && !loading && !pendingAction && (
+                      <div className="msg-followups">
+                        {h.followups.map((chip, k) => (
+                          <button key={k} className="msg-followup-chip" onClick={() => send(chip)}>
+                            {chip}
+                            <Icon name="chevronRight" size={10} color="currentColor" />
+                          </button>
+                        ))}
                       </div>
                     )}
                   </div>

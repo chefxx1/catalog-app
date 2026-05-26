@@ -5,6 +5,8 @@ import { toast } from "../components/Toast";
 import { getCatalog, getBrandVoices as apiGetBrandVoices, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, exportProduct, getTags, createTag, deleteTag, setEntryTags as apiSetEntryTags, getSavedViews, createSavedView, deleteSavedView, getQualitySuggestions } from "../api";
 import { generateCatalogPdf } from "../utils/pdfExport";
 import VariantManager from "../components/VariantManager";
+import TranslateModal from "../components/TranslateModal";
+import CompletenessRing from "../components/CompletenessRing";
 
 const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, refreshKey, pendingFilter, onPendingFilterConsumed }) => {
   const [catalog, setCatalog] = useState([]);
@@ -45,6 +47,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
   const [stockEditId, setStockEditId] = useState(null);
   const [stockEditValue, setStockEditValue] = useState("");
   const [variantEntry, setVariantEntry] = useState(null);
+  const [translateEntry, setTranslateEntry] = useState(null);
   const [showColPicker, setShowColPicker] = useState(false);
   const canEdit = user.role === "Admin" || user.role === "Editor";
 
@@ -484,18 +487,13 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
               </td>}
               {visibleCols.barcode && <td style={{padding:"12px 16px"}}><span className="mono" style={{fontSize:12,color:"var(--text-muted)",display:"flex",alignItems:"center",gap:4}}>{item.barcode||"\u2014"}{item.barcode&&<CopyButton text={item.barcode}/>}</span></td>}
               {visibleCols.completeness && <td style={{padding:"12px 16px"}} onClick={e=>e.stopPropagation()}>
-                {(() => {
-                  const pct = item.completeness ?? 0;
-                  const color = pct === 100 ? "#10B981" : pct >= 70 ? "#3B82F6" : pct >= 40 ? "#F59E0B" : "#EF4444";
-                  return (
-                    <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setCompletenessModal(item)} title="View completeness details">
-                      <div style={{width:60,height:6,borderRadius:3,background:"var(--hover-bg)",overflow:"hidden"}}>
-                        <div style={{height:"100%",borderRadius:3,background:color,width:`${pct}%`,transition:"width 0.4s ease"}}/>
-                      </div>
-                      <span className="mono" style={{fontSize:11,fontWeight:700,color}}>{pct}%</span>
-                    </div>
-                  );
-                })()}
+                <CompletenessRing
+                  pct={item.completeness ?? 0}
+                  size={34}
+                  strokeWidth={3.5}
+                  onClick={()=>setCompletenessModal(item)}
+                  title="View completeness details"
+                />
               </td>}
               {visibleCols.stock && <td style={{padding:"12px 16px"}} onClick={e=>e.stopPropagation()}>
                 {item.variant_count > 0 ? (() => {
@@ -551,7 +549,22 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
                   );
                 })()}
               </td>}
-              {visibleCols.status && <td style={{padding:"12px 16px"}}><span className={`badge ${sc[item.status]||"badge-neutral"}`}>{item.status||"Draft"}</span></td>}
+              {visibleCols.status && <td style={{padding:"12px 16px"}}>
+                {(item.status||"Draft") === "Draft" ? (
+                  <button
+                    type="button"
+                    className={`badge ${sc[item.status]||"badge-neutral"} why-draft-pill`}
+                    style={{cursor:"pointer",border:"1px solid transparent",font:"inherit",display:"inline-flex",alignItems:"center",gap:5}}
+                    onClick={(e)=>{e.stopPropagation();setCompletenessModal({...item,_whyDraft:true});if((item.completeness ?? 100) < 100) fetchSuggestions(item.product_id);}}
+                    title="Why is this in Draft?"
+                  >
+                    {item.status||"Draft"}
+                    <span style={{fontSize:9,fontWeight:700,opacity:0.7}}>?</span>
+                  </button>
+                ) : (
+                  <span className={`badge ${sc[item.status]||"badge-neutral"}`}>{item.status||"Draft"}</span>
+                )}
+              </td>}
               {visibleCols.tags && <td style={{padding:"12px 16px"}} onClick={e=>e.stopPropagation()}>
                 <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
                   {(entryTags[item.id]||[]).map(tid=>{const t=tags.find(x=>x.id===tid);return t?<span key={tid} style={{padding:"1px 7px",borderRadius:10,fontSize:10,fontWeight:600,background:t.color+"18",color:t.color,border:`1px solid ${t.color}30`}}>{t.name}</span>:null;})}
@@ -567,6 +580,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
               {visibleCols.actions && <td style={{padding:"12px 16px"}}><div style={{display:"flex",gap:6}} onClick={e=>e.stopPropagation()}>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="View" onClick={()=>onViewProduct(item.product_id,1)}><Icon name="eye" size={12}/></button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Edit" onClick={()=>startEdit(item)}><Icon name="edit" size={12}/></button>
+                <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Translate" onClick={()=>setTranslateEntry(item)}><Icon name="globe" size={12}/></button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11,position:"relative"}} title="Variants" onClick={()=>setVariantEntry(item)}>
                   <Icon name="copy" size={12}/>
                   {item.variant_count>0 && <span style={{position:"absolute",top:-2,right:-2,fontSize:9,fontWeight:700,background:"#7C3AED",color:"#fff",borderRadius:8,padding:"1px 5px",minWidth:14,textAlign:"center"}}>{item.variant_count}</span>}
@@ -718,6 +732,10 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
         </div>
       )}
 
+      {translateEntry && (
+        <TranslateModal entry={translateEntry} onClose={()=>setTranslateEntry(null)} canEdit={canEdit}/>
+      )}
+
       {showBatchModal && (
         <div className="modal-modern-overlay" onClick={()=>{if(!batchExporting)setShowBatchModal(false);}}>
           <div className="modal-modern-card size-sm" onClick={e=>e.stopPropagation()}>
@@ -770,23 +788,21 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
         const issues = ci.completeness_issues || [];
         const pColor = pct === 100 ? "#10B981" : pct >= 70 ? "#3B82F6" : pct >= 40 ? "#F59E0B" : "#EF4444";
         const aiTips = qualitySuggestions[ci.product_id];
+        const whyDraft = !!ci._whyDraft;
         return (
           <div className="modal-modern-overlay" onClick={()=>setCompletenessModal(null)}>
             <div className="modal-modern-card size-sm" onClick={e=>e.stopPropagation()}>
               <div className="modal-modern-blobs" />
               <div className="modal-modern-header">
                 <div>
-                  <h3>{ci.custom_name || ci.name || "Untitled"}</h3>
-                  <p>Quality breakdown · {pct}% complete</p>
+                  <h3>{whyDraft ? `Why is "${ci.custom_name || ci.name || "this"}" in Draft?` : (ci.custom_name || ci.name || "Untitled")}</h3>
+                  <p>{whyDraft ? `Here's what to fix before publishing — ${pct}% complete` : `Quality breakdown · ${pct}% complete`}</p>
                 </div>
                 <button className="modal-modern-close" onClick={()=>setCompletenessModal(null)}><Icon name="x" size={14}/></button>
               </div>
               <div className="modal-modern-body">
-              <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:20}}>
-                <div style={{flex:1,height:8,borderRadius:4,background:"var(--hover-bg)",overflow:"hidden"}}>
-                  <div style={{height:"100%",borderRadius:4,background:pColor,width:`${pct}%`,transition:"width 0.4s ease"}}/>
-                </div>
-                <span className="mono" style={{fontSize:16,fontWeight:800,color:pColor}}>{pct}%</span>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"center",marginBottom:20}}>
+                <CompletenessRing pct={pct} size={88} strokeWidth={7}/>
               </div>
 
               {pct === 100 ? (

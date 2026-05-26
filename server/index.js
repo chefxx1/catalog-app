@@ -133,6 +133,23 @@ async function autoMigrate() {
       id INT AUTO_INCREMENT PRIMARY KEY, cache_key VARCHAR(191) NOT NULL UNIQUE, data JSON NOT NULL, cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, INDEX idx_cache_key (cache_key)
     )`);
 
+    // Product translations (cached per product per language)
+    await db.query(`CREATE TABLE IF NOT EXISTS product_translations (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      product_id INT NOT NULL,
+      language VARCHAR(40) NOT NULL,
+      name TEXT NULL,
+      description TEXT NULL,
+      meta_title VARCHAR(255) NULL,
+      meta_description TEXT NULL,
+      seo_tags JSON NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_product_lang (product_id, language),
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+      INDEX idx_pt_product (product_id)
+    )`);
+
     console.log('Auto-migrate: all tables verified');
   } catch (err) {
     console.error('Auto-migrate error:', err.message);

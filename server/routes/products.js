@@ -773,6 +773,128 @@ router.delete('/variants/:vid', auth, requireRole('Admin', 'Editor'), async (req
   }
 });
 
+// ── PRODUCT TRANSLATIONS ──
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const SUPPORTED_LANGUAGES = new Set(['English', 'Arabic', 'French', 'Spanish', 'German', 'Chinese', 'Turkish', 'Portuguese', 'Italian', 'Japanese']);
+
+// GET /api/products/catalog/:id/translations — list saved translations for a product
+router.get('/catalog/:id/translations', auth, async (req, res) => {
+  try {
+    if (!(await ensureEntryInStore(req.params.id, req.user.store_id))) return res.status(404).json({ error: 'Not found' });
+    const [[entry]] = await db.query('SELECT product_id FROM catalog_entries WHERE id = ?', [req.params.id]);
+    if (!entry) return res.status(404).json({ error: 'Not found' });
+    const [rows] = await db.query(
+      'SELECT language, name, description, meta_title, meta_description, seo_tags, updated_at FROM product_translations WHERE product_id = ? ORDER BY updated_at DESC',
+      [entry.product_id]
+    );
+    res.json({ translations: rows.map(r => ({ ...r, seo_tags: typeof r.seo_tags === 'string' ? JSON.parse(r.seo_tags || '[]') : (r.seo_tags || []) })) });
+  } catch (err) {
+    console.error('List translations error:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/products/catalog/:id/translate — translate and save
+router.post('/catalog/:id/translate', auth, requireRole('Admin', 'Editor'), async (req, res) => {
+  try {
+    const { language } = req.body;
+    if (!language || typeof language !== 'string') return res.status(400).json({ error: 'language required' });
+    if (!SUPPORTED_LANGUAGES.has(language)) return res.status(400).json({ error: `Unsupported language. Supported: ${[...SUPPORTED_LANGUAGES].join(', ')}` });
+    if (!process.env.GEMINI_API_KEY) return res.status(400).json({ error: 'AI API key not configured' });
+    if (!(await ensureEntryInStore(req.params.id, req.user.store_id))) return res.status(404).json({ error: 'Not found' });
+
+    const [[entry]] = await db.query(
+      `SELECT ce.product_id, ce.custom_name, ce.custom_description,
+              p.name AS p_name, p.brand AS p_brand, p.description AS p_description,
+              p.ai_description_professional, p.ai_description_friendly
+       FROM catalog_entries ce JOIN products p ON ce.product_id = p.id
+       WHERE ce.id = ?`,
+      [req.params.id]
+    );
+    if (!entry) return res.status(404).json({ error: 'Not found' });
+
+    const name = entry.custom_name || entry.p_name || '';
+    const brand = entry.p_brand || '';
+    const description = entry.custom_description || entry.ai_description_professional || entry.p_description || entry.ai_description_friendly || '';
+    if (!name) return res.status(400).json({ error: 'Product has no name to translate' });
+
+    // Check cache first — if we already have this language saved, return it
+    const [cached] = await db.query(
+      'SELECT name, description, meta_title, meta_description, seo_tags, updated_at FROM product_translations WHERE product_id = ? AND language = ?',
+      [entry.product_id, language]
+    );
+    if (cached.length > 0 && !req.body.force) {
+      const c = cached[0];
+      return res.json({
+        language,
+        cached: true,
+        name: c.name,
+        description: c.description,
+        metaTitle: c.meta_title,
+        metaDescription: c.meta_description,
+        seoTags: typeof c.seo_tags === 'string' ? JSON.parse(c.seo_tags || '[]') : (c.seo_tags || []),
+      });
+    }
+
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const prompt = `You are an expert e-commerce translator and copywriter. Translate and adapt the following product information into ${language}. Don't just translate literally — adapt it to sound natural and compelling for ${language}-speaking customers.
+
+Product: ${name}
+${brand ? `Brand: ${brand}` : ''}
+${description ? `Description: ${description}` : ''}
+
+Return ONLY a JSON object (no markdown fences):
+{
+  "name": "Product name in ${language}",
+  "description": "Product description in ${language} (2-3 compelling sentences)",
+  "metaTitle": "SEO title in ${language} (under 60 chars)",
+  "metaDescription": "SEO meta description in ${language} (under 155 chars)",
+  "seoTags": ["tag1", "tag2", "tag3", "tag4", "tag5", "tag6"]
+}
+
+All output must be in ${language}. Make it sound native, not translated.`;
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
+    let parsed;
+    try {
+      const jsonStr = text.replace(/^```json?\s*/i, '').replace(/```\s*$/, '').trim();
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      return res.status(500).json({ error: 'Failed to parse AI response' });
+    }
+
+    const seoTagsJson = JSON.stringify(Array.isArray(parsed.seoTags) ? parsed.seoTags.slice(0, 10) : []);
+    await db.query(
+      `INSERT INTO product_translations (product_id, language, name, description, meta_title, meta_description, seo_tags)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE name = VALUES(name), description = VALUES(description), meta_title = VALUES(meta_title), meta_description = VALUES(meta_description), seo_tags = VALUES(seo_tags)`,
+      [entry.product_id, language, parsed.name || null, parsed.description || null, parsed.metaTitle || null, parsed.metaDescription || null, seoTagsJson]
+    );
+
+    logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'translated', entity_type: 'product', entity_id: entry.product_id, entity_name: name, details: { language } });
+
+    res.json({ language, cached: false, ...parsed });
+  } catch (err) {
+    console.error('Translate error:', err.message);
+    res.status(500).json({ error: 'Translation failed: ' + err.message });
+  }
+});
+
+// DELETE /api/products/catalog/:id/translations/:lang — remove a saved translation
+router.delete('/catalog/:id/translations/:lang', auth, requireRole('Admin', 'Editor'), async (req, res) => {
+  try {
+    if (!(await ensureEntryInStore(req.params.id, req.user.store_id))) return res.status(404).json({ error: 'Not found' });
+    const [[entry]] = await db.query('SELECT product_id FROM catalog_entries WHERE id = ?', [req.params.id]);
+    if (!entry) return res.status(404).json({ error: 'Not found' });
+    await db.query('DELETE FROM product_translations WHERE product_id = ? AND language = ?', [entry.product_id, req.params.lang]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // ── BULK IMPORT ──
 router.post('/bulk-import', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {

@@ -79,7 +79,7 @@ const Analytics = () => {
 
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24, opacity: loading ? 0 : 1, transition: "opacity 0.4s ease" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
 
       {/* ── HEADER ── */}
       <div>
@@ -88,9 +88,16 @@ const Analytics = () => {
       </div>
 
       {loading && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-          {Array.from({ length: 4 }).map((_, i) => <div key={i} className="skeleton-card" style={{ height: 110 }} />)}
-        </div>
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
+            {Array.from({ length: 4 }).map((_, i) => <div key={i} className="skeleton-card" style={{ height: 110 }} />)}
+          </div>
+          <div className="analytics-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div className="skeleton-card" style={{ height: 220 }} />
+            <div className="skeleton-card" style={{ height: 220 }} />
+          </div>
+          <div className="skeleton-card" style={{ height: 180 }} />
+        </>
       )}
 
       {/* ── KPI TILES ── */}
