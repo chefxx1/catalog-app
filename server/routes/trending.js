@@ -97,6 +97,32 @@ const router = express.Router();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours — trending changes slowly enough
 const SERPER_TIMEOUT_MS = 8000;
 
+// Serper's Shopping API returns inline data: URIs (~27KB base64) as imageUrl,
+// not real URLs. Those don't fit in image_url VARCHAR(500) and wouldn't be
+// fetchable by Shopify/Google Merchant anyway. When that's what we got, do a
+// secondary Serper Images search (which returns real https URLs) to find a
+// real product image to store. Same pattern chat.js uses for chat-added products.
+async function fetchProductImageUrl(name) {
+  const key = process.env.SERPER_API_KEY;
+  if (!key || !name) return null;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), SERPER_TIMEOUT_MS);
+    const r = await fetch('https://google.serper.dev/images', {
+      method: 'POST',
+      headers: { 'X-API-KEY': key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q: String(name).slice(0, 200) + ' product', num: 1 }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!r.ok) return null;
+    const data = await r.json();
+    const img = (data.images || [])[0];
+    const candidate = img?.imageUrl || img?.thumbnailUrl || null;
+    return candidate && /^https?:\/\//i.test(candidate) ? candidate : null;
+  } catch { return null; }
+}
+
 // One broad query per category — Serper returns up to 40 products per call,
 // so we don't need multiple narrow queries
 const CATEGORIES = {
@@ -282,8 +308,17 @@ router.post('/add', auth, requireRole('Admin', 'Editor'), async (req, res) => {
       if (!isNaN(num) && num > 0) cleanPrice = num;
     }
 
-    // AI enrichment — best-effort, doesn't block the add if it fails
-    const enriched = await enrichWithAI(name, category);
+    // Resolve a real image URL. Serper Shopping returns inline data: URIs
+    // that don't fit in image_url and aren't fetchable by Shopify/Google
+    // Merchant. If the supplied image isn't a real http URL, do a Serper
+    // Images search for the product name and use the first result.
+    let realImage = image && /^https?:\/\//i.test(image) ? image : null;
+    // Run enrichment + image fetch in parallel — both are external network calls
+    const [enriched, fetchedImage] = await Promise.all([
+      enrichWithAI(name, category),
+      realImage ? Promise.resolve(realImage) : fetchProductImageUrl(name),
+    ]);
+    realImage = realImage || fetchedImage;
 
     const [productResult] = await db.query(
       `INSERT INTO products (barcode, name, description, ai_description_professional, ai_description_friendly, ai_description_luxury, ai_category_suggestion, ai_attributes, seo_tags, cache_expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -302,10 +337,10 @@ router.post('/add', auth, requireRole('Admin', 'Editor'), async (req, res) => {
     );
     const productId = productResult.insertId;
 
-    if (image && /^https?:\/\//i.test(image)) {
+    if (realImage) {
       await db.query(
         'INSERT INTO product_images (product_id, source_name, image_url, quality_score, sort_order) VALUES (?, ?, ?, ?, ?)',
-        [productId, source || 'Google Shopping', image, 75, 0]
+        [productId, source || 'Google Shopping', realImage, 75, 0]
       );
     }
 
