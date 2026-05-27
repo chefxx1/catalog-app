@@ -21,6 +21,8 @@ cd catalog-app
 npm install
 ```
 
+> **Heads up:** `npm install` will download Chromium (~170MB, one-time) for Puppeteer — it's used server-side to generate the PDF exports. Expect the first install to take a few minutes.
+
 ### Option B — Using VS Code
 1. Open **VS Code**
 2. Press `Ctrl + Shift + P` and type **Git: Clone**
@@ -123,7 +125,6 @@ catalog-app/
 │   │   ├── shared.jsx                # Icon, Toast helpers, ConfirmDialog, InputField…
 │   │   ├── CameraScanner.jsx         # html5-qrcode camera modal
 │   │   ├── TranslateModal.jsx        # 10-language product translation
-│   │   ├── VariantManager.jsx        # Product variants CRUD
 │   │   ├── VisualPreview.jsx         # Platform-mockup cards for ExportStep
 │   │   ├── CompletenessRing.jsx      # SVG ring used in completeness modal
 │   │   ├── ShaderBackground.jsx      # WebGL aurora on auth page
@@ -132,17 +133,16 @@ catalog-app/
 │   │   ├── BrandOrb.jsx              # Animated gradient logo orb
 │   │   ├── ErrorBoundary.jsx         # Crash recovery
 │   │   └── ThemeToggle.jsx           # Sun/moon toggle
-│   ├── constants/
-│   │   └── catalog.js                # Statuses, completeness thresholds, source colors
-│   └── utils/
-│       └── pdfExport.js              # jsPDF product + catalog PDF generators
+│   └── constants/
+│       └── catalog.js                # Statuses, completeness thresholds, source colors
 │
 ├── server/                           # Backend (Express 5 + mysql2)
 │   ├── index.js                      # App bootstrap + auto-migrate + global error handler
 │   ├── db.js                         # MySQL connection pool
 │   ├── .env                          # Credentials (not in git)
 │   ├── helpers/
-│   │   └── activity.js               # Activity log helper
+│   │   ├── activity.js               # Activity log helper
+│   │   └── browser.js                # Puppeteer singleton for server-side PDF
 │   ├── middleware/
 │   │   ├── auth.js                   # JWT auth (cookie + Bearer fallback)
 │   │   ├── requireRole.js            # Role-based access control
@@ -150,14 +150,18 @@ catalog-app/
 │   │   └── validate.js               # sanitize / isValidEmail / maxLen
 │   ├── routes/
 │   │   ├── auth.js                   # Signup, signin, OAuth, password reset, team, invites
-│   │   ├── products.js               # Barcode search, catalog CRUD, variants, translations, bulk import
+│   │   ├── products.js               # Barcode search, catalog CRUD, translations, bulk import
 │   │   ├── catalog.js                # Tags, saved views, activity feed
 │   │   ├── ai.js                     # Gemini wrappers (descriptions, identify, translate, image search)
 │   │   ├── chat.js                   # Groq Llama 3.3 chat router (7 intent types, SSE streaming)
-│   │   ├── export.js                 # CSV/JSON/XML, Shopify sync, Google Merchant feed
+│   │   ├── export.js                 # CSV/JSON/XML/PDF, Shopify sync, Google Merchant feed
 │   │   ├── analytics.js              # Stats, completeness, source performance, low stock
 │   │   ├── brandVoices.js            # Store-shared brand voice CRUD
 │   │   └── trending.js               # Serper-backed trending products
+│   ├── templates/
+│   │   └── pdfTemplate.js            # Editorial HTML templates rendered by Puppeteer
+│   ├── scripts/
+│   │   └── backfill-trending-specs.js  # One-off — re-enrich products whose AI specs were dropped
 │   └── database/
 │       ├── schema.sql                # MySQL table definitions
 │       └── migrate-stores.js         # One-time multi-tenant migration (already run)
