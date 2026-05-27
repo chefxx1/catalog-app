@@ -739,7 +739,10 @@ router.patch('/catalog/:id', auth, requireRole('Admin', 'Editor'), async (req, r
     if (fields.length === 0) return res.status(400).json({ error: 'No fields to update' });
     fields.push('updated_at = NOW()');
     values.push(req.params.id, req.user.store_id);
-    await db.query(`UPDATE catalog_entries SET ${fields.join(', ')} WHERE id = ? AND store_id = ?`, values);
+    const [result] = await db.query(`UPDATE catalog_entries SET ${fields.join(', ')} WHERE id = ? AND store_id = ?`, values);
+    // Return 404 instead of misleading 200 when the entry isn't in caller's
+    // store — also avoids logging a spurious activity row for the wrong store.
+    if (result.affectedRows === 0) return res.status(404).json({ error: 'Catalog entry not found' });
     const changes = {};
     if (status !== undefined) changes.status = status;
     if (rawName !== undefined) changes.name = rawName == null ? null : sanitize(String(rawName)).slice(0, 200);
@@ -756,7 +759,8 @@ router.patch('/catalog/:id', auth, requireRole('Admin', 'Editor'), async (req, r
 // Delete catalog entry
 router.delete('/catalog/:id', auth, requireRole('Admin'), async (req, res) => {
   try {
-    await db.query('DELETE FROM catalog_entries WHERE id = ? AND store_id = ?', [req.params.id, req.user.store_id]);
+    const [result] = await db.query('DELETE FROM catalog_entries WHERE id = ? AND store_id = ?', [req.params.id, req.user.store_id]);
+    if (result.affectedRows === 0) return res.status(404).json({ error: 'Catalog entry not found' });
     logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'deleted', entity_type: 'catalog_entry', entity_id: parseInt(req.params.id, 10) });
     res.json({ success: true });
   } catch (err) {

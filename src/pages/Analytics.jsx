@@ -100,7 +100,7 @@ const Analytics = () => {
 
       {/* ── KPI TILES ── */}
       {!loading && stats && (
-        <div>
+        <div className="animate-slideUp" style={{ animationDelay: "0ms" }}>
           <SectionLabel accent="#3B82F6">Overview</SectionLabel>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
             <KpiTile label="Total Searches" value={(stats?.total_searches || 0).toLocaleString()} sublabel="all time" icon="search" color="#3B82F6" gradient="linear-gradient(135deg,#3B82F6,#8B5CF6)" />
@@ -113,7 +113,7 @@ const Analytics = () => {
 
       {/* ── CATALOG HEALTH (donut + completeness breakdown) ── */}
       {!loading && (
-        <div>
+        <div className="animate-slideUp" style={{ animationDelay: "80ms" }}>
           <SectionLabel accent="#10B981">Catalog Health</SectionLabel>
           <div className="analytics-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             {/* Completeness donut */}
@@ -228,7 +228,7 @@ const Analytics = () => {
 
       {/* ── ALERTS (low stock + price alerts) — only render section if either has data ── */}
       {!loading && (lowStock.length > 0 || priceAlerts.length > 0) && (
-        <div>
+        <div className="animate-slideUp" style={{ animationDelay: "160ms" }}>
           <SectionLabel accent="#F59E0B">Alerts</SectionLabel>
           <div className="analytics-grid" style={{ display: "grid", gridTemplateColumns: lowStock.length > 0 && priceAlerts.length > 0 ? "1fr 1fr" : "1fr", gap: 16 }}>
             {lowStock.length > 0 && (
@@ -302,7 +302,7 @@ const Analytics = () => {
 
       {/* ── ACTIVITY (recent searches + activity feed) ── */}
       {!loading && (
-        <div>
+        <div className="animate-slideUp" style={{ animationDelay: "240ms" }}>
           <SectionLabel accent="#8B5CF6">Activity</SectionLabel>
           <div className="analytics-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             {/* Recent searches */}

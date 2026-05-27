@@ -12,6 +12,11 @@ const { OAuth2Client } = require('google-auth-library');
 const requireRole = require('../middleware/requireRole');
 const { sanitize, isValidEmail } = require('../middleware/validate');
 
+// Precomputed bcrypt hash used to flatten signin timing on the no-such-user
+// path — bcrypt.compare runs the same ~200ms work whether the email exists
+// or not, so a timing-based attacker can't enumerate accounts.
+const DUMMY_BCRYPT_HASH = bcrypt.hashSync('timing-flattener-never-used', 12);
+
 // Email transporter
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
@@ -102,14 +107,16 @@ router.post('/signin', async (req, res) => {
     }
 
     const [users] = await db.query('SELECT * FROM users WHERE email = ?', [email.toLowerCase().trim()]);
-    if (users.length === 0) {
-      return res.status(401).json({ error: 'No account found with this email' });
-    }
-
     const user = users[0];
-    const valid = await bcrypt.compare(password, user.password_hash);
-    if (!valid) {
-      return res.status(401).json({ error: 'Incorrect password' });
+    // Constant-message + constant-time response. Don't tell an attacker whether
+    // the email exists — collapse "no such user" and "wrong password" into one
+    // generic error, and run bcrypt against a real precomputed hash on the
+    // no-user path so the ~200ms work happens either way.
+    const valid = user
+      ? await bcrypt.compare(password, user.password_hash)
+      : (await bcrypt.compare(password, DUMMY_BCRYPT_HASH), false);
+    if (!user || !valid) {
+      return res.status(401).json({ error: 'Invalid email or password' });
     }
 
     // Fetch store name
