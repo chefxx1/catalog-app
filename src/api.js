@@ -162,32 +162,6 @@ export const updateCatalogStatus = async (id, status) => {
   return updateCatalogEntry(id, { status });
 };
 
-export const getVariants = async (entryId) => {
-  const res = await apiFetch(`${API_URL}/products/catalog/${entryId}/variants`, { headers: headers() });
-  return handleResponse(res);
-};
-
-export const createVariant = async (entryId, variant) => {
-  const res = await apiFetch(`${API_URL}/products/catalog/${entryId}/variants`, {
-    method: 'POST', headers: headers(), body: JSON.stringify(variant),
-  });
-  return handleResponse(res);
-};
-
-export const updateVariant = async (variantId, fields) => {
-  const res = await apiFetch(`${API_URL}/products/variants/${variantId}`, {
-    method: 'PATCH', headers: headers(), body: JSON.stringify(fields),
-  });
-  return handleResponse(res);
-};
-
-export const deleteVariant = async (variantId) => {
-  const res = await apiFetch(`${API_URL}/products/variants/${variantId}`, {
-    method: 'DELETE', headers: headers(),
-  });
-  return handleResponse(res);
-};
-
 export const deleteCatalogEntry = async (id) => {
   const res = await apiFetch(`${API_URL}/products/catalog/${id}`, {
     method: 'DELETE',

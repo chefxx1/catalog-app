@@ -3,7 +3,7 @@ import { toast } from "../components/Toast";
 import { Icon } from "../components/shared";
 import BrandOrb from "../components/BrandOrb";
 import VisualPreview from "../components/VisualPreview";
-import { exportProduct, getExportHistory, downloadExport, getGoogleMerchantFeed, getCatalog, getVariants, saveForLater } from "../api";
+import { exportProduct, getExportHistory, downloadExport, getGoogleMerchantFeed, saveForLater } from "../api";
 import { generateProductPdf } from "../utils/pdfExport";
 
 const PLATFORMS = [
@@ -55,18 +55,11 @@ const ExportStep = ({ onComplete, productData, user }) => {
           // saved to their catalog when it wasn't.
           toast.warning("PDF generated, but could not save to catalog: " + (e?.message || "unknown error"));
         }
-        let variants = [];
-        try {
-          const entries = await getCatalog();
-          const match = entries.find(e => e.product_id === product.id || (product.barcode && e.barcode === product.barcode));
-          if (match) { const v = await getVariants(match.id); variants = v.variants || []; }
-        } catch {}
         const blob = await generateProductPdf({
           ...product,
           image_url: productData?.images?.[0]?.image_url,
           price: productData?.enriched?.price || product.price,
           description: product.ai_description_professional || product.edited_description || product.description,
-          variants,
         }, user?.store_name);
         const safe = (productName || "product").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
         result = { content: blob, filename: `${safe}.pdf`, contentType: "application/pdf", isBlob: true };

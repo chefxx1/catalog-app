@@ -5,7 +5,6 @@ import { toast } from "../components/Toast";
 import { getCatalog, getBrandVoices as apiGetBrandVoices, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, exportProduct, getTags, createTag, deleteTag, setEntryTags as apiSetEntryTags, getSavedViews, createSavedView, deleteSavedView, getQualitySuggestions, getActivity } from "../api";
 import { STATUSES, COMPLETENESS, completenessColor } from "../constants/catalog";
 import { generateCatalogPdf } from "../utils/pdfExport";
-import VariantManager from "../components/VariantManager";
 import TranslateModal from "../components/TranslateModal";
 import CompletenessRing from "../components/CompletenessRing";
 
@@ -47,7 +46,6 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
   const [visibleCols, setVisibleCols] = useState({ product: true, barcode: true, completeness: true, stock: true, status: true, tags: false, date: true, actions: true });
   const [stockEditId, setStockEditId] = useState(null);
   const [stockEditValue, setStockEditValue] = useState("");
-  const [variantEntry, setVariantEntry] = useState(null);
   const [translateEntry, setTranslateEntry] = useState(null);
   const [showColPicker, setShowColPicker] = useState(false);
   const canEdit = user.role === "Admin" || user.role === "Editor";
@@ -514,16 +512,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
                 })()}
               </td>}
               {visibleCols.stock && <td style={{padding:"12px 16px"}} onClick={e=>e.stopPropagation()}>
-                {item.variant_count > 0 ? (() => {
-                  const total = item.variant_stock || 0;
-                  const color = total === 0 ? "#EF4444" : total <= (item.low_stock_threshold ?? 5) ? "#F59E0B" : "var(--text-muted)";
-                  return (
-                    <div style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer"}} onClick={()=>setVariantEntry(item)} title="View variants">
-                      <span className="mono" style={{fontSize:12,fontWeight:600,color}}>{total}</span>
-                      <span style={{fontSize:10,padding:"1px 6px",borderRadius:8,background:"rgba(124,58,237,0.15)",color:"var(--primary-light,#A78BFA)",fontWeight:700}}>{item.variant_count} VAR</span>
-                    </div>
-                  );
-                })() : stockEditId===item.id ? (() => {
+                {stockEditId===item.id ? (() => {
                   const saveStock = async () => {
                     const v = stockEditValue==="" ? null : parseInt(stockEditValue,10);
                     try {
@@ -612,10 +601,6 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Edit" onClick={()=>startEdit(item)}><Icon name="edit" size={12}/></button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Translate" onClick={()=>setTranslateEntry(item)}><Icon name="globe" size={12}/></button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="History" onClick={()=>openChangelog(item)}><Icon name="clock" size={12}/></button>
-                <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11,position:"relative"}} title="Variants" onClick={()=>setVariantEntry(item)}>
-                  <Icon name="copy" size={12}/>
-                  {item.variant_count>0 && <span style={{position:"absolute",top:-2,right:-2,fontSize:9,fontWeight:700,background:"#7C3AED",color:"#fff",borderRadius:8,padding:"1px 5px",minWidth:14,textAlign:"center"}}>{item.variant_count}</span>}
-                </button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Export" onClick={()=>onExportProduct(item.product_id)}><Icon name="download" size={12}/></button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11,color:"#EF4444"}} title="Delete" onClick={()=>setShowDeleteDialog(item.id)}><Icon name="trash" size={12} color="#EF4444"/></button>
               </div></td>}
@@ -740,24 +725,6 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
                   </div>
                 </div>
               ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {variantEntry && (
-        <div className="modal-modern-overlay" onClick={()=>{setVariantEntry(null);getCatalog().then(c=>setCatalog(c||[])).catch(()=>{})}}>
-          <div className="modal-modern-card size-lg" onClick={e=>e.stopPropagation()}>
-            <div className="modal-modern-blobs" />
-            <div className="modal-modern-header">
-              <div>
-                <h3>Variants</h3>
-                <p>{variantEntry.custom_name||variantEntry.name}</p>
-              </div>
-              <button className="modal-modern-close" onClick={()=>{setVariantEntry(null);getCatalog().then(c=>setCatalog(c||[])).catch(()=>{})}}><Icon name="x" size={14}/></button>
-            </div>
-            <div className="modal-modern-body">
-              <VariantManager entryId={variantEntry.id} canEdit={canEdit}/>
             </div>
           </div>
         </div>
