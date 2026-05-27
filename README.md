@@ -161,8 +161,7 @@ catalog-app/
 │   ├── templates/
 │   │   └── pdfTemplate.js            # Editorial HTML templates rendered by Puppeteer
 │   ├── scripts/
-│   │   ├── backfill-trending-specs.js  # One-off — re-enrich products whose AI specs were dropped
-│   │   └── validate-exports.js         # Generates real exports + parser-validates every format
+│   │   └── backfill-trending-specs.js  # One-off — re-enrich products whose AI specs were dropped
 │   └── database/
 │       ├── schema.sql                # MySQL table definitions
 │       └── migrate-stores.js         # One-time multi-tenant migration (already run)
@@ -179,10 +178,7 @@ catalog-app/
 
 ## Maintenance Scripts
 
-Both live in `server/scripts/`. Run from the project root with `node server/scripts/<name>.js` — backend must be running for the export validator, but not for the spec backfill.
-
-- **`validate-exports.js`** — Generates a real export file for each format/platform (Shopify CSV+JSON, WooCommerce, Magento, BigCommerce, Google Shopping XML), parses each with proper parsers, and reports pass/fail per format. Catches things code review misses: UTF-8 BOM corruption, invalid Handle slugs, fake GTINs in `<g:gtin>`, broken XML escaping, formula injection. Re-run after any change to `server/routes/export.js` to make sure nothing regressed. Creates a throwaway test user per run, exits non-zero if any check fails.
-- **`backfill-trending-specs.js`** — Re-enriches products whose AI specs are NULL (e.g. trending/chat adds where Gemini 503'd before the retry chain landed). Idempotent; safe to re-run.
+- **`server/scripts/backfill-trending-specs.js`** — Re-enriches products whose AI specs are NULL (e.g. trending/chat adds where Gemini 503'd before the retry chain landed). Idempotent; safe to re-run with `node server/scripts/backfill-trending-specs.js`.
 
 ## Team
 - chefxx1 — Project Lead
