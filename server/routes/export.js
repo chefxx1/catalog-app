@@ -8,6 +8,52 @@ const { renderProductPdf, renderCatalogPdf } = require('../templates/pdfTemplate
 
 const router = express.Router();
 
+// ── EXPORT HELPERS ────────────────────────────────────────────────────────
+
+// Slugify for URL handles. Strict ASCII [a-z0-9-] only — Shopify rejects
+// anything else. NFKD strips accents (é → e), then any non-alphanumeric run
+// collapses to a single hyphen. Arabic/CJK reduce to empty since they have
+// no ASCII decomposition; safeHandle() handles the fallback.
+function slugify(text) {
+  if (!text) return '';
+  return String(text)
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+// Build a Shopify Handle that is never empty or invalid. Order of preference:
+//   1. slugified product name (usually wins for Latin-script products)
+//   2. slugified barcode/SKU (fallback for Arabic-only / symbol-only names
+//      where the regex reduces name to empty)
+//   3. product-<id> (last resort, guarantees a valid handle)
+function safeHandle(product) {
+  const fromName = slugify(product.name);
+  if (fromName.length >= 2) return fromName;
+  const fromBarcode = slugify(product.barcode);
+  if (fromBarcode.length >= 2) return fromBarcode;
+  return `product-${product.id || Date.now()}`;
+}
+
+// GTIN validation — length 8/12/13/14, all digits, mod-10 check digit.
+// Synthetic identifiers (VALIDATE-/AI-/TREND-/CHAT- prefixes) fail the
+// length+digit test immediately. Real scanned barcodes pass.
+function isValidGtin(value) {
+  if (!value) return false;
+  const s = String(value).trim();
+  if (!/^(\d{8}|\d{12}|\d{13}|\d{14})$/.test(s)) return false;
+  // Mod-10 (UCC/EAN) check digit: rightmost digit, weights 3,1,3,1,... right to left
+  const digits = s.split('').map(Number);
+  const check = digits.pop();
+  let sum = 0;
+  for (let i = digits.length - 1, w = 3; i >= 0; i--, w = w === 3 ? 1 : 3) {
+    sum += digits[i] * w;
+  }
+  return ((10 - (sum % 10)) % 10) === check;
+}
+
 // POST /api/export/pdf — server-side PDF via Puppeteer.
 // Browser engine handles Arabic/RTL/CJK/bidi for all languages out of the box.
 router.post('/pdf', auth, requireRole('Admin', 'Editor'), async (req, res) => {
@@ -216,9 +262,10 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
     let content, contentType, filename;
 
     if (format === 'CSV') {
-      // Prepend UTF-8 BOM so Excel/Numbers detect the encoding correctly
-      // and don't mangle Arabic/Chinese/accented characters
-      content = '﻿' + generateCSV(exportProduct, desc, imageUrls, seoTags, price, weight, platform);
+      // No BOM — these are import files for Shopify/Woo/Magento/BigCommerce,
+      // which read UTF-8 fine without it. The BOM would bind to the first
+      // column header and break strict column-name matching on the importer side.
+      content = generateCSV(exportProduct, desc, imageUrls, seoTags, price, weight, platform);
       contentType = 'text/csv; charset=utf-8';
       filename = `${product.barcode || 'product'}_${platform.toLowerCase()}.csv`;
     } else if (format === 'JSON') {
@@ -301,14 +348,19 @@ function generateCSV(product, desc, images, tags, price, weight, platform) {
 
   if (platform === 'Shopify') {
     const headers = ['Handle','Title','Body (HTML)','Vendor','Type','Tags','Published','Option1 Name','Option1 Value','Variant SKU','Variant Grams','Variant Price','Variant Barcode','Variant Inventory Qty','Image Src','Image Position','SEO Title','SEO Description'];
-    const handle = (product.name || '').toLowerCase().replace(/\s+/g, '-');
+    // Handle must be [a-z0-9-]; safeHandle falls back to barcode/id when the
+    // name is non-Latin or symbol-only and slugifies to empty.
+    const handle = safeHandle(product);
+    // Variant Barcode is Shopify's GTIN field — leave blank for synthetic IDs.
+    // Internal identifier still lives in Variant SKU (one column to the left).
+    const variantBarcode = isValidGtin(product.barcode) ? product.barcode : '';
 
     const rows = [[
       handle, product.name || '', `<p>${desc}</p>`, product.brand || '',
       product.ai_category_suggestion || '', tags.join(', '), 'TRUE',
       'Title', 'Default Title', product.barcode || '',
       weight ? String(parseFloat(weight) * 1000) : '', price || '',
-      product.barcode || '', '', images[0] || '', '1',
+      variantBarcode, '', images[0] || '', '1',
       product.name || '', desc.slice(0, 155),
     ]];
 
@@ -486,7 +538,7 @@ ${additionalImages}
       <g:availability>in_stock</g:availability>
       ${price ? `<g:price>${price}</g:price>` : ''}
       ${brand ? `<g:brand>${brand}</g:brand>` : ''}
-      ${barcode ? `<g:gtin>${esc(barcode)}</g:gtin>` : ''}
+      ${isValidGtin(barcode) ? `<g:gtin>${esc(barcode)}</g:gtin>` : ''}
       ${category ? `<g:google_product_category>${category}</g:google_product_category>` : ''}
       <g:condition>new</g:condition>
     </item>`;
