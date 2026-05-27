@@ -3,8 +3,7 @@ import { toast } from "../components/Toast";
 import { Icon } from "../components/shared";
 import BrandOrb from "../components/BrandOrb";
 import VisualPreview from "../components/VisualPreview";
-import { exportProduct, getExportHistory, downloadExport, getGoogleMerchantFeed, saveForLater } from "../api";
-import { generateProductPdf } from "../utils/pdfExport";
+import { exportProduct, getExportHistory, downloadExport, getGoogleMerchantFeed, saveForLater, exportPdf } from "../api";
 
 const PLATFORMS = [
   { name: "Shopify",         color: "#96BF48", desc: "CSV / JSON optimized for Shopify imports",    iconLetter: "S" },
@@ -51,16 +50,25 @@ const ExportStep = ({ onComplete, productData, user }) => {
         try {
           await saveForLater(productData);
         } catch (e) {
-          // Surface the failure — silent skip made users think the PDF was
-          // saved to their catalog when it wasn't.
           toast.warning("PDF generated, but could not save to catalog: " + (e?.message || "unknown error"));
         }
-        const blob = await generateProductPdf({
-          ...product,
-          image_url: productData?.images?.[0]?.image_url,
-          price: productData?.enriched?.price || product.price,
-          description: product.ai_description_professional || product.edited_description || product.description,
-        }, user?.store_name);
+        const imageUrls = (productData?.images || [])
+          .map(i => i.image_url || i.url)
+          .filter(Boolean)
+          .slice(0, 5);
+        const blob = await exportPdf({
+          mode: "single",
+          product: {
+            ...product,
+            image_url: imageUrls[0],
+            image_urls: imageUrls,
+            price: productData?.enriched?.price || product.price,
+            description: product.ai_description_professional || product.edited_description || product.description,
+            ai_attributes: productData?.product?.attributes || product.ai_attributes,
+            status: product.status || "Draft",
+          },
+          storeName: user?.store_name,
+        });
         const safe = (productName || "product").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
         result = { content: blob, filename: `${safe}.pdf`, contentType: "application/pdf", isBlob: true };
       } else {

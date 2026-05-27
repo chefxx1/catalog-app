@@ -32,14 +32,43 @@ async function fetchProductImage(query) {
   } catch { return null; }
 }
 
-// Enrich a product with AI-generated content (description, specs, SEO)
+// Filter out placeholder specs Gemini sometimes echoes from the prompt example.
+function validSpecs(s) {
+  if (!s || typeof s !== 'object' || Array.isArray(s)) return false;
+  const entries = Object.entries(s).filter(([k, v]) => k && v && v !== 'null' && !/^Key\d+$/i.test(k) && !/^Value\d+$/i.test(String(v)));
+  return entries.length >= 3;
+}
+
+// Retry with model fallback — 2.5-flash 503s, 2.0-flash often 429s on free tier;
+// flash-latest is the most reliable middle ground.
+async function callGeminiJson(prompt) {
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const models = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'];
+  let lastErr;
+  for (const modelName of models) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent(prompt);
+        const text = result.response.text().trim();
+        return JSON.parse(text.replace(/^```json?\s*/i, '').replace(/```\s*$/, '').trim());
+      } catch (err) {
+        lastErr = err;
+        const msg = err?.message || '';
+        const transient = /503|overload|UNAVAILABLE|high demand|429|quota|rate/i.test(msg);
+        if (!transient) break;
+        if (attempt < 2) await new Promise(r => setTimeout(r, 800 * Math.pow(2, attempt)));
+      }
+    }
+  }
+  throw lastErr;
+}
+
+// Enrich a product with AI-generated content (description, specs, SEO).
+// Retries specs separately when Gemini omits them or returns placeholders.
 async function enrichWithAI(name, category) {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) return null;
-  try {
-    const genAI = new GoogleGenerativeAI(key);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    const prompt = `Generate marketing data for: ${name}
+  if (!process.env.GEMINI_API_KEY) return null;
+  const prompt = `Generate marketing data for: ${name}
 Category: ${category || 'general'}
 
 Return ONLY a JSON object (no markdown, no fences):
@@ -48,18 +77,36 @@ Return ONLY a JSON object (no markdown, no fences):
   "professional": "professional 2-3 sentences",
   "friendly": "warm 2-3 sentences",
   "luxury": "elevated 2-3 sentences",
-  "specs": { "Key1": "Value1", "Key2": "Value2", "Key3": "Value3", "Key4": "Value4", "Key5": "Value5" },
+  "specs": { "<real attribute>": "<real value>", ... 5-7 entries },
   "seoTags": ["tag1","tag2","tag3","tag4","tag5","tag6"]
 }
 
-Specs: 5-7 attributes RELEVANT to this product type.`;
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
-    return JSON.parse(text.replace(/^```json?\s*/i, '').replace(/```\s*$/, '').trim());
+Specs: 5-7 real, concrete attributes RELEVANT to this product type. DO NOT return "Key1: Value1" placeholders.`;
+
+  let main = null;
+  try {
+    main = await callGeminiJson(prompt);
   } catch (err) {
-    console.warn('[chat] AI enrichment failed:', err.message);
+    console.warn('[chat] AI enrichment (main) failed:', err.message);
     return null;
   }
+
+  if (!validSpecs(main.specs)) {
+    try {
+      const specsOnly = await callGeminiJson(`Return ONLY a JSON object with 5-7 real specifications for this product. Real attribute names and values only — no "Key1/Value1" placeholders.
+
+Product: ${name}
+Category: ${category || 'general'}
+
+Format: { "<attribute>": "<value>", ... }`);
+      if (validSpecs(specsOnly)) main.specs = specsOnly;
+      else if (specsOnly?.specs && validSpecs(specsOnly.specs)) main.specs = specsOnly.specs;
+    } catch (err) {
+      console.warn('[chat] AI enrichment (specs retry) failed:', err.message);
+    }
+  }
+
+  return main;
 }
 
 const SYSTEM_PROMPT = `You are CatalogAI's catalog assistant — focused, warm, concise. You convert natural language about a product catalog into structured JSON so the app can answer, run actions, navigate, or explain.

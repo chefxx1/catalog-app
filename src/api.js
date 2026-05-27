@@ -497,6 +497,22 @@ export const exportProduct = async (format, platform, barcode, productData, prod
   return handleResponse(res);
 };
 
+// Server-side PDF export via Puppeteer. Returns a Blob.
+// mode: 'single' (pass product) | 'catalog' (pass entries[])
+export const exportPdf = async ({ mode, product, entries, storeName }) => {
+  const res = await apiFetch(`${API_URL}/export/pdf`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ mode, product, entries, storeName }),
+  });
+  if (!res.ok) {
+    let msg = 'PDF export failed';
+    try { msg = (await res.json()).error || msg; } catch {}
+    throw new Error(msg);
+  }
+  return res.blob();
+};
+
 export const getExportHistory = async () => {
   const res = await apiFetch(`${API_URL}/export/history`, { headers: headers() });
   const data = await handleResponse(res);
