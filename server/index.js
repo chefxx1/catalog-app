@@ -128,11 +128,8 @@ async function autoMigrate() {
       await db.query(`ALTER TABLE products ADD COLUMN ai_description_language VARCHAR(32) NULL DEFAULT 'English'`);
     }
 
-    // Product variants
-    await db.query(`CREATE TABLE IF NOT EXISTS product_variants (
-      id INT AUTO_INCREMENT PRIMARY KEY, catalog_entry_id INT NOT NULL, variant_name VARCHAR(255) NOT NULL, option_values JSON NULL, sku VARCHAR(100) NULL, price DECIMAL(10,2) NULL, stock_quantity INT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      FOREIGN KEY (catalog_entry_id) REFERENCES catalog_entries(id) ON DELETE CASCADE, INDEX idx_variant_catalog (catalog_entry_id)
-    )`);
+    // Drop the legacy product_variants table — feature was removed
+    await db.query(`DROP TABLE IF EXISTS product_variants`);
 
     // Trending cache (global, not store-scoped)
     await db.query(`CREATE TABLE IF NOT EXISTS trending_cache (

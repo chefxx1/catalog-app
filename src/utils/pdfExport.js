@@ -138,29 +138,6 @@ export const generateProductPdf = async (product, storeName) => {
     y = doc.lastAutoTable.finalY + 6;
   }
 
-  if (Array.isArray(product.variants) && product.variants.length > 0) {
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(...TEXT_DARK);
-    doc.text("Variants", 14, y);
-    y += 2;
-    autoTable(doc, {
-      startY: y + 2,
-      head: [["Variant", "SKU", "Price", "Stock"]],
-      body: product.variants.map((v) => [
-        v.variant_name + (v.option_values && Object.keys(v.option_values).length ? " (" + Object.entries(v.option_values).map(([k, val]) => `${k}: ${val}`).join(", ") + ")" : ""),
-        v.sku || "-",
-        v.price != null ? `$${parseFloat(v.price).toFixed(2)}` : "-",
-        v.stock_quantity != null ? String(v.stock_quantity) : "-",
-      ]),
-      theme: "grid",
-      headStyles: { fillColor: BRAND_START, textColor: 255, fontStyle: "bold" },
-      styles: { fontSize: 9, cellPadding: 3 },
-      margin: { left: 14, right: 14 },
-    });
-    y = doc.lastAutoTable.finalY + 6;
-  }
-
   const total = doc.internal.getNumberOfPages();
   for (let i = 1; i <= total; i++) {
     doc.setPage(i);
@@ -184,24 +161,16 @@ export const generateCatalogPdf = async (entries, storeName) => {
   doc.setTextColor(...TEXT_MUTED);
   doc.text(`${entries.length} product${entries.length !== 1 ? "s" : ""}`, 14, 48);
 
-  const anyVariants = entries.some((e) => (e.variant_count || 0) > 0);
-  const rows = entries.map((e) => {
-    const displayStock = (e.variant_count || 0) > 0 ? String(e.variant_stock || 0) : (e.stock_quantity != null ? String(e.stock_quantity) : "-");
-    const base = [
-      e.custom_name || e.name || "",
-      e.barcode || "-",
-      e.ai_category_suggestion || e.category || "-",
-      e.custom_price ? `$${e.custom_price}` : (e.price ? `$${e.price}` : "-"),
-      displayStock,
-    ];
-    if (anyVariants) base.push(e.variant_count ? `${e.variant_count}` : "-");
-    base.push(e.status || "-");
-    return base;
-  });
+  const rows = entries.map((e) => [
+    e.custom_name || e.name || "",
+    e.barcode || "-",
+    e.ai_category_suggestion || e.category || "-",
+    e.custom_price ? `$${e.custom_price}` : (e.price ? `$${e.price}` : "-"),
+    e.stock_quantity != null ? String(e.stock_quantity) : "-",
+    e.status || "-",
+  ]);
 
-  const head = [anyVariants
-    ? ["Product", "Barcode", "Category", "Price", "Stock", "Variants", "Status"]
-    : ["Product", "Barcode", "Category", "Price", "Stock", "Status"]];
+  const head = [["Product", "Barcode", "Category", "Price", "Stock", "Status"]];
 
   autoTable(doc, {
     startY: 54,

@@ -57,12 +57,15 @@ Beyond the core workflow, the platform includes a dashboard with analytics, team
 
 ### AI and External APIs
 - **Google Gemini 2.5 Flash** — the primary AI engine. Used for product description generation (Professional/Friendly/Luxury tones), SEO tag generation, category suggestions, image recognition, attribute extraction, quality suggestions, and multi-language translation.
+- **Groq (Llama 3.3 70B Versatile)** — powers the in-app AI Catalog Chat assistant. Picked for its low-latency streaming responses, which keeps the chat UX feeling instant compared to Gemini for conversational routing.
 - **Open Food Facts** — free barcode API for food and beverage products.
 - **UPC Database** — free barcode API for general products (electronics, furniture, etc.).
-- **Serper.dev** — Google Images search API used for finding additional product photos, back labels, lifestyle shots.
+- **Serper.dev** — Google Images search API used for finding additional product photos, back labels, lifestyle shots, and trending products.
 - **Google OAuth 2.0** — "Continue with Google" sign-in.
 - **Shopify Admin API** — for live product sync to Shopify dev stores.
 - **Google Merchant Center** — for Google Shopping XML feed export.
+- **html5-qrcode** — in-browser camera barcode scanner used in the Search step.
+- **jsPDF** — client-side PDF generation for catalog and product exports.
 
 ### Development Tools
 - **Git + GitHub** — version control, private repository, 4 team member collaborators
@@ -86,6 +89,7 @@ Beyond the core workflow, the platform includes a dashboard with analytics, team
                     ┌─────────────────────┐
                     │  External Services  │
                     │  - Gemini AI        │
+                    │  - Groq (Llama 3.3) │
                     │  - Open Food Facts  │
                     │  - UPC Database     │
                     │  - Serper.dev       │
@@ -153,7 +157,6 @@ The frontend keeps the current step and product data in App.jsx state. Each step
 | `saved_views` | Saved filter combinations per store |
 | `activity_log` | Audit trail of user actions across the app |
 | `price_history` | Historical prices for change alerts |
-| `product_variants` | Per-entry variants (size, color, SKU, stock) |
 | `trending_cache` | 24h cache for Serper.dev trending product lookups |
 | `product_translations` | Cached AI translations per product per language |
 
@@ -186,7 +189,8 @@ The frontend keeps the current step and product data in App.jsx state. Each step
 - AI category suggestion
 - Custom brand voices with tone, audience, style, include/exclude keywords
 - Custom one-off prompts for specific generation needs
-- 8 language support: English, Arabic, French, Spanish, German, Chinese, Turkish, Portuguese — regenerates all content in the selected language, also translates specs
+- 8 generation languages in the Review step (English, Arabic, French, Spanish, German, Chinese, Turkish, Portuguese) — regenerates descriptions, SEO, meta, and specs in the selected language; results cached per language in `product_translations`
+- 10 translation languages in the post-export `TranslateModal` (the 8 above plus Italian and Japanese) for translating already-saved catalog entries
 - Data quality suggestions: AI analyzes incomplete listings and gives actionable improvement tips
 - Automatic retry with model fallback on 503 overload errors (tries `gemini-2.5-flash`, then `gemini-2.0-flash`)
 
@@ -230,6 +234,34 @@ The frontend keeps the current step and product data in App.jsx state. Each step
 - Recent searches with cache hit indicators
 - Activity feed (audit trail of team actions)
 - Price alerts card (when monitored prices change)
+
+### AI Catalog Chat (Phase 22)
+- Right-side dock conversational assistant powered by Groq Llama 3.3 70B
+- 7 intent types: filter, action, text, analyze, navigate, help, recommend — router picks the right handler per message
+- 11 help topics covering everything from "how do I export" to brand voices
+- SSE streaming responses (token-by-token rendering)
+- Multi-turn context: serialized chat history so follow-ups like "can I edit them?" know what "them" refers to
+- Dynamic suggestion chips that change based on catalog state
+- Backend `chat.js` builds catalog context in 2 round trips (stats+needs_attention folded into one query, tags+cats+voices parallelized)
+
+### Camera Scanner (Phase 21)
+- Live in-browser barcode scanner using html5-qrcode
+- Opens straight into the Search step
+- Auto-fires the lookup as soon as a code is detected
+
+### PDF Export (Phase 21)
+- Client-side PDF generation via jsPDF
+- Two flavors: full catalog PDF and per-product datasheet
+- Includes images, descriptions, specs, and tags
+
+### Inventory (Phase 21)
+- Stock counts and low-stock thresholds per catalog entry
+- Inline stock editor on the Dashboard with low-stock and out-of-stock badges
+
+### Trending Products (Phase 21)
+- Dedicated Trending page powered by Serper.dev shopping search
+- 24h `trending_cache` table prevents repeat API spend
+- One-click "Add to catalog" from any trending item
 
 ### Settings
 - Six sections: Profile, Security, Store Preferences, Integrations, Notifications, Danger Zone
@@ -295,12 +327,12 @@ The most likely root cause: the frontend sent the price as `"$29.99"` but the da
 2. **Clamping** the product name to 255 chars to fit `VARCHAR(255)`
 3. **Surfacing** errors instead of swallowing them — now the user sees the actual failure and can retry
 
-### Challenge 6: Variants — Removed, Then Brought Back
+### Challenge 6: Variants — Built Twice, Removed Twice
 **Problem:** We built a full variant system (colors, sizes, flavors, materials, storage, pack quantities) in the Review step. After building it, we realized this info really belonged in product specifications and the Review-step location was clutter, so we ripped the entire tab out.
 
 **Solution then:** Removed the Variants tab and all related state, handlers, and UI from Review. The step became cleaner and focused on data accuracy, AI content, and image selection.
 
-**What changed later:** Variants returned in Phase 21 — but as a per-catalog-entry feature rather than a Review tab. They now live on `catalog_entries` via a dedicated `product_variants` table and are managed through a `VariantManager` modal on the Dashboard. This keeps Review focused on the source product, while still letting merchants define store-specific SKUs/sizes/colors per entry. The right home for the feature, not the wrong feature.
+**What happened later:** Variants returned briefly in Phase 21 as a per-catalog-entry `VariantManager` modal on the Dashboard, backed by a `product_variants` table. In practice nobody on the team actually used it — the Dashboard already exposed inline stock editing and the merchants we were targeting weren't running multi-SKU catalogs. So we removed the whole feature a second time: the modal, the action button, the four API endpoints, the export/PDF integration, and the database table. Inline stock counts (Phase 21) stayed; variants did not. Lesson: a feature being "the right home" is not the same as the feature being needed.
 
 ### Challenge 7: Table Row Hover Accent Broke the Layout
 **Problem:** We tried to add a gradient left accent strip to catalog rows using `::before` pseudo-element with `position: absolute` on `<tr>`. Tables have unusual positioning rules and the accent appeared in the wrong place, creating visual glitches.
@@ -354,7 +386,7 @@ Everything got tested on a fresh database and on the existing one. Zero data los
 - **Invitation tokens** — cryptographically random, 7-day expiry, single-use
 - **Dependency auditing** — `npm audit` run as part of Phase 20, all known vulnerabilities resolved (multer DoS, nodemailer SMTP injection, flatted, brace-expansion ReDoS)
 
-### Known gaps (future work, planned for Phase 21)
+### Known gaps (future work)
 
 These are honestly documented rather than glossed over — they represent real hardening work the project has not yet done:
 
@@ -371,7 +403,7 @@ These are honestly documented rather than glossed over — they represent real h
 
 ## 10. Development Process
 
-The project was built in **20 progressive phases**, each adding a coherent set of features and being tested before moving on:
+The project was built in **22 progressive phases**, each adding a coherent set of features and being tested before moving on:
 
 1. **Core Functionality** — barcode API, settings, brand voice persistence
 2. **Dashboard & Analytics** — live data, real stats
@@ -393,7 +425,7 @@ The project was built in **20 progressive phases**, each adding a coherent set o
 18. **AI Enhancements** — multi-language generation
 19. **Integrations** — Shopify sync, Google Merchant Center, price monitoring
 20. **Security Hardening (round 2)** — Helmet security headers, image upload MIME/size validation, dependency audit (7 CVEs resolved)
-21. **Camera, PDF, Inventory, Variants, Trending** — live html5-qrcode barcode scanner, jsPDF catalog/product export, stock + low-stock thresholds, per-entry variant manager, Serper-backed trending products page
+21. **Camera, PDF, Inventory, Trending** — live html5-qrcode barcode scanner, jsPDF catalog/product export, stock + low-stock thresholds, Serper-backed trending products page (variants were built here and then removed in a later cleanup — see Challenge 6)
 22. **AI Catalog Chat + Translations + Polish** — Groq Llama 3.3 chat router with 7 intent types (filter/action/text/analyze/navigate/help/recommend) and SSE streaming, 10-language `TranslateModal` with cached translations, completeness ring, AI quality suggestions, multi-turn context handling, and a wave of security/audit fixes (JWT pinning, SSRF guards, language-aware AI cache, store-scoped brand voices)
 
 After Phase 19, we did a **visual rebrand** (new logo, shader background, glassmorphism, gradient design system) and **architecture cleanup** (split App.jsx into separate files) to bring the app to production quality. Phase 20 added a second round of security hardening based on a self-audit, then Phases 21–22 layered on the camera/PDF/inventory feature set and the conversational AI assistant.
@@ -454,7 +486,7 @@ On startup, the backend runs `CREATE TABLE IF NOT EXISTS` statements for all new
 Features that are planned or considered but not yet built:
 
 - **End-to-end automated test suite** (currently manual)
-- **Mobile app or PWA** with offline barcode scanning via phone camera
+- **Native mobile app or PWA** with offline barcode scanning (live in-browser scanning shipped in Phase 21)
 - **Competitor price tracking** — periodically check competitor prices and alert
 - **Bulk AI enrichment** — one-click "enrich all" for products with missing fields
 - **Side-by-side product comparison** — merchants can compare 2-3 products
@@ -467,15 +499,15 @@ Features that are planned or considered but not yet built:
 
 ## 14. Key Statistics
 
-- **~9,300 lines of frontend code** across 27 files (1 root + 11 pages + 14 components + utils + constants)
-- **~5,300 lines of backend code** across 9 route files + 4 middleware + helpers
+- **~7,700 lines of frontend code** across 26 files (1 root + 11 pages + 13 components + utils + constants)
+- **~5,000 lines of backend code** across 9 route files + 4 middleware + helpers
 - **21 database tables** with 18+ performance indexes
 - **70+ API endpoints**
 - **40+ custom SVG icons** in a single Icon component
-- **10 languages** supported for AI content generation
-- **5 export platforms** (Shopify, WooCommerce, Magento, BigCommerce, Google Shopping)
-- **22+ development phases** over ~8 weeks, including Phase 21 (camera scanner, PDF export, inventory, variants, trending) and ongoing AI chat / translations / security polish
-- **Free-tier compatible** — all APIs used have generous free tiers (Gemini 1500 req/day, Serper 2500/month, Open Food Facts unlimited)
+- **8 languages** for in-step AI content generation, **10 languages** for post-export translation
+- **5 export platforms** (Shopify, WooCommerce, Magento, BigCommerce, Google Shopping) plus PDF
+- **22 development phases** over ~8 weeks, ending with Phase 22 (AI catalog chat + translations + security polish)
+- **Free-tier compatible** — all APIs used have generous free tiers (Gemini 1500 req/day, Serper 2500/month, Groq 14400 req/day, Open Food Facts unlimited)
 
 ---
 

@@ -134,18 +134,6 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
     const [sources] = await db.query('SELECT * FROM product_sources WHERE product_id = ?', [product.id]);
     const [dbImages] = await db.query('SELECT * FROM product_images WHERE product_id = ?', [product.id]);
 
-    // Fetch variants for this store's catalog entry (if one exists)
-    const [variantRows] = await db.query(
-      `SELECT pv.* FROM product_variants pv
-       JOIN catalog_entries ce ON ce.id = pv.catalog_entry_id
-       WHERE ce.store_id = ? AND ce.product_id = ?`,
-      [req.user.store_id, product.id]
-    );
-    const variants = variantRows.map(v => ({
-      ...v,
-      option_values: typeof v.option_values === 'string' ? (JSON.parse(v.option_values || '{}')) : (v.option_values || {}),
-    }));
-
     // Prefer enriched frontend data over DB data
     const enriched = productData?.enriched || {};
     const frontendProduct = productData?.product || {};
@@ -168,11 +156,11 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
     let content, contentType, filename;
 
     if (format === 'CSV') {
-      content = generateCSV(exportProduct, desc, imageUrls, seoTags, price, weight, platform, variants);
+      content = generateCSV(exportProduct, desc, imageUrls, seoTags, price, weight, platform);
       contentType = 'text/csv';
       filename = `${product.barcode || 'product'}_${platform.toLowerCase()}.csv`;
     } else if (format === 'JSON') {
-      content = generateJSON(exportProduct, desc, imageUrls, seoTags, price, weight, platform, variants);
+      content = generateJSON(exportProduct, desc, imageUrls, seoTags, price, weight, platform);
       contentType = 'application/json';
       filename = `${product.barcode || 'product'}_${platform.toLowerCase()}.json`;
     } else if (format === 'XML') {
@@ -241,7 +229,7 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   }
 });
 
-function generateCSV(product, desc, images, tags, price, weight, platform, variants = []) {
+function generateCSV(product, desc, images, tags, price, weight, platform) {
   const esc = v => {
     let s = String(v || '');
     // Prevent CSV formula injection — prefix dangerous first characters
@@ -253,43 +241,14 @@ function generateCSV(product, desc, images, tags, price, weight, platform, varia
     const headers = ['Handle','Title','Body (HTML)','Vendor','Type','Tags','Published','Option1 Name','Option1 Value','Variant SKU','Variant Grams','Variant Price','Variant Barcode','Variant Inventory Qty','Image Src','Image Position','SEO Title','SEO Description'];
     const handle = (product.name || '').toLowerCase().replace(/\s+/g, '-');
 
-    const hasVariants = Array.isArray(variants) && variants.length > 0;
-    const optionName = hasVariants ? (Object.keys(variants[0].option_values || {})[0] || 'Title') : 'Title';
-
-    const rows = [];
-    if (hasVariants) {
-      variants.forEach((v, idx) => {
-        const optVal = Object.values(v.option_values || {})[0] || v.variant_name;
-        const isFirst = idx === 0;
-        rows.push([
-          handle,
-          isFirst ? (product.name || '') : '',
-          isFirst ? `<p>${desc}</p>` : '',
-          isFirst ? (product.brand || '') : '',
-          isFirst ? (product.ai_category_suggestion || '') : '',
-          isFirst ? tags.join(', ') : '',
-          isFirst ? 'TRUE' : '',
-          optionName, optVal,
-          v.sku || '', weight ? String(parseFloat(weight) * 1000) : '',
-          v.price != null ? String(v.price) : (price || ''),
-          product.barcode || '',
-          v.stock_quantity != null ? String(v.stock_quantity) : '',
-          isFirst ? (images[0] || '') : '',
-          isFirst ? '1' : '',
-          isFirst ? (product.name || '') : '',
-          isFirst ? desc.slice(0, 155) : '',
-        ]);
-      });
-    } else {
-      rows.push([
-        handle, product.name || '', `<p>${desc}</p>`, product.brand || '',
-        product.ai_category_suggestion || '', tags.join(', '), 'TRUE',
-        'Title', 'Default Title', product.barcode || '',
-        weight ? String(parseFloat(weight) * 1000) : '', price || '',
-        product.barcode || '', '', images[0] || '', '1',
-        product.name || '', desc.slice(0, 155),
-      ]);
-    }
+    const rows = [[
+      handle, product.name || '', `<p>${desc}</p>`, product.brand || '',
+      product.ai_category_suggestion || '', tags.join(', '), 'TRUE',
+      'Title', 'Default Title', product.barcode || '',
+      weight ? String(parseFloat(weight) * 1000) : '', price || '',
+      product.barcode || '', '', images[0] || '', '1',
+      product.name || '', desc.slice(0, 155),
+    ]];
 
     let csv = headers.join(',') + '\n' + rows.map(r => r.map(esc).join(',')).join('\n');
 
@@ -317,22 +276,8 @@ function generateCSV(product, desc, images, tags, price, weight, platform, varia
   return headers.join(',') + '\n' + row.map(esc).join(',');
 }
 
-function generateJSON(product, desc, images, tags, price, weight, platform, variants = []) {
+function generateJSON(product, desc, images, tags, price, weight, platform) {
   if (platform === 'Shopify') {
-    const hasVariants = Array.isArray(variants) && variants.length > 0;
-    const shopifyVariants = hasVariants ? variants.map(v => ({
-      title: v.variant_name,
-      sku: v.sku || product.barcode || '',
-      price: v.price != null ? String(v.price) : (price || '0.00'),
-      barcode: product.barcode || '',
-      inventory_quantity: v.stock_quantity ?? 0,
-      option1: Object.values(v.option_values || {})[0] || v.variant_name,
-    })) : [{
-      sku: product.barcode || '',
-      price: price || '0.00',
-      barcode: product.barcode || '',
-      grams: weight ? Math.round(parseFloat(weight) * 1000) : 0,
-    }];
     return JSON.stringify({
       product: {
         title: product.name,
@@ -340,8 +285,12 @@ function generateJSON(product, desc, images, tags, price, weight, platform, vari
         vendor: product.brand || '',
         product_type: product.ai_category_suggestion || '',
         tags: tags,
-        options: hasVariants ? [{ name: Object.keys(variants[0].option_values || {})[0] || 'Title' }] : undefined,
-        variants: shopifyVariants,
+        variants: [{
+          sku: product.barcode || '',
+          price: price || '0.00',
+          barcode: product.barcode || '',
+          grams: weight ? Math.round(parseFloat(weight) * 1000) : 0,
+        }],
         images: images.map((url, i) => ({ src: url, position: i + 1 })),
       }
     }, null, 2);
