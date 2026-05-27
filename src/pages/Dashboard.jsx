@@ -2,9 +2,8 @@ import React, { useState, useEffect } from "react";
 import { Icon, CopyButton, LoadingDots, ConfirmDialog, safeJsonParse } from "../components/shared";
 import BrandOrb from "../components/BrandOrb";
 import { toast } from "../components/Toast";
-import { getCatalog, getBrandVoices as apiGetBrandVoices, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, exportProduct, getTags, createTag, deleteTag, setEntryTags as apiSetEntryTags, getSavedViews, createSavedView, deleteSavedView, getQualitySuggestions, getActivity } from "../api";
+import { getCatalog, getBrandVoices as apiGetBrandVoices, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, exportProduct, getTags, createTag, deleteTag, setEntryTags as apiSetEntryTags, getSavedViews, createSavedView, deleteSavedView, getQualitySuggestions, getActivity, exportPdf } from "../api";
 import { STATUSES, COMPLETENESS, completenessColor } from "../constants/catalog";
-import { generateCatalogPdf } from "../utils/pdfExport";
 import TranslateModal from "../components/TranslateModal";
 import CompletenessRing from "../components/CompletenessRing";
 
@@ -289,10 +288,19 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
 
     if (batchPlat === "PDF Catalog") {
       try {
-        const blob = await generateCatalogPdf(items, user?.store_name);
+        // Enrich each entry with {name,color} tags resolved from the local tag map
+        const tagById = Object.fromEntries(tags.map(t => [t.id, t]));
+        const enrichedItems = items.map(item => ({
+          ...item,
+          tags: (entryTags[item.id] || [])
+            .map(tid => tagById[tid])
+            .filter(Boolean)
+            .map(t => ({ name: t.name, color: t.color })),
+        }));
+        const blob = await exportPdf({ mode: "catalog", entries: enrichedItems, storeName: user?.store_name });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a'); a.href = url; a.download = `catalog-${items.length}products.pdf`; a.click();
-        URL.revokeObjectURL(url);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
         for (const item of items) { try { await updateCatalogStatus(item.id, "Exported"); } catch {} }
         setBatchProgress({ done: items.length, total: items.length });
         toast.success(`PDF catalog generated (${items.length} product${items.length!==1?"s":""})`);

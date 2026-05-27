@@ -3,8 +3,68 @@ const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
 const db = require('../db');
 const logActivity = require('../helpers/activity');
+const { getBrowser } = require('../helpers/browser');
+const { renderProductPdf, renderCatalogPdf } = require('../templates/pdfTemplate');
 
 const router = express.Router();
+
+// POST /api/export/pdf — server-side PDF via Puppeteer.
+// Browser engine handles Arabic/RTL/CJK/bidi for all languages out of the box.
+router.post('/pdf', auth, requireRole('Admin', 'Editor'), async (req, res) => {
+  try {
+    const { mode, product, entries, storeName } = req.body;
+    if (!mode || !['single', 'catalog'].includes(mode)) {
+      return res.status(400).json({ error: 'mode must be "single" or "catalog"' });
+    }
+
+    let html, filename, count;
+    if (mode === 'single') {
+      if (!product?.name) return res.status(400).json({ error: 'product.name required' });
+      html = renderProductPdf(product, storeName);
+      const safe = String(product.name).replace(/[^a-z0-9]+/gi, '-').toLowerCase().slice(0, 50);
+      filename = `${safe || 'product'}.pdf`;
+      count = 1;
+    } else {
+      if (!Array.isArray(entries) || entries.length === 0) {
+        return res.status(400).json({ error: 'entries required' });
+      }
+      html = renderCatalogPdf(entries, storeName);
+      filename = `catalog-${Date.now()}.pdf`;
+      count = entries.length;
+    }
+
+    const browser = await getBrowser();
+    const page = await browser.newPage();
+    let pdfBuffer;
+    try {
+      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 15000 });
+      pdfBuffer = await page.pdf({
+        format: 'A4',
+        printBackground: true,    // required so the gradient strip + colors render
+        preferCSSPageSize: true,
+      });
+    } finally {
+      await page.close();
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.end(pdfBuffer);
+
+    logActivity({
+      store_id: req.user.store_id, user_id: req.user.id,
+      action: 'exported', entity_type: 'pdf',
+      entity_name: mode === 'single' ? product.name : 'catalog',
+      details: { mode, count },
+    });
+  } catch (err) {
+    console.error('PDF export error:', err.message);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to generate PDF: ' + err.message });
+    }
+  }
+});
 
 // GET /api/export/history — get user's export history
 router.get('/history', auth, requireRole('Admin', 'Editor'), async (req, res) => {
@@ -156,16 +216,18 @@ router.post('/', auth, requireRole('Admin', 'Editor'), async (req, res) => {
     let content, contentType, filename;
 
     if (format === 'CSV') {
-      content = generateCSV(exportProduct, desc, imageUrls, seoTags, price, weight, platform);
-      contentType = 'text/csv';
+      // Prepend UTF-8 BOM so Excel/Numbers detect the encoding correctly
+      // and don't mangle Arabic/Chinese/accented characters
+      content = '﻿' + generateCSV(exportProduct, desc, imageUrls, seoTags, price, weight, platform);
+      contentType = 'text/csv; charset=utf-8';
       filename = `${product.barcode || 'product'}_${platform.toLowerCase()}.csv`;
     } else if (format === 'JSON') {
       content = generateJSON(exportProduct, desc, imageUrls, seoTags, price, weight, platform);
-      contentType = 'application/json';
+      contentType = 'application/json; charset=utf-8';
       filename = `${product.barcode || 'product'}_${platform.toLowerCase()}.json`;
     } else if (format === 'XML') {
       content = generateXML(exportProduct, desc, imageUrls, seoTags, price, weight, platform);
-      contentType = 'application/xml';
+      contentType = 'application/xml; charset=utf-8';
       filename = `${product.barcode || 'product'}_${platform.toLowerCase()}.xml`;
     } else {
       return res.status(400).json({ error: 'Unsupported format' });
@@ -442,7 +504,7 @@ ${items}
 
     logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'exported', entity_type: 'google_merchant', details: { products: entries.length } });
 
-    res.json({ content: feed, filename: `google-merchant-feed-${Date.now()}.xml`, contentType: 'application/xml', productCount: entries.length });
+    res.json({ content: feed, filename: `google-merchant-feed-${Date.now()}.xml`, contentType: 'application/xml; charset=utf-8', productCount: entries.length });
   } catch (err) {
     console.error('Google Merchant feed error:', err.message);
     res.status(500).json({ error: 'Feed generation failed: ' + err.message });

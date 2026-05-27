@@ -591,7 +591,8 @@ router.get('/catalog', auth, async (req, res) => {
   try {
     const [entries] = await db.query(
       `SELECT ce.*, p.barcode, p.name, p.brand, p.description,
-              p.ai_description_professional, p.ai_category_suggestion, p.seo_tags
+              p.ai_description_professional, p.ai_category_suggestion, p.seo_tags,
+              p.ai_attributes
        FROM catalog_entries ce
        JOIN products p ON ce.product_id = p.id
        WHERE ce.store_id = ?
@@ -600,14 +601,17 @@ router.get('/catalog', auth, async (req, res) => {
     );
 
     // Bulk-load per-row aggregates so we don't run correlated subqueries per
-    // entry. Tags and image counts are each one IN-query.
+    // entry. Tags, image counts, and the primary image URL are IN-queries.
     const entryIds = entries.map(e => e.id);
     const productIds = [...new Set(entries.map(e => e.product_id))];
     const tagMap = {};
     const imgCountMap = {};
+    const primaryImageMap = {};
+
+    const allImagesMap = {};
 
     if (entryIds.length > 0) {
-      const [tagRows, imgRows] = await Promise.all([
+      const [tagRows, imgRows, allImgRows, primaryImgRows] = await Promise.all([
         db.query(
           `SELECT cet.catalog_entry_id, cet.tag_id
            FROM catalog_entry_tags cet
@@ -622,6 +626,26 @@ router.get('/catalog', auth, async (req, res) => {
            GROUP BY product_id`,
           [productIds]
         ),
+        // Up to 5 image URLs per product for the gallery strip
+        db.query(
+          `SELECT product_id, image_url
+           FROM product_images
+           WHERE product_id IN (?)
+           ORDER BY product_id, sort_order ASC`,
+          [productIds]
+        ),
+        // Pick the lowest sort_order image per product (the "primary" one)
+        db.query(
+          `SELECT pi.product_id, pi.image_url
+           FROM product_images pi
+           JOIN (
+             SELECT product_id, MIN(sort_order) AS min_order
+             FROM product_images
+             WHERE product_id IN (?)
+             GROUP BY product_id
+           ) m ON m.product_id = pi.product_id AND m.min_order = pi.sort_order`,
+          [productIds]
+        ),
       ]);
 
       for (const r of tagRows[0]) {
@@ -629,10 +653,22 @@ router.get('/catalog', auth, async (req, res) => {
         tagMap[r.catalog_entry_id].push(r.tag_id);
       }
       for (const r of imgRows[0]) imgCountMap[r.product_id] = Number(r.cnt);
+      for (const r of allImgRows[0]) {
+        if (!allImagesMap[r.product_id]) allImagesMap[r.product_id] = [];
+        if (allImagesMap[r.product_id].length < 5) allImagesMap[r.product_id].push(r.image_url);
+      }
+      for (const r of primaryImgRows[0]) {
+        if (!primaryImageMap[r.product_id]) primaryImageMap[r.product_id] = r.image_url;
+      }
     }
 
     const enriched = entries.map(e => {
-      const withCounts = { ...e, image_count: imgCountMap[e.product_id] || 0 };
+      const withCounts = {
+        ...e,
+        image_count: imgCountMap[e.product_id] || 0,
+        image_url: primaryImageMap[e.product_id] || null,
+        image_urls: allImagesMap[e.product_id] || [],
+      };
       const { score, issues } = calcCompleteness(withCounts);
       return { ...withCounts, completeness: score, completeness_issues: issues, tag_ids: tagMap[e.id] || [] };
     });

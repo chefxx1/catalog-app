@@ -5,14 +5,48 @@ const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
 const logActivity = require('../helpers/activity');
 
-// AI enrichment for trending products — generates description + specs + SEO from product name
+// Validate that specs is a non-empty object with real attribute pairs.
+// Filters out placeholder responses like { "Key1": "Value1", ... } that Gemini
+// occasionally echoes back verbatim from the prompt example.
+function validSpecs(s) {
+  if (!s || typeof s !== 'object' || Array.isArray(s)) return false;
+  const entries = Object.entries(s).filter(([k, v]) => k && v && v !== 'null' && !/^Key\d+$/i.test(k) && !/^Value\d+$/i.test(String(v)));
+  return entries.length >= 3;
+}
+
+// Gemini call with exponential backoff + model fallback. 2.5-flash gets 503'd a lot;
+// flash-latest and 2.0-flash are the recovery chain (2.0-flash often hits free-tier
+// daily quota by mid-day, so we still try it but expect 429s).
+async function callGemini(prompt) {
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const models = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'];
+  let lastErr;
+  for (const modelName of models) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent(prompt);
+        const text = result.response.text().trim();
+        const jsonStr = text.replace(/^```json?\s*/i, '').replace(/```\s*$/, '').trim();
+        return JSON.parse(jsonStr);
+      } catch (err) {
+        lastErr = err;
+        const msg = err?.message || '';
+        const transient = /503|overload|UNAVAILABLE|high demand|429|quota|rate/i.test(msg);
+        if (!transient) break; // non-retryable → next model
+        if (attempt < 2) await new Promise(r => setTimeout(r, 800 * Math.pow(2, attempt)));
+      }
+    }
+  }
+  throw lastErr;
+}
+
+// AI enrichment for trending products — generates description + specs + SEO from product name.
+// Gemini occasionally drops the specs field or returns placeholders; we retry once with a
+// specs-only prompt instead of throwing away the descriptions that already came back.
 async function enrichWithAI(name, category) {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) return null;
-  try {
-    const genAI = new GoogleGenerativeAI(key);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    const prompt = `You are an e-commerce copywriter. Generate marketing data for this product:
+  if (!process.env.GEMINI_API_KEY) return null;
+  const mainPrompt = `You are an e-commerce copywriter. Generate marketing data for this product:
 Product: ${name}
 Category: ${category || 'general'}
 
@@ -22,19 +56,40 @@ Return ONLY a JSON object (no markdown, no code fences):
   "professional": "professional/data-driven 2-3 sentences",
   "friendly": "warm/conversational 2-3 sentences",
   "luxury": "elevated/aspirational 2-3 sentences",
-  "specs": { "Key1": "Value1", "Key2": "Value2", "Key3": "Value3", "Key4": "Value4", "Key5": "Value5" },
+  "specs": { "<real attribute name>": "<real value>", ... 5-7 entries total },
   "seoTags": ["tag1", "tag2", "tag3", "tag4", "tag5", "tag6"]
 }
 
-For specs: 5-7 concrete attributes RELEVANT to this product type (e.g. headphones: Driver Size, Battery Life, Connectivity; furniture: Material, Dimensions, Weight Capacity).`;
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
-    const jsonStr = text.replace(/^```json?\s*/i, '').replace(/```\s*$/, '').trim();
-    return JSON.parse(jsonStr);
+For specs: 5-7 concrete attributes RELEVANT to this product type (e.g. headphones: Driver Size, Battery Life, Connectivity; furniture: Material, Dimensions, Weight Capacity). DO NOT return "Key1: Value1" placeholders — use real attribute names and values.`;
+
+  let main = null;
+  try {
+    main = await callGemini(mainPrompt);
   } catch (err) {
-    console.warn('[trending] AI enrichment failed:', err.message);
+    console.warn('[trending] AI enrichment (main) failed:', err.message);
     return null;
   }
+
+  // Re-fetch specs on its own if Gemini omitted them or returned placeholders
+  if (!validSpecs(main.specs)) {
+    try {
+      const specsOnly = await callGemini(`Return ONLY a JSON object with 5-7 real, concrete specifications for this product. Use real attribute names and real values (no "Key1/Value1" placeholders).
+
+Product: ${name}
+Category: ${category || 'general'}
+
+Format: { "<attribute>": "<value>", ... }`);
+      if (validSpecs(specsOnly)) {
+        main.specs = specsOnly;
+      } else if (specsOnly && typeof specsOnly === 'object' && specsOnly.specs && validSpecs(specsOnly.specs)) {
+        main.specs = specsOnly.specs;
+      }
+    } catch (err) {
+      console.warn('[trending] AI enrichment (specs retry) failed:', err.message);
+    }
+  }
+
+  return main;
 }
 
 const router = express.Router();

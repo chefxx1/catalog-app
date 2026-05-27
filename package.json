@@ -25,10 +25,9 @@
     "groq-sdk": "^1.1.2",
     "html5-qrcode": "^2.3.8",
     "jsonwebtoken": "^9.0.3",
-    "jspdf": "^4.2.1",
-    "jspdf-autotable": "^5.0.7",
     "mysql2": "^3.18.2",
     "nodemailer": "^8.0.3",
+    "puppeteer": "^25.1.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "three": "^0.183.2"
