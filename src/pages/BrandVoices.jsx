@@ -3,6 +3,13 @@ import { getBrandVoices as apiGetBrandVoices, createBrandVoice as apiCreateBrand
 import { Icon, TagInput, ConfirmDialog, InputField, safeJsonParse } from "../components/shared";
 import { toast } from "../components/Toast";
 
+const TONE_DESC = {
+  Professional: "Precise · data-driven",
+  Friendly: "Warm · conversational",
+  Luxury: "Elevated · aspirational",
+  Custom: "Your own rules",
+};
+
 const getExamplePreview = (tone) => {
   const previews = {
     Professional: "The Sony WH-1000XM5 redefines premium audio with industry-leading noise cancellation technology. Featuring dual processors and eight-microphone array, these headphones deliver exceptional acoustic performance for the discerning audiophile. With up to 30 hours of battery life and multi-point connectivity, they seamlessly integrate into any professional workflow.",
@@ -59,7 +66,10 @@ const BrandVoices = ({ user }) => {
       if (isCreating) {
         const created = await apiCreateBrandVoice({ name: editorName, tone: editorTone, description: desc, is_default: false, metadata });
         const meta = safeJsonParse(created.metadata, metadata) || metadata;
-        setVoices(prev => [...prev, { id: created.id, name: created.name, tone: created.tone, color: meta.color || editorColor, audience: meta.audience || '', style: meta.style || '', includeKeywords: meta.includeKeywords || [], excludeKeywords: meta.excludeKeywords || [], description: created.description || desc, isDefault: !!created.is_default }]);
+        // ownerId must be set so the creator can immediately edit/delete their
+        // own voice — without it, isOwner is false and the new card wrongly
+        // shows "Shared by teammate · view-only" until a reload.
+        setVoices(prev => [...prev, { id: created.id, name: created.name, tone: created.tone, color: meta.color || editorColor, audience: meta.audience || '', style: meta.style || '', includeKeywords: meta.includeKeywords || [], excludeKeywords: meta.excludeKeywords || [], description: created.description || desc, isDefault: !!created.is_default, ownerId: created.user_id ?? user.id }]);
       } else {
         await apiUpdateBrandVoice(editingVoice.id, { name: editorName, tone: editorTone, description: desc, is_default: editingVoice.isDefault, metadata });
         setVoices(prev => prev.map(x => x.id === editingVoice.id ? { ...x, name: editorName, tone: editorTone, color: editorColor, audience: editorAudience, style: editorStyle, includeKeywords: editorInclude, excludeKeywords: editorExclude, description: desc } : x));
@@ -83,9 +93,14 @@ const BrandVoices = ({ user }) => {
   // ── EDITOR VIEW ──
   if (editingVoice || isCreating) return (
     <div className="animate-fadeIn" style={{ maxWidth: 900, margin: "0 auto", display: "flex", flexDirection: "column", gap: 20 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
         <button className="btn btn-ghost" onClick={() => { setEditingVoice(null); setIsCreating(false); }}><Icon name="arrowLeft" size={14} /> Back</button>
-        <h3 style={{ fontSize: 18, fontWeight: 700 }}>{isCreating ? "Create Brand Voice" : `Edit: ${editingVoice.name}`}</h3>
+        <div>
+          <h2 style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", margin: 0, lineHeight: 1.1 }}>
+            <span style={{ background: "linear-gradient(135deg,#3B82F6,#8B5CF6,#EC4899)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>{isCreating ? "Create" : "Edit"}</span> {isCreating ? "Brand Voice" : editingVoice.name}
+          </h2>
+          <p style={{ fontSize: 12.5, color: "var(--text-dim)", marginTop: 3 }}>Define a tone, audience, and vocabulary the AI follows on every description.</p>
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
@@ -94,17 +109,38 @@ const BrandVoices = ({ user }) => {
           <InputField label="Voice Name" placeholder="e.g. Main Store" icon="tag" value={editorName} onChange={e => setEditorName(e.target.value)} />
 
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, display: "block" }}>Tone</label>
-            <div style={{ display: "flex", gap: 6 }}>
-              {["Professional", "Friendly", "Luxury", "Custom"].map(t => (
-                <div key={t} onClick={() => setEditorTone(t)} style={{
-                  flex: 1, padding: "8px 6px", borderRadius: 8, cursor: "pointer", textAlign: "center",
-                  border: `1.5px solid ${editorTone === t ? "#3B82F6" : "var(--border)"}`,
-                  background: editorTone === t ? "rgba(37,99,235,0.1)" : "transparent", transition: "all 0.2s"
+            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, display: "block" }}>Voice Color</label>
+            <div style={{ display: "flex", gap: 10 }}>
+              {["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899", "#6366F1", "#14B8A6"].map(c => (
+                <div key={c} onClick={() => setEditorColor(c)} title={c} style={{
+                  width: 30, height: 30, borderRadius: "50%", background: c, cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  boxShadow: editorColor === c ? `0 0 0 2px var(--card-bg), 0 0 0 4px ${c}` : "none",
+                  transition: "all 0.15s",
                 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: editorTone === t ? "#3B82F6" : "var(--text-dim)" }}>{t}</div>
+                  {editorColor === c && <Icon name="check" size={14} color="white" />}
                 </div>
               ))}
+            </div>
+          </div>
+
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, display: "block" }}>Tone</label>
+            <div style={{ display: "flex", gap: 6 }}>
+              {["Professional", "Friendly", "Luxury", "Custom"].map(t => {
+                const active = editorTone === t;
+                return (
+                  <div key={t} onClick={() => setEditorTone(t)} style={{
+                    flex: 1, padding: "9px 6px", borderRadius: 8, cursor: "pointer", textAlign: "center",
+                    border: `1.5px solid ${active ? editorColor : "var(--border)"}`,
+                    background: active ? `color-mix(in oklab, ${editorColor} 12%, transparent)` : "transparent",
+                    transition: "all 0.18s",
+                  }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: active ? editorColor : "var(--text-dim)" }}>{t}</div>
+                    <div style={{ fontSize: 8.5, fontWeight: 600, letterSpacing: "0.02em", color: active ? `color-mix(in oklab, ${editorColor} 75%, var(--text-dim))` : "var(--text-dim)", marginTop: 2, opacity: active ? 1 : 0.6 }}>{TONE_DESC[t]}</div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -126,29 +162,19 @@ const BrandVoices = ({ user }) => {
             </div>
           </div>
 
-          <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 8, display: "block" }}>Voice Color</label>
-            <div style={{ display: "flex", gap: 8 }}>
-              {["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899", "#6366F1", "#14B8A6"].map(c => (
-                <div key={c} onClick={() => setEditorColor(c)} style={{
-                  width: 26, height: 26, borderRadius: "50%", background: c, cursor: "pointer",
-                  border: editorColor === c ? "3px solid var(--text)" : "3px solid transparent", transition: "all 0.2s"
-                }} />
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* Right: Preview */}
         <div>
-          <div className="card" style={{ padding: 24, position: "sticky", top: 20 }}>
+          <div className="card" style={{ padding: 0, position: "sticky", top: 20, overflow: "hidden", borderTop: `3px solid ${editorColor}` }}>
+            <div style={{ padding: 24 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-              <Icon name="sparkle" size={16} color="#10B981" />
+              <Icon name="sparkle" size={16} color={editorColor} />
               <span style={{ fontWeight: 700, fontSize: 14 }}>Live Preview</span>
               <span className="badge badge-ai">AI</span>
             </div>
             <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", letterSpacing: "0.08em", marginBottom: 8 }}>SAMPLE PRODUCT DESCRIPTION</div>
-            <div style={{ padding: 16, background: "var(--hover-bg)", borderRadius: 8, border: "1px solid var(--border)" }}>
+            <div style={{ padding: 16, background: `color-mix(in oklab, ${editorColor} 5%, var(--hover-bg))`, borderRadius: 8, border: `1px solid color-mix(in oklab, ${editorColor} 20%, var(--border))` }}>
               <p style={{ fontSize: 13, lineHeight: 1.7, color: "var(--text-sec)" }}>{getExamplePreview(editorTone)}</p>
             </div>
             <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 6 }}>
@@ -172,13 +198,20 @@ const BrandVoices = ({ user }) => {
                 </div>
               </div>
             )}
+            </div>
           </div>
         </div>
       </div>
 
       <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
         <button className="btn btn-ghost" onClick={() => { setEditingVoice(null); setIsCreating(false); }}>Cancel</button>
-        <button className="btn btn-success" onClick={saveVoice} disabled={!editorName.trim()}><Icon name="check" size={14} /> {isCreating ? "Create Voice" : "Save Changes"}</button>
+        <button className="btn" onClick={saveVoice} disabled={!editorName.trim()} style={{
+          padding: "9px 18px", fontSize: 13, fontWeight: 700, color: "white", border: "none",
+          background: editorName.trim() ? `linear-gradient(135deg, ${editorColor}, color-mix(in oklab, ${editorColor} 65%, #000))` : "var(--border)",
+          boxShadow: editorName.trim() ? `0 4px 16px color-mix(in oklab, ${editorColor} 38%, transparent)` : "none",
+          cursor: editorName.trim() ? "pointer" : "not-allowed",
+          opacity: editorName.trim() ? 1 : 0.6, transition: "all 0.18s",
+        }}><Icon name="check" size={14} color="white" /> {isCreating ? "Create Voice" : "Save Changes"}</button>
       </div>
     </div>
   );

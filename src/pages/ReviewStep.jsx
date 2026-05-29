@@ -79,6 +79,7 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
     weight: dbSources[0]?.weight || "",
     specs: specs,
     seoTags: safeJsonParse(product.seo_tags, []),
+    // No voice → 3 tone variants to compare. Voice → collapses to one (handled live).
     aiDescriptions: product.ai_description_professional ? [
       { tone: "Professional", text: product.ai_description_professional },
       { tone: "Friendly", text: product.ai_description_friendly || "AI description will be generated." },
@@ -101,6 +102,9 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
   const [selectedDesc,setSelectedDesc]=useState(0); const [editedDesc,setEditedDesc]=useState(p.aiDescriptions[0].text);
   const [streamTones, setStreamTones] = useState({ Professional: "", Friendly: "", Luxury: "" });
   const [isStreaming, setIsStreaming] = useState(false);
+  // Single-voice mode: holds the voice's label (e.g. "Luxury Boutique") when a
+  // brand voice or custom prompt drives a single description; null = 3-tone default.
+  const [voiceLabel, setVoiceLabel] = useState(null);
   const [expandedSource,setExpandedSource]=useState(displaySources[0]?.name || "Amazon"); const [resolvedConflicts,setResolvedConflicts]=useState({});
   const [images,setImages]=useState(p.images); const [activeTab,setActiveTab]=useState("overview"); const [regenerating,setRegenerating]=useState(false);
   const [aiError, setAiError] = useState(null);
@@ -160,7 +164,14 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
 
   // Load brand voices and find default
   useEffect(() => {
-    apiGetBrandVoices().then(voices => {
+    apiGetBrandVoices().then(rawVoices => {
+      // metadata is a longtext column → arrives as a JSON string. Parse it so
+      // audience/style/include/exclude keywords actually reach the AI prompt
+      // (otherwise only the top-level tone column was being sent).
+      const voices = rawVoices.map(v => ({
+        ...v,
+        metadata: typeof v.metadata === 'string' ? (safeJsonParse(v.metadata, {}) || {}) : (v.metadata || {}),
+      }));
       setBrandVoices(voices);
       const def = voices.find(v => v.is_default) || voices[0] || null;
       setSelectedVoice(def);
@@ -189,11 +200,19 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
     const useLang = lang || selectedLang;
     const cacheKey = `${bv?.id || "none"}:${useLang}:${useCustom ? customPrompt.trim() : ""}`;
 
-    // Cache hit — restore previously generated tones without calling the API
-    if (!forceFresh && descCacheRef.current[cacheKey]) {
-      const cached = descCacheRef.current[cacheKey];
+    // Hybrid: a brand voice (or custom prompt) defines the tone → one description.
+    // No voice → fan out to the 3 tone variants so the user can compare. The
+    // label (voice name) being set is what hides the tone picker + collapses to one.
+    const singleMode = !!bv || (useCustom && customPrompt.trim());
+    const label = singleMode ? (bv ? bv.name : "Custom") : null;
+    setVoiceLabel(label);
+
+    // Cache hit — reuse only when the cached shape matches the current mode.
+    const cached = descCacheRef.current[cacheKey];
+    const cacheShapeMatches = cached && (singleMode ? cached.aiDescs.length === 1 : cached.aiDescs.length > 1);
+    if (!forceFresh && cached && cacheShapeMatches) {
       setAiDescs(cached.aiDescs);
-      setEditedDesc(cached.aiDescs[selectedDesc]?.text || cached.aiDescs[0]?.text || "");
+      setEditedDesc(cached.aiDescs[singleMode ? 0 : selectedDesc]?.text || cached.aiDescs[0]?.text || "");
       if (cached.seoTags) setSeoTags(cached.seoTags);
       if (cached.metaTitle) setMetaTitle(cached.metaTitle);
       if (cached.metaDescription) setMetaDescription(cached.metaDescription);
@@ -225,8 +244,7 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
           } } : {}),
     };
 
-    // Stream all 3 tones live — each box fills as Gemini writes
-    setStreamTones({ Professional: "", Friendly: "", Luxury: "" });
+    setStreamTones(singleMode ? { Voice: "" } : { Professional: "", Friendly: "", Luxury: "" });
     setIsStreaming(true);
     const streamPromise = new Promise((resolve) => {
       streamDescription(basePayload, {
@@ -243,18 +261,25 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
 
     try {
       const [streamedTones, result] = await Promise.all([streamPromise, structuredPromise]);
-      const descs = streamedTones || {
-        Professional: result?.descriptions?.professional || '',
-        Friendly: result?.descriptions?.friendly || '',
-        Luxury: result?.descriptions?.luxury || '',
-      };
-      const newDescs = [
-        { tone: "Professional", text: descs.Professional || result?.descriptions?.professional || '' },
-        { tone: "Friendly",     text: descs.Friendly     || result?.descriptions?.friendly     || '' },
-        { tone: "Luxury",       text: descs.Luxury       || result?.descriptions?.luxury       || '' },
-      ];
+      let newDescs;
+      if (singleMode) {
+        const voiceText = (streamedTones?.Voice || result?.descriptions?.professional || '').trim();
+        newDescs = [{ tone: label, text: voiceText }];
+        setSelectedDesc(0);
+      } else {
+        const descs = streamedTones || {
+          Professional: result?.descriptions?.professional || '',
+          Friendly: result?.descriptions?.friendly || '',
+          Luxury: result?.descriptions?.luxury || '',
+        };
+        newDescs = [
+          { tone: "Professional", text: descs.Professional || result?.descriptions?.professional || '' },
+          { tone: "Friendly",     text: descs.Friendly     || result?.descriptions?.friendly     || '' },
+          { tone: "Luxury",       text: descs.Luxury       || result?.descriptions?.luxury       || '' },
+        ];
+      }
       setAiDescs(newDescs);
-      setEditedDesc(newDescs[selectedDesc]?.text || newDescs[0].text);
+      setEditedDesc(newDescs[singleMode ? 0 : selectedDesc]?.text || newDescs[0].text);
       if (result) {
         if (result.seoTags?.length) setSeoTags(result.seoTags);
         if (result.metaTitle) setMetaTitle(result.metaTitle);
@@ -586,14 +611,16 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
               <button className="btn btn-primary" style={{fontSize:11,padding:"6px 14px",flexShrink:0}} disabled={!customPrompt.trim()||regenerating} onClick={()=>handleRegenerate()}><Icon name="sparkle" size={12}/> Go</button>
             </div>}
           </div>
+          {/* Tone picker only when NO voice is active — a voice already sets the tone */}
+          {!voiceLabel && (
           <div><div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:8}}>BRAND TONE</div>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{["Professional","Friendly","Luxury"].map((t,i)=><button key={t} onClick={()=>{setSelectedDesc(i);setEditedDesc(aiDescs[i].text);}} className={`btn ${i===selectedDesc?"btn-primary":"btn-ghost"}`} style={{fontSize:11,padding:"5px 14px",borderRadius:20}}>{t}</button>)}</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{["Professional","Friendly","Luxury"].map((t,i)=><button key={t} onClick={()=>{setSelectedDesc(i);setEditedDesc(aiDescs[i]?.text||"");}} className={`btn ${i===selectedDesc?"btn-primary":"btn-ghost"}`} style={{fontSize:11,padding:"5px 14px",borderRadius:20}}>{t}</button>)}</div>
           </div>
+          )}
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em"}}>DESCRIPTION VARIANTS</div>
-            {["Professional","Friendly","Luxury"].map((toneName, i) => {
-              const d = aiDescs[i] || { tone: toneName, text: "" };
-              const liveText = streamTones[toneName] || "";
+            <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em"}}>{voiceLabel ? "DESCRIPTION" : "DESCRIPTION VARIANTS"}</div>
+            {aiDescs.map((d, i) => {
+              const liveText = streamTones[voiceLabel ? "Voice" : d.tone] || "";
               const showLive = isStreaming && liveText.length > 0;
               const showWaiting = isStreaming && !liveText;
               const displayText = showLive ? liveText : d.text;
@@ -601,7 +628,7 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
                 <div key={i} className={`description-card ${selectedDesc===i?"selected":""}`} onClick={()=>{if(!regenerating){setSelectedDesc(i);setEditedDesc(d.text);}}}>
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <span className="badge badge-neutral">{toneName}</span>
+                      <span className="badge badge-neutral">{voiceLabel ? <><Icon name="tag" size={9}/> {voiceLabel}</> : d.tone}</span>
                       {showLive && <span style={{fontSize:10,color:"#8B5CF6",fontWeight:700,display:"inline-flex",alignItems:"center",gap:4}}><span className="typing-pulse" style={{width:6,height:6,borderRadius:"50%",background:"#8B5CF6"}}/> typing</span>}
                       {showWaiting && <span style={{fontSize:10,color:"var(--text-dim)",fontWeight:600,display:"inline-flex",alignItems:"center",gap:4}}><span className="typing-pulse" style={{width:6,height:6,borderRadius:"50%",background:"var(--text-dim)"}}/> queued</span>}
                       {selectedDesc===i && !isStreaming && <Icon name="check" size={12} color="#10B981"/>}
@@ -625,8 +652,8 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
           </div>
           <div><div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:8,display:"flex",alignItems:"center",gap:8}}>FINAL DESCRIPTION <span className="badge badge-ai">Editable</span><CopyButton text={editedDesc}/></div>
             {(() => {
-              const activeToneName = ["Professional","Friendly","Luxury"][selectedDesc];
-              const liveActive = isStreaming ? (streamTones[activeToneName] || "") : "";
+              const activeKey = voiceLabel ? "Voice" : ["Professional","Friendly","Luxury"][selectedDesc];
+              const liveActive = isStreaming ? (streamTones[activeKey] || "") : "";
               const value = liveActive || editedDesc;
               return <textarea className="input" value={value} onChange={e=>setEditedDesc(e.target.value)} rows={5} style={{lineHeight:1.6}} readOnly={isStreaming && !!liveActive}/>;
             })()}

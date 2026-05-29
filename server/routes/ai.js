@@ -218,7 +218,7 @@ router.post('/stream-description', auth, requireRole('Admin', 'Editor'), async (
 
   if (!name) return res.status(400).json({ error: 'Product name is required' });
   const customInstructions = rawInstructions ? sanitize(rawInstructions).slice(0, 500) : null;
-  const langInstruction = language ? `\n\nWrite all three descriptions in ${language}, not English.` : '';
+  const langInstruction = language ? `\n\nWrite all content in ${language}, not English.` : '';
   const productInfo = [
     `Product: ${name}`,
     brand ? `Brand: ${brand}` : null,
@@ -230,7 +230,21 @@ router.post('/stream-description', auth, requireRole('Admin', 'Editor'), async (
     ? `\nCustom instructions: ${customInstructions}`
     : brandVoice ? `\nBrand voice:\n- Tone: ${brandVoice.tone || 'Professional'}\n- Audience: ${brandVoice.audience || 'General consumers'}\n- Style: ${brandVoice.style || 'Clear and informative'}\n- Include keywords: ${(brandVoice.includeKeywords || []).join(', ') || 'none'}\n- Exclude keywords: ${(brandVoice.excludeKeywords || []).join(', ') || 'none'}` : '';
 
-  const prompt = `You are an expert e-commerce product copywriter.
+  // Hybrid: a brand voice / custom instruction defines the tone → ONE description.
+  // With neither, fan out to the 3 tone variants so the user can compare/pick.
+  const single = !!(brandVoice || customInstructions);
+
+  const directive = `Write ONE product description (2-4 sentences) that fully embodies the ${customInstructions ? 'custom instructions' : 'brand voice'} above${brandVoice?.tone ? ` in a ${brandVoice.tone} tone` : ''}.${(brandVoice?.includeKeywords || []).length ? ` Naturally weave in: ${brandVoice.includeKeywords.join(', ')}.` : ''}${(brandVoice?.excludeKeywords || []).length ? ` Avoid: ${brandVoice.excludeKeywords.join(', ')}.` : ''}`;
+
+  const singlePrompt = `You are an expert e-commerce product copywriter.
+${productInfo}
+${voiceContext}${langInstruction}
+
+${directive}
+
+Output ONLY the description text. No preamble, no markers, no quotes.`;
+
+  const threeTonePrompt = `You are an expert e-commerce product copywriter.
 ${productInfo}
 ${voiceContext}${langInstruction}
 
@@ -246,6 +260,8 @@ A warm, conversational description (2-3 sentences). Use casual language, contrac
 An elevated, aspirational description (2-3 sentences). Emphasize craftsmanship, exclusivity, and sensory experience.
 
 Output ONLY the three markers with their descriptions. No preamble, no closing text, no quotes around the descriptions.`;
+
+  const prompt = single ? singlePrompt : threeTonePrompt;
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -305,6 +321,19 @@ Output ONLY the three markers with their descriptions. No preamble, no closing t
   try {
     const model = getModel();
     const result = await model.generateContentStream(prompt);
+
+    // Single-voice mode: no markers, stream the whole thing under one 'Voice' key
+    if (single) {
+      let voiceText = '';
+      for await (const chunk of result.stream) {
+        const text = chunk.text();
+        if (text) { voiceText += text; send('tone-chunk', { tone: 'Voice', text }); }
+      }
+      send('done', { tones: { Voice: voiceText.trim() }, single: true });
+      res.end();
+      return;
+    }
+
     for await (const chunk of result.stream) {
       const text = chunk.text();
       if (text) {
