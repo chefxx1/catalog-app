@@ -76,20 +76,29 @@ html, body {
 .description {
   font-size: 11px; color: #3F3F46; line-height: 1.7;
   max-width: 165mm; white-space: pre-wrap;
+  /* Don't leave 1-2 stray lines at the top/bottom of a page break */
+  orphans: 3; widows: 3;
 }
 
-.specs {
-  display: grid; grid-template-columns: 60mm 1fr;
-  row-gap: 2mm; column-gap: 6mm; font-size: 11px;
+/* Each spec row is its own break-protected block so a key/value pair (or a
+   value that wraps to 2 lines like "Proteins (100g): ...") never splits
+   across pages. */
+.specs { display: flex; flex-direction: column; gap: 2mm; font-size: 11px; }
+.spec-row {
+  display: grid; grid-template-columns: 60mm 1fr; gap: 6mm;
+  break-inside: avoid; page-break-inside: avoid;
 }
-.specs dt { font-weight: 600; color: #52525B; }
-.specs dd { color: #18181b; }
+.spec-key { font-weight: 600; color: #52525B; }
+.spec-val { color: #18181b; }
 
 .meta {
   display: grid; grid-template-columns: repeat(3, 1fr);
   gap: 6mm; font-size: 10px;
 }
-.meta-item { padding: 3mm 0; border-top: 1px solid #F4F4F5; }
+.meta-item {
+  padding: 3mm 0; border-top: 1px solid #F4F4F5;
+  break-inside: avoid; page-break-inside: avoid;
+}
 .meta-label {
   font-size: 8px; color: #A1A1AA; font-weight: 600;
   letter-spacing: 0.1em; text-transform: uppercase;
@@ -105,8 +114,13 @@ html, body {
 }
 
 [dir="rtl"] { text-align: right; direction: rtl; }
-.specs[dir="rtl"] { grid-template-columns: 1fr 60mm; }
-.specs[dir="rtl"] dt { text-align: right; }
+.specs[dir="rtl"] .spec-row { grid-template-columns: 1fr 60mm; }
+.specs[dir="rtl"] .spec-key { text-align: right; }
+
+/* Hero block stays on one page. Section labels stay glued to their first
+   content (no orphaned "DESCRIPTION" header alone at the bottom). */
+.hero { break-inside: avoid; page-break-inside: avoid; }
+.section-label { break-after: avoid; page-break-after: avoid; }
 .empty { color: #A1A1AA; font-size: 11px; font-style: italic; }
 `;
 
@@ -135,11 +149,11 @@ function renderProductPage(product, storeName, pageInfo) {
   const stock = product.stock_quantity;
 
   const specsHtml = specs
-    ? `<dl class="specs" dir="${dir(Object.keys(specs).join(' '))}">${
+    ? `<div class="specs" dir="${dir(Object.keys(specs).join(' '))}">${
         Object.entries(specs).map(([k, v]) =>
-          `<dt>${escapeHtml(k)}</dt><dd dir="${dir(String(v))}">${escapeHtml(v)}</dd>`
+          `<div class="spec-row"><div class="spec-key">${escapeHtml(k)}</div><div class="spec-val" dir="${dir(String(v))}">${escapeHtml(v)}</div></div>`
         ).join('')
-      }</dl>`
+      }</div>`
     : '<p class="empty">No specifications available.</p>';
 
   const metaItems = [];

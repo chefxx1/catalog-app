@@ -4,7 +4,6 @@ import BrandOrb from "../components/BrandOrb";
 import { toast } from "../components/Toast";
 import { getCatalog, getBrandVoices as apiGetBrandVoices, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, exportProduct, getTags, createTag, deleteTag, setEntryTags as apiSetEntryTags, getSavedViews, createSavedView, deleteSavedView, getQualitySuggestions, getActivity, exportPdf } from "../api";
 import { STATUSES, COMPLETENESS, completenessColor } from "../constants/catalog";
-import TranslateModal from "../components/TranslateModal";
 import CompletenessRing from "../components/CompletenessRing";
 
 const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, refreshKey, pendingFilter, onPendingFilterConsumed }) => {
@@ -45,7 +44,6 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
   const [visibleCols, setVisibleCols] = useState({ product: true, barcode: true, completeness: true, stock: true, status: true, tags: false, date: true, actions: true });
   const [stockEditId, setStockEditId] = useState(null);
   const [stockEditValue, setStockEditValue] = useState("");
-  const [translateEntry, setTranslateEntry] = useState(null);
   const [showColPicker, setShowColPicker] = useState(false);
   const canEdit = user.role === "Admin" || user.role === "Editor";
 
@@ -607,7 +605,6 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
               {visibleCols.actions && <td style={{padding:"12px 16px"}}><div style={{display:"flex",gap:6}} onClick={e=>e.stopPropagation()}>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="View" onClick={()=>onViewProduct(item.product_id,1)}><Icon name="eye" size={12}/></button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Edit" onClick={()=>startEdit(item)}><Icon name="edit" size={12}/></button>
-                <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Translate" onClick={()=>setTranslateEntry(item)}><Icon name="globe" size={12}/></button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="History" onClick={()=>openChangelog(item)}><Icon name="clock" size={12}/></button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11}} title="Export" onClick={()=>onExportProduct(item.product_id)}><Icon name="download" size={12}/></button>
                 <button className="btn btn-ghost" style={{padding:"4px 8px",fontSize:11,color:"#EF4444"}} title="Delete" onClick={()=>setShowDeleteDialog(item.id)}><Icon name="trash" size={12} color="#EF4444"/></button>
@@ -736,10 +733,6 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
             </div>
           </div>
         </div>
-      )}
-
-      {translateEntry && (
-        <TranslateModal entry={translateEntry} onClose={()=>setTranslateEntry(null)} canEdit={canEdit}/>
       )}
 
       {showBatchModal && (
