@@ -191,12 +191,13 @@ const ExportStep = ({ onComplete, productData, user }) => {
         </div>
       )}
 
-      {/* Format selector */}
+      {/* Format selector (auto-syncs to platform; locked when platform forces format) */}
       <div>
         <div className="export-section-label">
           FORMAT {plat === "PDF Catalog" && <span style={{ color: "var(--text-dim)", fontWeight: 400, textTransform: "none" }}>· PDF (fixed)</span>}
+          {plat === "Google Shopping" && <span style={{ color: "var(--text-dim)", fontWeight: 400, textTransform: "none" }}>· XML (fixed)</span>}
         </div>
-        <div style={{ display: "flex", gap: 8, opacity: plat === "PDF Catalog" ? 0.4 : 1, pointerEvents: plat === "PDF Catalog" ? "none" : "auto" }}>
+        <div style={{ display: "flex", gap: 8, opacity: (plat === "PDF Catalog" || plat === "Google Shopping") ? 0.4 : 1, pointerEvents: (plat === "PDF Catalog" || plat === "Google Shopping") ? "none" : "auto" }}>
           {["CSV", "JSON", "XML"].map(f => {
             const icons = { CSV: "download", JSON: "code", XML: "code" };
             const active = fmt === f;
@@ -224,7 +225,10 @@ const ExportStep = ({ onComplete, productData, user }) => {
                   setPlat(pl.name);
                   if (pl.name === "Google Shopping") setFmt("XML");
                   else if (pl.name === "PDF Catalog") setFmt("PDF");
-                  else if (fmt === "PDF" || (fmt === "XML" && plat === "Google Shopping")) setFmt("CSV");
+                  else if (pl.name === "Shopify") setFmt("CSV");
+                  else if (pl.name === "WooCommerce") setFmt("CSV");
+                  else if (pl.name === "Magento") setFmt("CSV");
+                  else if (pl.name === "BigCommerce") setFmt("CSV");
                   setShowPreview(false);
                 }}
                 style={{ "--plat-c": pl.color }}

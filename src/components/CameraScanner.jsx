@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Html5Qrcode } from "html5-qrcode";
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { Icon } from "./shared";
 
 const CameraScanner = ({ onDetect, onClose, onFilePick, onCapture }) => {
@@ -17,6 +17,20 @@ const CameraScanner = ({ onDetect, onClose, onFilePick, onCapture }) => {
 
   // Keep modeRef in sync so the qr.start callback (registered once) reads the latest mode.
   useEffect(() => { modeRef.current = mode; }, [mode]);
+
+  // Mirror the preview for front-facing cameras so the user sees a natural
+  // selfie-view (raw front-camera streams are not pre-mirrored by the browser).
+  // Back/environment cameras stay un-mirrored. CSS transform only affects the
+  // preview; html5-qrcode's decode and captureFrame() read the raw video frames.
+  useEffect(() => {
+    if (status !== "scanning") return;
+    const root = document.getElementById(containerId);
+    const video = root?.querySelector("video");
+    if (!video) return;
+    const label = cameras.find((c) => c.id === activeCam)?.label || "";
+    const isBack = /back|rear|environment/i.test(label);
+    video.style.transform = isBack ? "" : "scaleX(-1)";
+  }, [status, activeCam, cameras]);
 
   const killTracks = () => {
     // Aggressively stop tracks on every video element in the document,
@@ -52,11 +66,34 @@ const CameraScanner = ({ onDetect, onClose, onFilePick, onCapture }) => {
     setStatus("starting");
     setError(null);
     try {
-      const qr = new Html5Qrcode(containerId);
+      const qr = new Html5Qrcode(containerId, {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.ITF,
+        ],
+        useBarCodeDetectorIfSupported: true,
+      });
       qrRef.current = qr;
       await qr.start(
         deviceId ? { deviceId: { exact: deviceId } } : { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 260, height: 180 }, aspectRatio: 1.333 },
+        {
+          fps: 25,
+          qrbox: { width: 280, height: 200 },
+          aspectRatio: 1.333,
+          disableFlip: true,
+          videoConstraints: {
+            ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: "environment" }),
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            focusMode: "continuous",
+          },
+        },
         async (decoded) => {
           if (modeRef.current !== "barcode") return;
           unmountedRef.current = true;

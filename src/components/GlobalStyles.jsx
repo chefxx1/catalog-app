@@ -465,6 +465,14 @@ const GlobalStyles = ({ dark }) => (
     .dot-1 { animation:bounceDot 1.4s infinite ease-in-out; animation-delay:-0.32s; }
     .dot-2 { animation:bounceDot 1.4s infinite ease-in-out; animation-delay:-0.16s; }
     .dot-3 { animation:bounceDot 1.4s infinite ease-in-out; }
+
+    /* Image Library cards (ReviewStep) */
+    .lib-card { position:relative; border-radius:10px; overflow:hidden; cursor:pointer; transition:transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease; border:1px solid var(--border-light); background:var(--hover-bg); will-change:transform; }
+    .lib-card:hover { transform:translateY(-2px) scale(1.015); border-color:rgba(124,58,237,0.35); box-shadow:0 8px 24px rgba(0,0,0,0.18); }
+    .lib-card.selected { border-color:#7C3AED; box-shadow:0 0 0 2px rgba(124,58,237,0.35), 0 8px 24px rgba(124,58,237,0.18); }
+    .lib-card .lib-source { position:absolute; left:0; right:0; bottom:0; padding:8px 10px; background:linear-gradient(to top, rgba(0,0,0,0.78), rgba(0,0,0,0)); color:rgba(255,255,255,0.92); font-size:10px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:0; transform:translateY(6px); transition:opacity 0.18s ease, transform 0.18s ease; pointer-events:none; }
+    .lib-card:hover .lib-source { opacity:1; transform:translateY(0); }
+    .lib-card .lib-img { width:100%; aspect-ratio:1; object-fit:cover; display:block; }
   `}</style>
 );
 

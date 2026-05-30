@@ -312,7 +312,7 @@ const SearchStep = ({ onSearch }) => {
                 )}
                 {productImages.length > 0 && (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-                    {productImages.map((img, i) => {
+                    {productImages.slice(0, 8).map((img, i) => {
                       const sel = selectedImages.has(i);
                       return (
                         <div key={i} onClick={() => setSelectedImages(prev => { const s = new Set(prev); s.has(i) ? s.delete(i) : s.add(i); return s; })}
