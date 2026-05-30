@@ -273,7 +273,11 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
                 <Icon name="plus" size={11} /> New
               </button>
             )}
-            <kbd className="palette-kbd">Esc</kbd>
+            <button onClick={onClose} title="Close (Esc)" aria-label="Close chat"
+              style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "5px 10px", borderRadius: 8, background: "transparent", border: "1px solid var(--border)", color: "var(--text-dim)", cursor: "pointer", fontFamily: "'Sora',sans-serif", fontWeight: 600, fontSize: 11, minHeight: 32, minWidth: 32 }}>
+              <Icon name="x" size={12} />
+              <span className="palette-close-label">Esc</span>
+            </button>
           </div>
         </div>
 
@@ -529,6 +533,9 @@ const CommandPalette = ({ open, onClose, user, onApplyFilter, onCatalogChanged, 
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
               disabled={loading}
+              enterKeyHint="send"
+              autoComplete="off"
+              autoCorrect="off"
             />
             {loading ? (
               <button className="palette-send" onClick={stopStream} title="Stop generating" style={{ background: "linear-gradient(135deg, #EF4444, #B91C1C)" }}>

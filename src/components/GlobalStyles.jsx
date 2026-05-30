@@ -86,6 +86,40 @@ const GlobalStyles = ({ dark }) => (
       .main-content { padding:16px !important; }
       .stat-grid { grid-template-columns:repeat(2,1fr) !important; }
       .analytics-grid { grid-template-columns:1fr !important; }
+
+      /* ReviewStep: stack the two-column editor instead of squishing it */
+      .review-grid { grid-template-columns:1fr !important; height:auto !important; min-height:0 !important; }
+
+      /* Modals: full width with a little outer padding, taller scroll area */
+      .modal-modern-card { max-width:96vw !important; max-height:92vh !important; border-radius:14px !important; }
+
+      /* Catalog table: let it scroll horizontally instead of squashing columns */
+      .catalog-table-wrap { overflow-x:auto !important; -webkit-overflow-scrolling:touch; }
+      .catalog-row { min-width:760px; }
+
+      /* Smaller, denser thumbnails for the Image Library grid */
+      .lib-card .lib-img { aspect-ratio:1; }
+
+      /* Header chrome — less padding, hide date pill */
+      .header-date { display:none !important; }
+
+      /* Settings: stack the 200px sidenav above the content instead of leaving
+         ~175px for the panel on a 375px screen. */
+      .settings-grid { grid-template-columns:1fr !important; gap:14px !important; }
+      .settings-grid > nav, .settings-grid > aside { position:static !important; max-width:100% !important; }
+
+      /* AI Chat: phones have no Esc key — drop the label, keep the X icon. */
+      .palette-close-label { display:none !important; }
+
+      /* AI Chat input fixes for mobile:
+         - 16px font prevents iOS Safari auto-zoom on focus
+         - Bigger send tap target (was 34px → 44px)
+         - Hide keyboard-shortcut footer (no Enter / Esc hints needed)
+         - Use dvh so iOS keyboard doesn't hide the input */
+      .palette-input-wrap input { font-size:16px !important; padding:13px 0 !important; }
+      .palette-send { width:44px !important; height:44px !important; }
+      .palette-footer { display:none !important; }
+      .palette-card { height:100dvh !important; }
     }
     @media (min-width: 769px) {
       .mobile-menu-btn { display:none !important; }

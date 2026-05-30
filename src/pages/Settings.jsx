@@ -165,7 +165,7 @@ const Settings = ({ user, onUserUpdate }) => {
   };
 
   return (
-    <div className="animate-fadeIn" ref={containerRef} style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 24, maxWidth: 1100, margin: "0 auto", alignItems: "start" }}>
+    <div className="animate-fadeIn settings-grid" ref={containerRef} style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 24, maxWidth: 1100, margin: "0 auto", alignItems: "start" }}>
 
       {/* ── SIDEBAR NAV ── */}
       <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>

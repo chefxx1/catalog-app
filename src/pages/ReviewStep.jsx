@@ -416,7 +416,7 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
   };
 
   return (
-    <div className="animate-fadeIn" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,height:"calc(100vh - 200px)",minHeight:500}}>
+    <div className="animate-fadeIn review-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,height:"calc(100vh - 200px)",minHeight:500}}>
       {/* LEFT */}
       <div style={{display:"flex",flexDirection:"column",overflow:"hidden",background:"var(--hover-bg)",borderRadius:12,border:"1px solid var(--border)"}}>
         <div style={{display:"flex",padding:"8px 12px",borderBottom:"1px solid var(--border)"}}>

@@ -249,7 +249,7 @@ export default function App() {
                 <span className="ask-ai-bar-text">Ask anything...</span>
                 <kbd>⌘ K</kbd>
               </button>
-              <span style={{ fontSize: 11, color: "var(--text-dim)", fontWeight: 500 }}>
+              <span className="header-date" style={{ fontSize: 11, color: "var(--text-dim)", fontWeight: 500 }}>
                 {new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
               </span>
             </div>
