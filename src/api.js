@@ -1,9 +1,8 @@
-// Resolve API URL: prefer the build-time env var, else derive from current host,
-// else fall back to localhost (handles file:// and contexts where hostname is empty).
-const API_URL = import.meta.env.VITE_API_URL
-  || (typeof window !== 'undefined' && window.location?.hostname
-    ? `http://${window.location.hostname}:3000/api`
-    : 'http://localhost:3000/api');
+// Resolve API URL: prefer the build-time env var (set in prod), else use a
+// relative /api path so the Vite dev proxy (or whatever reverse proxy is in
+// front in prod) handles forwarding. Relative URLs work transparently through
+// Cloudflare Tunnel / ngrok / LAN access without a second tunnel for the API.
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 // Token management
 let token = localStorage.getItem('catalogai_token');

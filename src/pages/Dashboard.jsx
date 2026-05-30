@@ -532,6 +532,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
             </div>
           </div>
         ) : (
+          <div className="catalog-table-wrap">
           <table style={{width:"100%",borderCollapse:"collapse",background:"var(--card-bg)",borderRadius:10,overflow:"hidden",border:"1px solid var(--border-light)"}}>
             <thead><tr style={{borderBottom:"1px solid var(--border)",position:"sticky",top:0,background:"var(--surface)",zIndex:2}}>
               {[
@@ -674,6 +675,7 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
               </div></td>}
             </tr>})}</tbody>
           </table>
+          </div>
         )}
         {selected.size > 0 && (
           <div style={{position:"sticky",bottom:0,left:0,right:0,padding:"12px 20px",background:"var(--bg-card)",borderTop:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",backdropFilter:"blur(12px)",animation:"slideUp 0.2s ease"}}>
