@@ -696,6 +696,85 @@ router.post('/catalog', auth, requireRole('Admin', 'Editor'), async (req, res) =
   }
 });
 
+// Bulk update catalog entries (status, stock, threshold, add tags) for many rows
+// in one request. Declared BEFORE /catalog/:id so Express matches "/bulk" literally
+// instead of treating it as an :id.
+router.patch('/catalog/bulk', auth, requireRole('Admin', 'Editor'), async (req, res) => {
+  try {
+    const { ids, status, stock_quantity, low_stock_threshold, addTagIds } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids required' });
+    const parsedIds = ids.map(i => parseInt(i, 10)).filter(n => !isNaN(n));
+    if (parsedIds.length === 0) return res.status(400).json({ error: 'No valid ids' });
+    if (parsedIds.length > 500) return res.status(400).json({ error: 'Max 500 items per bulk op' });
+
+    const validStatuses = ['Draft', 'Review', 'Published', 'Exported'];
+    if (status !== undefined && !validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    const fields = [];
+    const values = [];
+    if (status !== undefined) { fields.push('status = ?'); values.push(status); }
+    if (stock_quantity !== undefined) {
+      const n = stock_quantity === null || stock_quantity === '' ? null : parseInt(stock_quantity, 10);
+      if (n !== null && (isNaN(n) || n < 0)) return res.status(400).json({ error: 'Invalid stock_quantity' });
+      fields.push('stock_quantity = ?'); values.push(n);
+    }
+    if (low_stock_threshold !== undefined) {
+      const n = low_stock_threshold === null || low_stock_threshold === '' ? null : parseInt(low_stock_threshold, 10);
+      if (n !== null && (isNaN(n) || n < 0)) return res.status(400).json({ error: 'Invalid low_stock_threshold' });
+      fields.push('low_stock_threshold = ?'); values.push(n);
+    }
+
+    let affected = 0;
+    if (fields.length > 0) {
+      fields.push('updated_at = NOW()');
+      const sql = `UPDATE catalog_entries SET ${fields.join(', ')} WHERE id IN (?) AND store_id = ?`;
+      const [result] = await db.query(sql, [...values, parsedIds, req.user.store_id]);
+      affected = result.affectedRows;
+    }
+
+    if (Array.isArray(addTagIds) && addTagIds.length > 0) {
+      const parsedTagIds = addTagIds.map(t => parseInt(t, 10)).filter(n => !isNaN(n));
+      if (parsedTagIds.length > 0) {
+        const [validTags] = await db.query('SELECT id FROM tags WHERE store_id = ? AND id IN (?)', [req.user.store_id, parsedTagIds]);
+        const validTagIds = validTags.map(t => t.id);
+        const [validEntries] = await db.query('SELECT id FROM catalog_entries WHERE store_id = ? AND id IN (?)', [req.user.store_id, parsedIds]);
+        const validEntryIds = validEntries.map(e => e.id);
+        if (validTagIds.length > 0 && validEntryIds.length > 0) {
+          const pairs = [];
+          for (const eid of validEntryIds) for (const tid of validTagIds) pairs.push([eid, tid]);
+          // INSERT IGNORE silently skips (entry, tag) pairs that already exist
+          await db.query('INSERT IGNORE INTO catalog_entry_tags (catalog_entry_id, tag_id) VALUES ?', [pairs]);
+        }
+      }
+    }
+
+    logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'bulk_updated', entity_type: 'catalog_entry', details: { count: parsedIds.length, status, stock_quantity, low_stock_threshold, addTagIds } });
+    res.json({ success: true, affected, count: parsedIds.length });
+  } catch (err) {
+    console.error('PATCH /catalog/bulk failed:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Bulk delete catalog entries — Admin only, matches single-delete role.
+router.delete('/catalog/bulk', auth, requireRole('Admin'), async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids required' });
+    const parsedIds = ids.map(i => parseInt(i, 10)).filter(n => !isNaN(n));
+    if (parsedIds.length === 0) return res.status(400).json({ error: 'No valid ids' });
+    if (parsedIds.length > 500) return res.status(400).json({ error: 'Max 500 items per bulk op' });
+    const [result] = await db.query('DELETE FROM catalog_entries WHERE id IN (?) AND store_id = ?', [parsedIds, req.user.store_id]);
+    logActivity({ store_id: req.user.store_id, user_id: req.user.id, action: 'bulk_deleted', entity_type: 'catalog_entry', details: { count: result.affectedRows } });
+    res.json({ success: true, deleted: result.affectedRows });
+  } catch (err) {
+    console.error('DELETE /catalog/bulk failed:', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Update catalog entry (status, custom fields, stock)
 router.patch('/catalog/:id', auth, requireRole('Admin', 'Editor'), async (req, res) => {
   try {
