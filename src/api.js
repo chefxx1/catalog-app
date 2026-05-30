@@ -170,6 +170,24 @@ export const deleteCatalogEntry = async (id) => {
   return handleResponse(res);
 };
 
+export const bulkUpdateCatalog = async (ids, updates) => {
+  const res = await apiFetch(`${API_URL}/products/catalog/bulk`, {
+    method: 'PATCH',
+    headers: headers(),
+    body: JSON.stringify({ ids, ...updates }),
+  });
+  return handleResponse(res);
+};
+
+export const bulkDeleteCatalog = async (ids) => {
+  const res = await apiFetch(`${API_URL}/products/catalog/bulk`, {
+    method: 'DELETE',
+    headers: headers(),
+    body: JSON.stringify({ ids }),
+  });
+  return handleResponse(res);
+};
+
 export const deleteAllData = async () => {
   const res = await apiFetch(`${API_URL}/auth/data`, {
     method: 'DELETE',

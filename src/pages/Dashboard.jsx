@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Icon, CopyButton, LoadingDots, ConfirmDialog, safeJsonParse } from "../components/shared";
 import BrandOrb from "../components/BrandOrb";
 import { toast } from "../components/Toast";
-import { getCatalog, getBrandVoices as apiGetBrandVoices, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, exportProduct, getTags, createTag, deleteTag, setEntryTags as apiSetEntryTags, getSavedViews, createSavedView, deleteSavedView, getQualitySuggestions, getActivity, exportPdf } from "../api";
+import { getCatalog, getBrandVoices as apiGetBrandVoices, updateCatalogEntry, updateCatalogStatus, deleteCatalogEntry, exportProduct, getTags, createTag, deleteTag, setEntryTags as apiSetEntryTags, getSavedViews, createSavedView, deleteSavedView, getQualitySuggestions, getActivity, exportPdf, bulkUpdateCatalog, bulkDeleteCatalog } from "../api";
 import { STATUSES, COMPLETENESS, completenessColor } from "../constants/catalog";
 import CompletenessRing from "../components/CompletenessRing";
 
@@ -24,6 +24,12 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [batchFmt, setBatchFmt] = useState("CSV");
   const [batchPlat, setBatchPlat] = useState("Shopify");
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkStock, setBulkStock] = useState("");
+  const [bulkThreshold, setBulkThreshold] = useState("");
+  const [bulkTagId, setBulkTagId] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
 
   // ── Catalog Organization ──
@@ -267,6 +273,59 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
   const toggleSelectAll = () => {
     if (selected.size === filteredCatalog.length) setSelected(new Set());
     else setSelected(new Set(filteredCatalog.map(c => c.id)));
+  };
+
+  const runBulk = async (updates, optimistic) => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    try {
+      await bulkUpdateCatalog(ids, updates);
+      if (optimistic) setCatalog(prev => prev.map(c => selected.has(c.id) ? optimistic(c) : c));
+      toast.success(`Updated ${ids.length} product${ids.length > 1 ? "s" : ""}`);
+      reload();
+    } catch (err) {
+      toast.error(err.message || "Bulk update failed");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleBulkStatus = (status) => runBulk({ status }, (c) => ({ ...c, status }));
+  const handleBulkStock = () => {
+    const n = parseInt(bulkStock, 10);
+    if (isNaN(n) || n < 0) return toast.warning("Enter a valid stock number");
+    runBulk({ stock_quantity: n }, (c) => ({ ...c, stock_quantity: n }));
+    setBulkStock("");
+  };
+  const handleBulkThreshold = () => {
+    const n = parseInt(bulkThreshold, 10);
+    if (isNaN(n) || n < 0) return toast.warning("Enter a valid threshold");
+    runBulk({ low_stock_threshold: n }, (c) => ({ ...c, low_stock_threshold: n }));
+    setBulkThreshold("");
+  };
+  const handleBulkAddTag = () => {
+    const id = parseInt(bulkTagId, 10);
+    if (isNaN(id)) return toast.warning("Pick a tag");
+    runBulk({ addTagIds: [id] });
+    setBulkTagId("");
+  };
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const r = await bulkDeleteCatalog(ids);
+      setCatalog(prev => prev.filter(c => !selected.has(c.id)));
+      setSelected(new Set());
+      setBulkDeleteOpen(false);
+      setBulkOpen(false);
+      toast.success(`Deleted ${r.deleted || ids.length} product${ids.length > 1 ? "s" : ""}`);
+    } catch (err) {
+      toast.error(err.message || "Bulk delete failed");
+    } finally {
+      setBulkBusy(false);
+    }
   };
 
   const handleBatchExport = () => {
@@ -620,16 +679,66 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
                 {selected.size===filteredCatalog.length?"Deselect All":"Select All"}
               </button>
             </div>
-            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <div style={{display:"flex",gap:8,alignItems:"center",position:"relative"}}>
               <button className="btn btn-ghost" style={{fontSize:12,padding:"6px 14px"}} onClick={()=>setSelected(new Set())}>
                 Cancel
+              </button>
+              <button className="btn btn-ghost" style={{fontSize:12,padding:"6px 14px"}} onClick={()=>setBulkOpen(o=>!o)}>
+                <Icon name="edit" size={13}/> Bulk Edit
               </button>
               <button className="btn btn-primary" style={{fontSize:12,padding:"6px 16px"}} disabled={batchExporting} onClick={handleBatchExport}>
                 <Icon name="download" size={13}/> {batchExporting?"Exporting...":`Export ${selected.size} Product${selected.size>1?"s":""}`}
               </button>
+              {bulkOpen && (
+                <div onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:"calc(100% + 10px)",right:0,width:300,background:"var(--card-bg)",border:"1px solid var(--border)",borderRadius:12,boxShadow:"0 12px 36px rgba(0,0,0,0.45)",padding:14,display:"flex",flexDirection:"column",gap:14,zIndex:100,backdropFilter:"blur(12px)"}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    <span style={{fontSize:12,fontWeight:700,letterSpacing:"0.06em",color:"var(--text-dim)"}}>BULK ACTIONS · {selected.size}</span>
+                    <button className="btn btn-ghost" style={{padding:4,border:"none"}} onClick={()=>setBulkOpen(false)}><Icon name="x" size={12}/></button>
+                  </div>
+
+                  <div>
+                    <div style={{fontSize:10.5,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:6}}>STATUS</div>
+                    <div style={{display:"flex",gap:6}}>
+                      {["Draft","Published","Exported"].map(s=>(
+                        <button key={s} className="btn btn-ghost" style={{flex:1,fontSize:11,padding:"5px 0",justifyContent:"center"}} disabled={bulkBusy} onClick={()=>handleBulkStatus(s)}>{s}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{fontSize:10.5,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:6}}>STOCK</div>
+                    <div style={{display:"flex",gap:6}}>
+                      <input className="input" type="number" min="0" placeholder="Quantity" value={bulkStock} onChange={e=>setBulkStock(e.target.value)} style={{flex:1,fontSize:12,padding:"6px 10px"}}/>
+                      <button className="btn btn-ghost" style={{fontSize:11,padding:"5px 10px"}} disabled={bulkBusy||!bulkStock} onClick={handleBulkStock}>Apply</button>
+                    </div>
+                    <div style={{display:"flex",gap:6,marginTop:6}}>
+                      <input className="input" type="number" min="0" placeholder="Low-stock threshold" value={bulkThreshold} onChange={e=>setBulkThreshold(e.target.value)} style={{flex:1,fontSize:12,padding:"6px 10px"}}/>
+                      <button className="btn btn-ghost" style={{fontSize:11,padding:"5px 10px"}} disabled={bulkBusy||!bulkThreshold} onClick={handleBulkThreshold}>Apply</button>
+                    </div>
+                  </div>
+
+                  {tags.length > 0 && (
+                    <div>
+                      <div style={{fontSize:10.5,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.08em",marginBottom:6}}>ADD TAG</div>
+                      <div style={{display:"flex",gap:6}}>
+                        <select className="input" value={bulkTagId} onChange={e=>setBulkTagId(e.target.value)} style={{flex:1,fontSize:12,padding:"6px 10px"}}>
+                          <option value="">Select tag…</option>
+                          {tags.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+                        </select>
+                        <button className="btn btn-ghost" style={{fontSize:11,padding:"5px 10px"}} disabled={bulkBusy||!bulkTagId} onClick={handleBulkAddTag}>Add</button>
+                      </div>
+                    </div>
+                  )}
+
+                  <button className="btn btn-ghost" style={{fontSize:11,padding:"6px 10px",color:"#EF4444",justifyContent:"center",border:"1px solid rgba(239,68,68,0.3)"}} disabled={bulkBusy} onClick={()=>setBulkDeleteOpen(true)}>
+                    <Icon name="trash" size={12} color="#EF4444"/> Delete {selected.size} product{selected.size>1?"s":""}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
+        {bulkDeleteOpen && <ConfirmDialog title={`Delete ${selected.size} products`} message={`This will permanently remove ${selected.size} product${selected.size>1?"s":""} from your catalog. This action cannot be undone.`} confirmLabel="Delete" confirmColor="#EF4444" onCancel={()=>setBulkDeleteOpen(false)} onConfirm={handleBulkDelete}/>}
       </div>
       </div>
 
