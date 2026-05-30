@@ -558,7 +558,11 @@ const Dashboard = ({ onNew, onViewVoices, onViewProduct, onExportProduct, user, 
                     </div>
                   </div>
                 ) : (
-                  <span style={{marginLeft:20}}><span style={{fontSize:13,fontWeight:600}}>{item.custom_name||item.name||"Untitled"}</span>{item.brand&&<span style={{fontSize:11,color:"var(--text-dim)",marginLeft:8}}>{item.brand}</span>}{item.custom_price&&<span style={{fontSize:11,color:"#10B981",marginLeft:8}}>${item.custom_price}</span>}</span>
+                  <div style={{paddingLeft:20,display:"flex",flexWrap:"wrap",alignItems:"baseline",columnGap:8,rowGap:2,minWidth:0}}>
+                    <span style={{fontSize:13,fontWeight:600,wordBreak:"break-word"}}>{item.custom_name||item.name||"Untitled"}</span>
+                    {item.brand&&<span style={{fontSize:11,color:"var(--text-dim)",wordBreak:"break-word"}}>{item.brand}</span>}
+                    {item.custom_price&&<span style={{fontSize:11,color:"#10B981"}}>${item.custom_price}</span>}
+                  </div>
                 )}
               </td>}
               {visibleCols.barcode && <td style={{padding:"12px 16px"}}><span className="mono" style={{fontSize:12,color:"var(--text-muted)",display:"flex",alignItems:"center",gap:4}}>{item.barcode||"\u2014"}{item.barcode&&<CopyButton text={item.barcode}/>}</span></td>}

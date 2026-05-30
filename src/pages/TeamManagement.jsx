@@ -123,6 +123,8 @@ const TeamManagement = ({ currentUserId }) => {
         <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
           {teamUsers.map((member, i) => {
             const isMe = member.id === currentUserId;
+            // Backend returns team ORDER BY created_at ASC — first row is the store owner.
+            const isOwner = i === 0;
             return (
               <div key={member.id} style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0",
@@ -136,14 +138,15 @@ const TeamManagement = ({ currentUserId }) => {
                     <div style={{ fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}>
                       {member.name}
                       {isMe && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 99, background: "rgba(139,92,246,0.15)", color: "#8B5CF6" }}>You</span>}
+                      {isOwner && <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 99, background: "rgba(245,158,11,0.15)", color: "#F59E0B" }}>Owner</span>}
                     </div>
                     <div style={{ fontSize: 11, color: "var(--text-dim)" }}>{member.email}</div>
                     <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>Joined {new Date(member.created_at).toLocaleDateString()}</div>
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {isMe ? (
-                    <span style={roleBadge(member.role)}>{member.role}</span>
+                  {(isMe || isOwner) ? (
+                    <span style={roleBadge(member.role)} title={isOwner && !isMe ? "Store owner — role is locked" : undefined}>{member.role}</span>
                   ) : (
                     <>
                       <div style={{ display: "flex", gap: 4 }}>

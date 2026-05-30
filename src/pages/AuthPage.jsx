@@ -124,7 +124,12 @@ const AuthPage = ({ onLogin }) => {
       onLogin({ id: data.user.id, email: data.user.email, name: data.user.name, role: data.user.role, store_id: data.user.store_id, store_name: data.user.store_name });
     } catch (err) {
       setLoading(false);
-      setError(err.message);
+      // Backend keeps the message generic for security (no enumeration). Translate it
+      // into something users won't mistake for an outage, with a recovery hint.
+      const isCreds = /invalid email or password/i.test(err.message || "");
+      setError(isCreds
+        ? "That email and password don't match. Double-check and try again — or use Forgot password? below."
+        : err.message);
     }
   };
 
