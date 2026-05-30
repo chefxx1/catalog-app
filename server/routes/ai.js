@@ -562,7 +562,13 @@ router.post('/search-images', auth, async (req, res) => {
         'X-API-KEY': process.env.SERPER_API_KEY,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ q: query + ' product high quality', num: 8 }),
+      body: JSON.stringify({
+        q: query + ' product',
+        num: 40,
+        gl: 'us',
+        hl: 'en',
+        safe: 'active',
+      }),
     });
     const data = await response.json();
 
@@ -570,15 +576,33 @@ router.post('/search-images', auth, async (req, res) => {
       return res.status(400).json({ error: data.message || 'Image search failed' });
     }
 
-    const images = (data.images || []).map((item, i) => ({
-      id: i + 1,
-      url: item.imageUrl,
-      thumbnail: item.thumbnailUrl || item.imageUrl,
-      title: item.title || '',
-      source: item.source || '',
-      width: item.imageWidth || 0,
-      height: item.imageHeight || 0,
-    }));
+    const seen = new Set();
+    const images = [];
+    for (const item of (data.images || [])) {
+      if (!item.imageUrl) continue;
+      const w = item.imageWidth || 0;
+      const h = item.imageHeight || 0;
+      // Skip tiny thumbnails — they're almost always icon-grade
+      if (w && w < 250) continue;
+      if (h && h < 250) continue;
+      // Dedupe by host+path (ignores tracking query strings)
+      let key = item.imageUrl;
+      try {
+        const u = new URL(item.imageUrl);
+        key = u.host + u.pathname;
+      } catch {}
+      if (seen.has(key)) continue;
+      seen.add(key);
+      images.push({
+        id: images.length + 1,
+        url: item.imageUrl,
+        thumbnail: item.thumbnailUrl || item.imageUrl,
+        title: item.title || '',
+        source: item.source || '',
+        width: w,
+        height: h,
+      });
+    }
 
     res.json({ images });
   } catch (err) {

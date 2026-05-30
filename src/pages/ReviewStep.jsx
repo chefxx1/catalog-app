@@ -17,16 +17,31 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
   const dbConflicts = pd.conflicts || [];
 
   // Map DB data to display format
-  const displaySources = dbSources.length > 0 ? dbSources.map(s => ({
-    name: s.source_name, icon: s.source_name === "Open Food Facts" ? "database" : "store",
-    trustScore: s.trust_score || 70, color: sourceColor(s.source_name),
-    data: {
-      ...(s.source_url ? { url: s.source_url } : {}),
-      ...(s.price ? { price: `$${s.price}` } : {}),
-      ...(s.weight ? { weight: s.weight } : {}),
-      ...(s.description ? { description: s.description } : {}),
-    }
-  })) : [];
+  const hostFromUrl = (u) => {
+    try {
+      const host = new URL(u).hostname.replace(/^www\./, "");
+      // Search engines are not real sources — drop them so the source row is filtered out.
+      if (/(^|\.)google\.[a-z.]+$/i.test(host)) return "";
+      if (/(^|\.)bing\.com$/i.test(host)) return "";
+      if (/(^|\.)duckduckgo\.com$/i.test(host)) return "";
+      if (/(^|\.)yahoo\.com$/i.test(host)) return "";
+      return host;
+    } catch { return ""; }
+  };
+  const displaySources = dbSources.length > 0 ? dbSources.map(s => {
+    const displayName = s.source_name || hostFromUrl(s.source_url);
+    if (!displayName) return null;
+    return {
+      name: displayName, icon: s.source_name === "Open Food Facts" ? "database" : "store",
+      trustScore: s.trust_score || 70, color: sourceColor(s.source_name || displayName),
+      data: {
+        ...(s.source_url ? { url: s.source_url } : {}),
+        ...(s.price ? { price: `$${s.price}` } : {}),
+        ...(s.weight ? { weight: s.weight } : {}),
+        ...(s.description ? { description: s.description } : {}),
+      }
+    };
+  }).filter(Boolean) : [];
 
   const displayImages = dbImages.length > 0 ? dbImages.map((img, i) => ({
     id: img.id, url: img.image_url, qualityScore: (img.quality_score || 70) / 10, selected: i < 3, label: img.source_name || "Product image"
@@ -124,13 +139,11 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
   // Image Library modal
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [librarySearch, setLibrarySearch] = useState("");
-  const [libraryFilter, setLibraryFilter] = useState(null);
   const [libraryResults, setLibraryResults] = useState([]);
   const [librarySelected, setLibrarySelected] = useState(new Set());
   const [librarySearching, setLibrarySearching] = useState(false);
   const [pasteUrlMode, setPasteUrlMode] = useState(false);
   const [pasteUrlValue, setPasteUrlValue] = useState("");
-  const [libraryPreview, setLibraryPreview] = useState(null);
   const libraryCache = useRef({}); // { query: results[] }
   const libraryCacheKeys = useRef([]);
   const LIBRARY_CACHE_MAX = 40;
@@ -144,7 +157,6 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
     }
     libraryCache.current[key] = value;
   };
-  const filterDebounce = useRef(null);
 
   // Lightbox keyboard controls
   useEffect(() => {
@@ -323,14 +335,12 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
   const openLibrary = () => {
     const base = `${p.brand && p.brand !== "Unknown" ? p.brand + " " : ""}${p.name}`.trim();
     setLibrarySearch(base);
-    setLibraryFilter(null);
     setLibraryResults([]);
     setLibrarySelected(new Set());
     setPasteUrlMode(false);
     setPasteUrlValue("");
-    setLibraryPreview(null);
     setLibraryOpen(true);
-    // No auto-search — user clicks filter or Search
+    if (base) runLibrarySearch(base);
   };
 
   const runLibrarySearch = async (query) => {
@@ -347,40 +357,17 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
     setLibraryResults([]);
     try {
       const results = await searchProductImages(query.trim());
-      const ranked = (results || [])
-        .filter(r => (r.width || 0) * (r.height || 0) > 0 || !r.width)
-        .sort((a, b) => {
-          const aPx = (a.width || 0) * (a.height || 0);
-          const bPx = (b.width || 0) * (b.height || 0);
-          return bPx - aPx;
-        });
+      const ranked = (results || []).slice().sort((a, b) => {
+        const aPx = (a.width || 0) * (a.height || 0);
+        const bPx = (b.width || 0) * (b.height || 0);
+        return bPx - aPx;
+      });
       setLibraryCache(key, ranked);
       setLibraryResults(ranked);
     } catch (err) {
       toast.error("Search failed: " + err.message);
     }
     setLibrarySearching(false);
-  };
-
-  const applyFilter = (filterKey) => {
-    const base = `${p.brand && p.brand !== "Unknown" ? p.brand + " " : ""}${p.name}`.trim();
-    const filterQueries = {
-      front: base,
-      back: `${base} back label`,
-      side: `${base} side view`,
-      top: `${base} top view`,
-      label: `${base} nutrition label ingredients`,
-      lifestyle: `${base} lifestyle in use`,
-      closeup: `${base} close up detail`,
-      packaging: `${base} packaging box`,
-      multipack: `${base} multipack bulk`,
-    };
-    const newQuery = filterQueries[filterKey] || base;
-    setLibraryFilter(filterKey);
-    setLibrarySearch(newQuery);
-    // Debounce — cancel pending search and schedule new one 400ms out
-    if (filterDebounce.current) clearTimeout(filterDebounce.current);
-    filterDebounce.current = setTimeout(() => runLibrarySearch(newQuery), 400);
   };
 
   const toggleLibrarySelect = (url) => {
@@ -400,7 +387,7 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
       url: img.url,
       qualityScore: Math.min(10, Math.round(((img.width || 500) * (img.height || 500)) / 100000)),
       selected: false,
-      label: libraryFilter || "Gallery",
+      label: "Gallery",
       source: img.source,
       width: img.width,
       height: img.height,
@@ -519,20 +506,12 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
                 <Icon name={expandedSource===s.name?"chevronDown":"chevronRight"} size={14} color="var(--text-dim)"/>
               </div>
               {expandedSource===s.name&&<div className="animate-slideUp" style={{padding:"0 14px 12px",display:"flex",flexDirection:"column",gap:4}}>
-                {Object.entries(s.data).map(([k,v])=>{
-                  const str = String(v);
-                  const isUrl = /^https?:\/\//i.test(str);
-                  return (
-                    <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:12,gap:8}}>
-                      <span style={{color:"var(--text-dim)",flexShrink:0}}>{k}</span>
-                      {isUrl ? (
-                        <a href={str} target="_blank" rel="noopener noreferrer" className="mono" style={{color:"var(--primary-light)",textDecoration:"underline",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",direction:"rtl",textAlign:"left"}}>{str}</a>
-                      ) : (
-                        <span className="mono" style={{color:"var(--text-sec)"}}>{str}</span>
-                      )}
-                    </div>
-                  );
-                })}
+                {Object.entries(s.data).filter(([,v])=>!/^https?:\/\//i.test(String(v))).map(([k,v])=>(
+                  <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:12,gap:8}}>
+                    <span style={{color:"var(--text-dim)",flexShrink:0}}>{k}</span>
+                    <span className="mono" style={{color:"var(--text-sec)"}}>{String(v)}</span>
+                  </div>
+                ))}
               </div>}
             </div>)}
           </div>}
@@ -661,7 +640,7 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
 
           <div style={{padding:12,background:"var(--hover-bg)",borderRadius:8,border:"1px solid var(--border)"}}>
             <div style={{fontSize:11,fontWeight:700,color:"var(--text-dim)",letterSpacing:"0.06em",marginBottom:8}}>PRE-PUBLISH CHECKLIST</div>
-            {[{t:"AI description generated",ok:hasRealAI||aiDescs!==p.aiDescriptions},{t:"Pricing verified across sources",ok:Object.keys(resolvedConflicts).length>0},{t:"Product images selected",ok:images.filter(i=>i.selected).length>0},{t:"SEO tags generated",ok:hasRealAI||seoTags!==p.seoTags}].map((item,i)=><div key={i} style={{display:"flex",gap:8,alignItems:"center",fontSize:12,marginBottom:4,color:item.ok?"var(--text-muted)":"#F87171"}}><Icon name={item.ok?"check":"x"} size={12} color={item.ok?"#10B981":"#EF4444"}/> {item.t}</div>)}
+            {[{t:"AI description generated",ok:hasRealAI||aiDescs!==p.aiDescriptions},{t:"Pricing verified across sources",ok:(p.conflicts?.length||0)===0||Object.keys(resolvedConflicts).length>=(p.conflicts?.length||0)},{t:"Product images selected",ok:images.filter(i=>i.selected).length>0},{t:"SEO tags generated",ok:hasRealAI||seoTags!==p.seoTags}].map((item,i)=><div key={i} style={{display:"flex",gap:8,alignItems:"center",fontSize:12,marginBottom:4,color:item.ok?"var(--text-muted)":"#F87171"}}><Icon name={item.ok?"check":"x"} size={12} color={item.ok?"#10B981":"#EF4444"}/> {item.t}</div>)}
           </div>
         </div>
         <div style={{padding:"12px 16px",borderTop:"1px solid var(--border)",display:"flex",gap:10}}>
@@ -758,7 +737,7 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
                 </div>
                 <div>
                   <h3 style={{fontSize:16,fontWeight:800,letterSpacing:"-0.02em"}}>Image Library</h3>
-                  <p style={{fontSize:11,color:"var(--text-dim)"}}>Browse and pick images for your product</p>
+                  <p style={{fontSize:11,color:"var(--text-dim)"}}>Powered by Google Images{libraryResults.length > 0 ? ` · ${libraryResults.length} result${libraryResults.length !== 1 ? "s" : ""}` : ""}</p>
                 </div>
               </div>
               <button className="btn btn-ghost" style={{padding:8,border:"none"}} onClick={() => setLibraryOpen(false)}><Icon name="x" size={16}/></button>
@@ -782,30 +761,6 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
                 </button>
               </div>
 
-              {/* Filter chips */}
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                {[
-                  {k:"front",    l:"Front"},
-                  {k:"back",     l:"Back"},
-                  {k:"side",     l:"Side"},
-                  {k:"top",      l:"Top View"},
-                  {k:"label",    l:"Label"},
-                  {k:"lifestyle",l:"Lifestyle"},
-                  {k:"closeup",  l:"Close-up"},
-                  {k:"packaging",l:"Packaging"},
-                  {k:"multipack",l:"Multi-Pack"},
-                ].map(f => {
-                  const active = libraryFilter === f.k;
-                  return (
-                    <button key={f.k} onClick={() => applyFilter(f.k)} disabled={librarySearching}
-                      style={{fontSize:11,padding:"5px 12px",borderRadius:16,cursor:"pointer",fontFamily:"'Sora',sans-serif",fontWeight:600,transition:"all 0.15s",
-                        border:`1px solid ${active ? "#7C3AED" : "var(--border-light)"}`,
-                        background:active ? "linear-gradient(135deg,rgba(37,99,235,0.15),rgba(124,58,237,0.15))" : "transparent",
-                        color:active ? "#A78BFA" : "var(--text-dim)",
-                      }}>{f.l}</button>
-                  );
-                })}
-              </div>
 
               {/* Paste URL input */}
               {pasteUrlMode && (
@@ -828,12 +783,12 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
                 </div>
               )}
               {!librarySearching && libraryResults.length === 0 && (
-                <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",gap:10,color:"var(--text-dim)"}}>
-                  <div style={{width:56,height:56,borderRadius:14,background:"var(--hover-bg)",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:4}}>
-                    <Icon name="search" size={24} color="var(--text-dim)"/>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",gap:12,color:"var(--text-dim)",textAlign:"center",padding:"0 24px"}}>
+                  <div style={{width:64,height:64,borderRadius:18,background:"linear-gradient(135deg,rgba(59,130,246,0.12),rgba(139,92,246,0.12),rgba(16,185,129,0.12))",border:"1px solid var(--border-light)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <Icon name="sparkle" size={26} color="#A78BFA"/>
                   </div>
-                  <p style={{fontSize:13,fontWeight:600}}>Click a filter or hit Search to begin</p>
-                  <p style={{fontSize:11,color:"var(--text-dim)"}}>Results are cached per query so you can toggle filters freely</p>
+                  <p style={{fontSize:14,fontWeight:700,color:"var(--text-muted)"}}>No images yet</p>
+                  <p style={{fontSize:11,color:"var(--text-dim)",maxWidth:340,lineHeight:1.5}}>Type a product name in the search bar above, or paste a direct image URL.</p>
                 </div>
               )}
               {!librarySearching && libraryResults.length > 0 && (
@@ -845,37 +800,27 @@ const ReviewStep = ({ onExport, onSave, productData, user }) => {
                     const qColor = quality === "HD" ? "#10B981" : quality === "MD" ? "#F59E0B" : "#EF4444";
                     return (
                       <div key={i} onClick={() => toggleLibrarySelect(img.url)}
-                        onMouseEnter={() => setLibraryPreview(img)}
-                        onMouseLeave={() => setLibraryPreview(null)}
-                        style={{position:"relative",borderRadius:10,overflow:"hidden",cursor:"pointer",transition:"all 0.2s",
-                          border:`2px solid ${isSelected ? "#7C3AED" : "var(--border-light)"}`,
-                          boxShadow:isSelected ? "0 0 0 3px rgba(124,58,237,0.3)" : "none",
-                          transform:isSelected ? "scale(0.97)" : "scale(1)",
-                        }}>
-                        <div style={{aspectRatio:"1",background:"var(--hover-bg)",position:"relative"}}>
-                          <img src={img.thumbnail || img.url} alt="" loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                          {/* Quality badge */}
-                          <div style={{position:"absolute",top:6,left:6,display:"inline-flex",alignItems:"center",gap:3,padding:"2px 6px",borderRadius:10,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)"}}>
-                            <div style={{width:5,height:5,borderRadius:"50%",background:qColor}}/>
-                            <span style={{fontSize:9,fontWeight:700,color:"white"}}>{quality}</span>
+                        className={`lib-card${isSelected ? " selected" : ""}`}>
+                        <img src={img.thumbnail || img.url} alt="" loading="lazy" className="lib-img"/>
+                        {/* Quality badge */}
+                        <div style={{position:"absolute",top:6,left:6,display:"inline-flex",alignItems:"center",gap:3,padding:"2px 6px",borderRadius:10,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)"}}>
+                          <div style={{width:5,height:5,borderRadius:"50%",background:qColor}}/>
+                          <span style={{fontSize:9,fontWeight:700,color:"white"}}>{quality}</span>
+                        </div>
+                        {/* Selection checkmark */}
+                        {isSelected && (
+                          <div style={{position:"absolute",top:6,right:6,width:22,height:22,borderRadius:"50%",background:"linear-gradient(135deg,#2563EB,#7C3AED)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 0 10px rgba(124,58,237,0.6)"}}>
+                            <Icon name="check" size={12} color="white"/>
                           </div>
-                          {/* Selection checkmark */}
-                          {isSelected && (
-                            <div style={{position:"absolute",top:6,right:6,width:22,height:22,borderRadius:"50%",background:"linear-gradient(135deg,#2563EB,#7C3AED)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 0 10px rgba(124,58,237,0.6)"}}>
-                              <Icon name="check" size={12} color="white"/>
-                            </div>
-                          )}
-                          {/* Resolution */}
-                          {img.width && img.height && (
-                            <div style={{position:"absolute",bottom:6,right:6,padding:"2px 6px",borderRadius:6,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)",fontSize:9,fontWeight:700,color:"white"}}>
-                              {img.width}×{img.height}
-                            </div>
-                          )}
-                        </div>
-                        {/* Source */}
-                        <div style={{padding:"6px 8px",background:"var(--surface)",borderTop:"1px solid var(--border-light)"}}>
-                          <div style={{fontSize:10,color:"var(--text-dim)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontWeight:500}}>{img.source || "Unknown"}</div>
-                        </div>
+                        )}
+                        {/* Resolution */}
+                        {img.width && img.height && (
+                          <div style={{position:"absolute",bottom:6,right:6,padding:"2px 6px",borderRadius:6,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(6px)",fontSize:9,fontWeight:700,color:"white"}}>
+                            {img.width}×{img.height}
+                          </div>
+                        )}
+                        {/* Source — fades up on hover */}
+                        <div className="lib-source">{img.source || "Unknown"}</div>
                       </div>
                     );
                   })}
