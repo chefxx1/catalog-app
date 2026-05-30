@@ -47,6 +47,8 @@ const GlobalStyles = ({ dark }) => (
     .animate-fadeIn { animation: fadeIn 0.2s ease-out both; }
     .animate-slideIn { animation: slideIn 0.3s ease-out both; }
     .animate-slideUp { animation: slideUp 0.4s ease-out both; }
+    @keyframes rise { from { transform:translateY(12px); } to { transform:translateY(0); } }
+    .animate-rise { animation: rise 0.35s ease-out both; }
     .animate-pulse { animation: pulse 2s infinite; }
     .animate-spin { animation: spin 1s linear infinite; }
     .spinner-gradient { width: 32px; height: 32px; border-radius: 50%; position: relative; }

@@ -358,10 +358,6 @@ const SearchStep = ({ onSearch }) => {
           <p style={{fontSize:12,color:"var(--text-dim)",marginTop:4}}>JPG, PNG up to 10MB</p>
         </div>
       </div>
-      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
-        <span style={{fontSize:11,color:"var(--text-dim)",fontWeight:500}}>Quick try:</span>
-        {[{c:"3017620422003",l:"Nutella"},{c:"5449000000996",l:"Coca-Cola"},{c:"8076809513753",l:"Barilla"}].map(({c,l})=><button key={c} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"5px 12px",borderRadius:20,fontSize:11,fontWeight:600,background:"var(--hover-bg)",border:"1px solid var(--border-light)",cursor:"pointer",color:"var(--text-sec)",fontFamily:"'Sora',sans-serif",transition:"all 0.2s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--primary)";e.currentTarget.style.color="var(--primary)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border-light)";e.currentTarget.style.color="var(--text-sec)";}} onClick={()=>{setUpc(c);setTimeout(()=>handleSearch(c),50);}}><Icon name="barcode" size={10}/> {l}</button>)}
-      </div>
       <div id="barcode-scanner-temp" style={{display:"none"}}/>
       {scannerOpen && <CameraScanner
         onClose={()=>setScannerOpen(false)}
