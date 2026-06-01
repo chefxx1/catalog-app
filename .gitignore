@@ -2,6 +2,10 @@
 .env
 server/.env
 
+# Local AI tooling (never commit)
+.claude/
+CLAUDE.md
+
 # Logs
 logs
 *.log

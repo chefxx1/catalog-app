@@ -19,9 +19,12 @@ There are two ways to clone the project:
 git clone https://github.com/chefxx1/catalog-app.git
 cd catalog-app
 npm install
+cd server && npm install && cd ..
 ```
 
-> **Heads up:** `npm install` will download Chromium (~170MB, one-time) for Puppeteer — it's used server-side to generate the PDF exports. Expect the first install to take a few minutes.
+> **Heads up:** the root `npm install` will download Chromium (~170MB, one-time) for Puppeteer — it's used server-side to generate the PDF exports. Expect the first install to take a few minutes.
+
+> **Don't skip the `server/npm install` step.** The server folder has its own `package.json` with `helmet` (the security-headers middleware). The backend will throw `Cannot find module 'helmet'` on startup if you only run the root install.
 
 ### Option B — Using VS Code
 1. Open **VS Code**
@@ -30,6 +33,7 @@ npm install
 4. Pick a folder to save it and click **Open**
 5. Open the terminal in VS Code (`Ctrl + ~`)
 6. Run: `npm install`
+7. Then: `cd server && npm install && cd ..` (installs `helmet`)
 
 ### 2. Set up MySQL
 1. Open **XAMPP Control Panel**
@@ -98,6 +102,29 @@ npm run dev
 ### 5. Open in browser
 Go to http://localhost:5173 and sign up for a new account.
 
+## Demo on a Phone (Cloudflare Tunnel)
+
+The dev server is set up to work behind an HTTPS tunnel so you can hand the phone to a teammate (or a judge) without exposing your laptop's IP. The Vite proxy in `vite.config.js` forwards `/api/*` to the backend on port 3000, so only one tunnel is needed.
+
+1. **Install cloudflared** (one-time):
+   ```powershell
+   # Windows
+   winget install --id Cloudflare.cloudflared
+
+   # macOS
+   brew install cloudflared
+   ```
+
+2. **Start the backend and frontend** as usual (`npm run server` and `npm run dev`).
+
+3. **Open a third terminal and run:**
+   ```bash
+   cloudflared tunnel --url http://localhost:5173
+   ```
+   Cloudflare prints a public URL like `https://random-three-words-1234.trycloudflare.com`. Open it on the phone.
+
+> **Note:** the tunnel URL changes every run. Google Sign-In will reject it (`origin_mismatch`) because the random subdomain isn't in your authorized JavaScript origins — use email + password for tunneled demos. The camera scanner works because the tunnel is HTTPS.
+
 ## Project Structure
 
 ```
@@ -109,7 +136,7 @@ catalog-app/
 │   ├── index.css                     # CSS reset
 │   ├── pages/                        # One file per top-level view
 │   │   ├── AuthPage.jsx              # signin/signup/forgot/reset/invite-accept
-│   │   ├── Dashboard.jsx             # Catalog table, filters, tags, batch export
+│   │   ├── Dashboard.jsx             # Catalog table, filters, tags, batch export, Bulk Edit popover (status/stock/threshold/add-tag/delete)
 │   │   ├── SearchStep.jsx            # Barcode + image identification (step 1)
 │   │   ├── ReviewStep.jsx            # AI descriptions, conflicts, image library (step 2)
 │   │   ├── ExportStep.jsx            # Format/platform selector + history (step 3)
@@ -167,11 +194,10 @@ catalog-app/
 │       └── migrate-stores.js         # One-time multi-tenant migration (already run)
 │
 ├── docs/
-│   ├── PROJECT_SCOPE.md              # High-level project scope
-│   └── PROJECT_OVERVIEW.md           # Full architecture write-up for the report
+│   └── samples/test-import.csv       # Sample CSV for testing the import flow
 │
 ├── index.html                        # Vite entry (loads Google Identity Services SDK)
-├── vite.config.js                    # Vite + React plugin
+├── vite.config.js                    # Vite + React plugin + /api proxy to backend + host:true for LAN/tunnel access
 ├── eslint.config.js                  # Flat-config ESLint with react-hooks rules
 └── package.json                      # Frontend + shared deps (server has its own for helmet)
 ```
