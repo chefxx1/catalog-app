@@ -32,8 +32,11 @@ const apiFetch = (url, opts = {}) => {
     .catch(err => { clearTimeout(timeout); if (err.name === 'AbortError') throw new Error('Request timed out'); throw err; });
 };
 
-const handleResponse = async (res) => {
-  if (res.status === 401 && onUnauthorized) {
+const handleResponse = async (res, opts = {}) => {
+  // Pre-login endpoints (signin/signup/forgot/reset) legitimately return 401 on
+  // bad credentials or expired tokens. Those should surface the server's error
+  // message — not trigger the "session expired" auto-logout flow.
+  if (res.status === 401 && onUnauthorized && !opts.skipUnauthorizedHandler) {
     setToken(null);
     onUnauthorized();
     throw new Error('Session expired. Please sign in again.');
@@ -41,7 +44,7 @@ const handleResponse = async (res) => {
   if (res.status === 403) {
     throw new Error('You do not have permission to perform this action');
   }
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'Request failed');
   return data;
 };
@@ -53,7 +56,7 @@ export const signUp = async (name, email, password, store_name) => {
     headers: headers(),
     body: JSON.stringify({ name, email, password, store_name }),
   });
-  const data = await handleResponse(res);
+  const data = await handleResponse(res, { skipUnauthorizedHandler: true });
   setToken(data.token);
   return data;
 };
@@ -64,7 +67,7 @@ export const signIn = async (email, password) => {
     headers: headers(),
     body: JSON.stringify({ email, password }),
   });
-  const data = await handleResponse(res);
+  const data = await handleResponse(res, { skipUnauthorizedHandler: true });
   setToken(data.token);
   return data;
 };
@@ -84,14 +87,14 @@ export const forgotPassword = async (email) => {
   const res = await apiFetch(`${API_URL}/auth/forgot-password`, {
     method: 'POST', headers: headers(), body: JSON.stringify({ email }),
   });
-  return handleResponse(res);
+  return handleResponse(res, { skipUnauthorizedHandler: true });
 };
 
 export const resetPassword = async (token, password) => {
   const res = await apiFetch(`${API_URL}/auth/reset-password`, {
     method: 'POST', headers: headers(), body: JSON.stringify({ token, password }),
   });
-  return handleResponse(res);
+  return handleResponse(res, { skipUnauthorizedHandler: true });
 };
 
 // ── PRODUCTS ──
@@ -547,7 +550,7 @@ export const googleSignIn = async (credential) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ credential }),
   });
-  const data = await handleResponse(res);
+  const data = await handleResponse(res, { skipUnauthorizedHandler: true });
   setToken(data.token);
   return data;
 };
@@ -586,7 +589,7 @@ export const sendInvite = async (email, role) => {
 
 export const getInviteInfo = async (token) => {
   const res = await apiFetch(`${API_URL}/auth/invite/${token}`);
-  return handleResponse(res);
+  return handleResponse(res, { skipUnauthorizedHandler: true });
 };
 
 export const acceptInvite = async (token, name, password) => {
@@ -594,7 +597,7 @@ export const acceptInvite = async (token, name, password) => {
     method: 'POST', headers: headers(),
     body: JSON.stringify({ name, password }),
   });
-  const data = await handleResponse(res);
+  const data = await handleResponse(res, { skipUnauthorizedHandler: true });
   setToken(data.token);
   return data;
 };
