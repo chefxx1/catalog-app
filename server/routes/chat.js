@@ -39,11 +39,11 @@ function validSpecs(s) {
   return entries.length >= 3;
 }
 
-// Retry with model fallback — 2.5-flash 503s, 2.0-flash often 429s on free tier;
-// flash-latest is the most reliable middle ground.
+// Retry with model fallback — 2.5-flash can 503; flash-latest is the reliable
+// middle ground; 2.5-flash-lite is the cheap last-resort.
 async function callGeminiJson(prompt) {
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const models = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'];
+  const models = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite'];
   let lastErr;
   for (const modelName of models) {
     for (let attempt = 0; attempt < 3; attempt++) {

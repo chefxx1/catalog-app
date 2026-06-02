@@ -15,7 +15,7 @@ function validSpecs(s) {
 
 async function callGeminiJson(prompt) {
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const models = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'];
+  const models = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite'];
   let lastErr;
   for (const modelName of models) {
     for (let attempt = 0; attempt < 3; attempt++) {

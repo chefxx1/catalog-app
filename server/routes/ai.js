@@ -92,7 +92,7 @@ function getModel(modelName = 'gemini-2.5-flash') {
 // Quota-conscious retry: 0 retries per model + 2 models total = 2 max attempts.
 // Was 2 retries × 3 models = 9 max — burned daily quota fast on flaky 503s.
 async function generateWithRetry(generateFn, { maxRetries = 0 } = {}) {
-  const fallbackModels = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+  const fallbackModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
   let lastErr;
   for (const modelName of fallbackModels) {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {

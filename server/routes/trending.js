@@ -15,11 +15,11 @@ function validSpecs(s) {
 }
 
 // Gemini call with exponential backoff + model fallback. 2.5-flash gets 503'd a lot;
-// flash-latest and 2.0-flash are the recovery chain (2.0-flash often hits free-tier
-// daily quota by mid-day, so we still try it but expect 429s).
+// flash-latest and 2.5-flash-lite are the recovery chain (lite is cheaper/faster
+// so it's the last resort when both primary models are unavailable).
 async function callGemini(prompt) {
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const models = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'];
+  const models = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash-lite'];
   let lastErr;
   for (const modelName of models) {
     for (let attempt = 0; attempt < 3; attempt++) {
