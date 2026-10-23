@@ -1,6 +1,26 @@
 # CatalogAI
 
-AI-Powered Product Data Intelligence for e-commerce merchants.
+AI-powered product data tool for e-commerce merchants. It turns a barcode or a product photo into a complete, export-ready listing in minutes instead of hours.
+
+Built as a senior project at Beirut Arab University by a team of four, with weekly technical reviews from Integrated Digital Systems (IDS).
+
+## What it does
+
+- Identifies products from a barcode or a photo
+- Generates product descriptions with Gemini, with a review step and an image library
+- Translates listings into 10 languages
+- Exports to CSV, JSON, XML, or PDF, with Shopify sync and a Google Merchant feed
+- Bulk import from CSV
+- Ctrl+K AI chat assistant (Groq, Llama 3.3, streaming)
+- Analytics, brand voices, trending products, and team management with roles and invitations
+
+## Security
+
+JWT authentication, Google OAuth, role-based access control, per-token rate limiting, Helmet security headers, and input sanitization.
+
+## Tech stack
+
+React 19 and Vite on the front end, Express 5 and MySQL on the back end, Gemini and Groq for the AI features.
 
 ## Prerequisites
 
